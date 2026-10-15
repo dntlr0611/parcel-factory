@@ -45,7 +45,9 @@ namespace ParcelFactory.Core.Tests
         {
             var s = new GameSession { Speed = 2f };
             s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
-            s.Tick(1.5f); // 3초 상당: 생성되고 같은 틱에 (1,2)로 이동
+            s.Tick(1.25f);
+            Assert.AreEqual(0, s.Sim.Packages.Count); // 2.5초 상당, 아직 생성 전
+            s.Tick(0.75f); // 누적 4초 상당: 3초에 생성, 이후 1초 이동
             Assert.AreEqual(1, s.Sim.Packages.Count);
             Assert.AreEqual((1, 2), (s.Sim.Packages[0].X, s.Sim.Packages[0].Y));
         }
