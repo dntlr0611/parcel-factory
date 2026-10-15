@@ -100,6 +100,30 @@ namespace ParcelFactory.Core.Tests
         {
             Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson("null"));
             Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson("{not json"));
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson(null));
+        }
+
+        [Test]
+        public void MissingVersion_Throws()
+        {
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(SaveSerializer.FromJson("{}")));
+        }
+
+        [Test]
+        public void CorruptContents_ThrowSaveVersionException()
+        {
+            Assert.Throws<SaveVersionException>(() =>
+                SaveSerializer.Restore(SaveSerializer.FromJson("{\"Version\":1,\"Cells\":null}")));
+            Assert.Throws<SaveVersionException>(() =>
+                SaveSerializer.Restore(SaveSerializer.FromJson("{\"Version\":1,\"Purchased\":[\"Bogus\"]}")));
+
+            var outOfBounds = SaveSerializer.Capture(new GameSession());
+            outOfBounds.Packages.Add(new PackageState { Id = 1, Kind = "Normal", X = 99, Y = 0, Progress = 0f, Heading = "East" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(outOfBounds));
+
+            var onEmptyCell = SaveSerializer.Capture(new GameSession());
+            onEmptyCell.Packages.Add(new PackageState { Id = 1, Kind = "Normal", X = 1, Y = 1, Progress = 0f, Heading = "East" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(onEmptyCell));
         }
     }
 }

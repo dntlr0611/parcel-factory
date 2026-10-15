@@ -4,7 +4,8 @@ namespace ParcelFactory.Core
 {
     public sealed class GameState
     {
-        public int Version = SaveSerializer.CurrentVersion;
+        /// <summary>기본값 0. Capture가 명시적으로 채우므로 필드가 없는 JSON은 버전 불일치로 거부된다.</summary>
+        public int Version;
         public int Money;
         public int UnlockedSize;
         public List<string> Purchased = new List<string>();

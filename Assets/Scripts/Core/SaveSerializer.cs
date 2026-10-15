@@ -64,10 +64,26 @@ namespace ParcelFactory.Core
             if (st == null) throw new SaveVersionException("empty save");
             if (st.Version != CurrentVersion)
                 throw new SaveVersionException($"save version {st.Version} != {CurrentVersion}");
+            try
+            {
+                return RestoreUnchecked(st);
+            }
+            catch (SaveVersionException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                // null 리스트, 알 수 없는 enum 이름, 잘못된 좌표 등은 모두 손상된 저장으로 취급한다.
+                throw new SaveVersionException("corrupt save: " + e.Message, e);
+            }
+        }
 
+        private static GameSession RestoreUnchecked(GameState st)
+        {
             var s = new GameSession(new Economy(st.Money));
 
-            // Plot2가 Plot1보다 먼저 적용되면 UnlockRegion이 축소를 거부하므로 enum 순서로 적용한다.
+            // Grant가 선행 항목을 스스로 적용하므로 정렬은 결정적 순서를 위한 것이다.
             var ids = new List<UnlockId>();
             foreach (var name in st.Purchased)
                 ids.Add((UnlockId)Enum.Parse(typeof(UnlockId), name));
@@ -88,6 +104,11 @@ namespace ParcelFactory.Core
 
             foreach (var p in st.Packages)
             {
+                if (!s.Grid.InBounds(p.X, p.Y))
+                    throw new SaveVersionException($"package {p.Id} out of bounds ({p.X},{p.Y})");
+                var target = s.Grid.Get(p.X, p.Y);
+                if (!target.IsTrack || target.IsOccupied)
+                    throw new SaveVersionException($"package {p.Id} on invalid cell ({p.X},{p.Y})");
                 s.Sim.Restore(new Package
                 {
                     Id = p.Id,
@@ -109,12 +130,13 @@ namespace ParcelFactory.Core
 
         public static GameState FromJson(string json)
         {
+            if (json == null) throw new SaveVersionException("empty save");
             GameState st;
             try
             {
                 st = JsonConvert.DeserializeObject<GameState>(json);
             }
-            catch (JsonException e)
+            catch (Exception e)
             {
                 throw new SaveVersionException("invalid save json", e);
             }
