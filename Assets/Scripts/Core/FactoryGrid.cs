@@ -48,6 +48,8 @@ namespace ParcelFactory.Core
         {
             if (!CanPlace(x, y))
                 throw new InvalidOperationException($"Cannot place at ({x},{y})");
+            if (type != CellType.Conveyor && type != CellType.FastConveyor && type != CellType.Splitter)
+                throw new ArgumentException($"{type} is not placeable", nameof(type));
             var c = cells[x, y];
             c.Type = type;
             c.Direction = dir;

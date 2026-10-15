@@ -51,6 +51,14 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
+        public void Place_RejectsNonBuildingType()
+        {
+            var g = new FactoryGrid();
+            Assert.Throws<ArgumentException>(() => g.Place(1, 1, CellType.Outlet, Direction.East));
+            Assert.Throws<ArgumentException>(() => g.Place(1, 1, CellType.Empty, Direction.East));
+        }
+
+        [Test]
         public void Place_OnLockedCell_Throws()
         {
             var g = new FactoryGrid();

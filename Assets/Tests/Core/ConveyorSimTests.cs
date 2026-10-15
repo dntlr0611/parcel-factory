@@ -94,7 +94,10 @@ namespace ParcelFactory.Core.Tests
             Rail(3, 2, Direction.East);
             var p = SpawnAtInlet();
             sim.Tick(1f);               // inlet → (1,2)
-            sim.Tick(0.5f);             // fast: (1,2) → (2,2)
+            sim.Tick(0.25f);
+            Assert.AreEqual((1, 2), (p.X, p.Y));
+            Assert.AreEqual(0.5f, p.Progress, 1e-4f);
+            sim.Tick(0.25f);            // fast: (1,2) → (2,2)
             Assert.AreEqual((2, 2), (p.X, p.Y));
         }
 
@@ -210,6 +213,55 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(Direction.South, b.Heading);
             sim.Tick(1f);
             Assert.AreEqual((1, 1), (b.X, b.Y));
+        }
+
+        [Test]
+        public void Splitter_FedFromSide_NeverSendsBackward()
+        {
+            // 동쪽을 보는 분배기에 북쪽(1,3)에서 남쪽으로 진입. 왼쪽 출구(북)는 되돌아가는 방향이므로 쓰면 안 된다.
+            Rail(1, 2, Direction.East, CellType.Splitter);
+            Rail(1, 3, Direction.South);
+            Rail(1, 1, Direction.South);
+            Rail(1, 0, Direction.South);
+            Assert.IsTrue(sim.TrySpawn(1, 3, PackageKind.Normal, out var a));
+            sim.Tick(1f); // a → splitter
+            Assert.AreEqual((1, 2), (a.X, a.Y));
+            Assert.AreEqual(Direction.South, a.Heading);
+            Assert.IsTrue(sim.TrySpawn(1, 3, PackageKind.Normal, out var b));
+            sim.Tick(1f); // a → (1,1), b → splitter; 토글이 바뀌어도 여전히 남쪽
+            Assert.AreEqual((1, 1), (a.X, a.Y));
+            Assert.AreEqual((1, 2), (b.X, b.Y));
+            Assert.AreEqual(Direction.South, b.Heading);
+            sim.Tick(1f);
+            Assert.AreEqual(2, sim.Packages.Count); // 아무도 소실되거나 막히지 않음
+        }
+
+        [Test]
+        public void EntryHeading_RecordsHowPackageEnteredCell()
+        {
+            Rail(1, 2, Direction.North);
+            Rail(1, 3, Direction.North);
+            var p = SpawnAtInlet();
+            Assert.AreEqual(Direction.East, p.EntryHeading);
+            sim.Tick(1f); // (1,2): 동쪽으로 들어와 북쪽으로 나감
+            Assert.AreEqual(Direction.East, p.EntryHeading);
+            Assert.AreEqual(Direction.North, p.Heading);
+            sim.Tick(1f);
+            Assert.AreEqual(Direction.North, p.EntryHeading);
+        }
+
+        [Test]
+        public void FrontPackageRemoved_RearPackageStillAdvancesSameTick()
+        {
+            for (int x = 1; x <= 4; x++) Rail(x, 2, Direction.East);
+            var a = SpawnAtInlet();
+            for (int i = 0; i < 4; i++) sim.Tick(1f); // a는 (4,2)에서 배달 대기
+            Assert.AreEqual((4, 2), (a.X, a.Y));
+            var b = SpawnAtInlet();
+            sim.Tick(1f);
+            Assert.AreEqual(1, sim.Packages.Count); // a 배달됨
+            Assert.AreEqual((1, 2), (b.X, b.Y));
+            Assert.AreEqual(0f, b.Progress, 1e-4f); // 같은 틱에 따라 이동
         }
 
         [Test]

@@ -15,7 +15,9 @@ namespace ParcelFactory.Core
         public IReadOnlyList<Package> Packages => packages;
         public int NextId { get; set; } = 1;
 
+        /// <summary>Tick 루프 중간에 발생한다. 핸들러는 시뮬레이션을 변경(생성·제거)하면 안 되며 읽기만 해야 한다.</summary>
         public event Action<Package> PackageDelivered;
+        /// <summary>Tick 루프 중간에 발생한다. 핸들러는 시뮬레이션을 변경(생성·제거)하면 안 되며 읽기만 해야 한다.</summary>
         public event Action<Package> PackageLost;
 
         public ConveyorSim(FactoryGrid grid, Economy economy)
@@ -31,6 +33,7 @@ namespace ParcelFactory.Core
             var cell = grid.Get(x, y);
             if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing) return false;
 
+            var heading = HeadingFor(cell, cell.Direction);
             package = new Package
             {
                 Id = NextId++,
@@ -38,7 +41,8 @@ namespace ParcelFactory.Core
                 X = x,
                 Y = y,
                 Progress = 0f,
-                Heading = HeadingFor(cell),
+                Heading = heading,
+                EntryHeading = heading,
             };
             cell.OccupantId = package.Id;
             packages.Add(package);
@@ -52,12 +56,17 @@ namespace ParcelFactory.Core
             grid.Get(package.X, package.Y).OccupantId = package.Id;
         }
 
-        private static Direction HeadingFor(Cell cell)
+        /// <summary>분배기는 자기 방향 기준 좌·우로 번갈아 내보내되, 들어온 방향의 정반대로는 절대 내보내지 않는다.</summary>
+        private static Direction HeadingFor(Cell cell, Direction incoming)
         {
             if (cell.Type != CellType.Splitter) return cell.Direction;
-            var heading = cell.SplitterToggle ? cell.Direction.TurnRight() : cell.Direction.TurnLeft();
+            var left = cell.Direction.TurnLeft();
+            var right = cell.Direction.TurnRight();
+            var chosen = cell.SplitterToggle ? right : left;
+            var other = cell.SplitterToggle ? left : right;
+            if (chosen == incoming.Opposite()) chosen = other;
             cell.SplitterToggle = !cell.SplitterToggle;
-            return heading;
+            return chosen;
         }
 
         public void Tick(float dt)
@@ -85,7 +94,8 @@ namespace ParcelFactory.Core
                 p.X = nx;
                 p.Y = ny;
                 p.Progress = 0f;
-                p.Heading = HeadingFor(next);
+                p.EntryHeading = p.Heading;
+                p.Heading = HeadingFor(next, p.Heading);
             }
         }
 

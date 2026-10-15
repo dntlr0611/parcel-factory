@@ -29,5 +29,14 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(Direction.West, Direction.North.TurnLeft());
             Assert.AreEqual(Direction.North, Direction.East.TurnLeft());
         }
+
+        [Test]
+        public void Opposite_FlipsAllFour()
+        {
+            Assert.AreEqual(Direction.South, Direction.North.Opposite());
+            Assert.AreEqual(Direction.North, Direction.South.Opposite());
+            Assert.AreEqual(Direction.West, Direction.East.Opposite());
+            Assert.AreEqual(Direction.East, Direction.West.Opposite());
+        }
     }
 }

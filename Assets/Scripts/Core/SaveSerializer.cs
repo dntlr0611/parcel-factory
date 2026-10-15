@@ -54,6 +54,7 @@ namespace ParcelFactory.Core
                 {
                     Id = p.Id, Kind = p.Kind.ToString(), X = p.X, Y = p.Y,
                     Progress = p.Progress, Heading = p.Heading.ToString(),
+                    EntryHeading = p.EntryHeading.ToString(),
                 });
             }
             return st;
@@ -81,20 +82,24 @@ namespace ParcelFactory.Core
 
         private static GameSession RestoreUnchecked(GameState st)
         {
+            if (float.IsNaN(st.Speed) || float.IsInfinity(st.Speed) || st.Speed <= 0f)
+                throw new SaveVersionException($"invalid speed {st.Speed}");
             var s = new GameSession(new Economy(st.Money));
 
             // Grant가 선행 항목을 스스로 적용하므로 정렬은 결정적 순서를 위한 것이다.
             var ids = new List<UnlockId>();
             foreach (var name in st.Purchased)
-                ids.Add((UnlockId)Enum.Parse(typeof(UnlockId), name));
+                ids.Add(ParseDefined<UnlockId>(name));
             ids.Sort();
             foreach (var id in ids)
                 s.Unlocks.Grant(id);
 
             foreach (var c in st.Cells)
             {
-                var type = (CellType)Enum.Parse(typeof(CellType), c.Type);
-                var dir = (Direction)Enum.Parse(typeof(Direction), c.Direction);
+                var type = ParseDefined<CellType>(c.Type);
+                var dir = ParseDefined<Direction>(c.Direction);
+                if (float.IsNaN(c.DemolishRemaining) || c.DemolishRemaining < 0f || c.DemolishRemaining > BuildService.DemolishSeconds)
+                    throw new SaveVersionException($"invalid DemolishRemaining {c.DemolishRemaining} at ({c.X},{c.Y})");
                 s.Grid.Place(c.X, c.Y, type, dir);
                 var cell = s.Grid.Get(c.X, c.Y);
                 cell.Demolishing = c.Demolishing;
@@ -109,14 +114,19 @@ namespace ParcelFactory.Core
                 var target = s.Grid.Get(p.X, p.Y);
                 if (!target.IsTrack || target.IsOccupied)
                     throw new SaveVersionException($"package {p.Id} on invalid cell ({p.X},{p.Y})");
+                if (float.IsNaN(p.Progress) || p.Progress < 0f || p.Progress > 1f)
+                    throw new SaveVersionException($"package {p.Id} invalid progress {p.Progress}");
                 s.Sim.Restore(new Package
                 {
                     Id = p.Id,
-                    Kind = (PackageKind)Enum.Parse(typeof(PackageKind), p.Kind),
+                    Kind = ParseDefined<PackageKind>(p.Kind),
                     X = p.X, Y = p.Y,
                     Progress = p.Progress,
-                    Heading = (Direction)Enum.Parse(typeof(Direction), p.Heading),
+                    Heading = ParseDefined<Direction>(p.Heading),
+                    EntryHeading = ParseDefined<Direction>(p.EntryHeading),
                 });
+                if (st.NextPackageId <= p.Id)
+                    throw new SaveVersionException($"NextPackageId {st.NextPackageId} <= package id {p.Id}");
             }
 
             s.Sim.NextId = st.NextPackageId;
@@ -124,6 +134,13 @@ namespace ParcelFactory.Core
             s.Paused = st.Paused;
             s.Speed = st.Speed;
             return s;
+        }
+
+        private static T ParseDefined<T>(string name) where T : struct
+        {
+            if (name == null || !Enum.TryParse(name, out T value) || !Enum.IsDefined(typeof(T), value))
+                throw new SaveVersionException($"invalid {typeof(T).Name} '{name}'");
+            return value;
         }
 
         public static string ToJson(GameState st) => JsonConvert.SerializeObject(st, Formatting.Indented);

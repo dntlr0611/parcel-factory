@@ -12,5 +12,7 @@ namespace ParcelFactory.Core
         public float Progress;
         /// <summary>현재 셀에서 나갈 방향.</summary>
         public Direction Heading;
+        /// <summary>현재 셀에 들어올 때의 이동 방향. 렌더링에서 코너 보간에 쓴다.</summary>
+        public Direction EntryHeading;
     }
 }

@@ -58,6 +58,7 @@ namespace ParcelFactory.Core.Tests
             var p = restored.Sim.Packages[0];
             Assert.AreEqual((1, 2), (p.X, p.Y));
             Assert.AreEqual(0.5f, p.Progress, 1e-4f);
+            Assert.AreEqual(original.Sim.Packages[0].EntryHeading, p.EntryHeading);
             Assert.AreEqual(p.Id, restored.Grid.Get(1, 2).OccupantId);
             Assert.AreEqual(original.Sim.NextId, restored.Sim.NextId);
             Assert.AreEqual(original.Spawner.Timer, restored.Spawner.Timer, 1e-4f);
@@ -124,6 +125,22 @@ namespace ParcelFactory.Core.Tests
             var onEmptyCell = SaveSerializer.Capture(new GameSession());
             onEmptyCell.Packages.Add(new PackageState { Id = 1, Kind = "Normal", X = 1, Y = 1, Progress = 0f, Heading = "East" });
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(onEmptyCell));
+
+            var nonBuilding = SaveSerializer.Capture(new GameSession());
+            nonBuilding.Cells.Add(new CellState { X = 1, Y = 1, Type = "Outlet", Direction = "East" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(nonBuilding));
+
+            var badDirection = SaveSerializer.Capture(new GameSession());
+            badDirection.Cells.Add(new CellState { X = 1, Y = 1, Type = "Conveyor", Direction = "7" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(badDirection));
+
+            var badSpeed = SaveSerializer.Capture(new GameSession());
+            badSpeed.Speed = -1f;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(badSpeed));
+
+            var staleNextId = SaveSerializer.Capture(BuildSample());
+            staleNextId.NextPackageId = staleNextId.Packages[0].Id;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(staleNextId));
         }
     }
 }

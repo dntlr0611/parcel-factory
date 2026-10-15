@@ -36,5 +36,6 @@ namespace ParcelFactory.Core
         public int Y;
         public float Progress;
         public string Heading;
+        public string EntryHeading;
     }
 }
