@@ -68,10 +68,15 @@ namespace ParcelFactory.Core
             return UnlockResult.Ok;
         }
 
-        /// <summary>저장 복원용. 결제 없이 효과만 적용한다. 이미 보유 중이면 무시.</summary>
+        /// <summary>
+        /// 저장 복원용. 결제 없이 효과만 적용한다. 이미 보유 중이면 무시.
+        /// 선행 항목이 미보유면 먼저 적용하므로 호출 순서에 의존하지 않는다.
+        /// </summary>
         public void Grant(UnlockId id)
         {
             if (purchased.Contains(id)) return;
+            var def = UnlockCatalog.Get(id);
+            if (def.Requires.HasValue) Grant(def.Requires.Value);
             Apply(id);
         }
 

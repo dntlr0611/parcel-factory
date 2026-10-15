@@ -95,5 +95,17 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(1000, economy.Money);
             Assert.AreEqual(1, unlocks.Purchased.Count);
         }
+
+        [Test]
+        public void Grant_OutOfOrder_AppliesPrerequisiteFirst()
+        {
+            unlocks.Grant(UnlockId.Plot2);
+            Assert.AreEqual(12, grid.UnlockedSize);
+            Assert.IsTrue(unlocks.IsPurchased(UnlockId.Plot1));
+            Assert.IsTrue(unlocks.IsPurchased(UnlockId.Plot2));
+            unlocks.Grant(UnlockId.Plot1);
+            Assert.AreEqual(2, unlocks.Purchased.Count);
+            Assert.AreEqual(1000, economy.Money);
+        }
     }
 }
