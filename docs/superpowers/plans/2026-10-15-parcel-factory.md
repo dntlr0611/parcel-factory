@@ -2153,6 +2153,30 @@ namespace ParcelFactory.Core.Tests
         {
             Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson("null"));
             Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson("{not json"));
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.FromJson(null));
+        }
+
+        [Test]
+        public void MissingVersion_Throws()
+        {
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(SaveSerializer.FromJson("{}")));
+        }
+
+        [Test]
+        public void CorruptContents_ThrowSaveVersionException()
+        {
+            Assert.Throws<SaveVersionException>(() =>
+                SaveSerializer.Restore(SaveSerializer.FromJson("{\"Version\":1,\"Cells\":null}")));
+            Assert.Throws<SaveVersionException>(() =>
+                SaveSerializer.Restore(SaveSerializer.FromJson("{\"Version\":1,\"Purchased\":[\"Bogus\"]}")));
+
+            var outOfBounds = SaveSerializer.Capture(new GameSession());
+            outOfBounds.Packages.Add(new PackageState { Id = 1, Kind = "Normal", X = 99, Y = 0, Progress = 0f, Heading = "East" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(outOfBounds));
+
+            var onEmptyCell = SaveSerializer.Capture(new GameSession());
+            onEmptyCell.Packages.Add(new PackageState { Id = 1, Kind = "Normal", X = 1, Y = 1, Progress = 0f, Heading = "East" });
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(onEmptyCell));
         }
     }
 }
@@ -2173,7 +2197,8 @@ namespace ParcelFactory.Core
 {
     public sealed class GameState
     {
-        public int Version = SaveSerializer.CurrentVersion;
+        /// <summary>기본값 0. Capture가 명시적으로 채우므로 필드가 없는 JSON은 버전 불일치로 거부된다.</summary>
+        public int Version;
         public int Money;
         public int UnlockedSize;
         public List<string> Purchased = new List<string>();
@@ -2278,10 +2303,26 @@ namespace ParcelFactory.Core
             if (st == null) throw new SaveVersionException("empty save");
             if (st.Version != CurrentVersion)
                 throw new SaveVersionException($"save version {st.Version} != {CurrentVersion}");
+            try
+            {
+                return RestoreUnchecked(st);
+            }
+            catch (SaveVersionException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                // null 리스트, 알 수 없는 enum 이름, 잘못된 좌표 등은 모두 손상된 저장으로 취급한다.
+                throw new SaveVersionException("corrupt save: " + e.Message, e);
+            }
+        }
 
+        private static GameSession RestoreUnchecked(GameState st)
+        {
             var s = new GameSession(new Economy(st.Money));
 
-            // Plot2가 Plot1보다 먼저 적용되면 UnlockRegion이 축소를 거부하므로 enum 순서로 적용한다.
+            // Grant가 선행 항목을 스스로 적용하므로 정렬은 결정적 순서를 위한 것이다.
             var ids = new List<UnlockId>();
             foreach (var name in st.Purchased)
                 ids.Add((UnlockId)Enum.Parse(typeof(UnlockId), name));
@@ -2302,6 +2343,11 @@ namespace ParcelFactory.Core
 
             foreach (var p in st.Packages)
             {
+                if (!s.Grid.InBounds(p.X, p.Y))
+                    throw new SaveVersionException($"package {p.Id} out of bounds ({p.X},{p.Y})");
+                var target = s.Grid.Get(p.X, p.Y);
+                if (!target.IsTrack || target.IsOccupied)
+                    throw new SaveVersionException($"package {p.Id} on invalid cell ({p.X},{p.Y})");
                 s.Sim.Restore(new Package
                 {
                     Id = p.Id,
@@ -2323,12 +2369,13 @@ namespace ParcelFactory.Core
 
         public static GameState FromJson(string json)
         {
+            if (json == null) throw new SaveVersionException("empty save");
             GameState st;
             try
             {
                 st = JsonConvert.DeserializeObject<GameState>(json);
             }
-            catch (JsonException e)
+            catch (Exception e)
             {
                 throw new SaveVersionException("invalid save json", e);
             }
@@ -2342,7 +2389,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 5: 테스트 통과 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 73`
+Expected: `Failed: 0, Passed: 75`
 
 - [ ] **Step 6: 커밋**
 
@@ -2402,12 +2449,12 @@ UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/U
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="73" passed="73" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
+Expected: `total="75" passed="75" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
 
 - [ ] **Step 6: dotnet 테스트도 여전히 통과하는지 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 73`
+Expected: `Failed: 0, Passed: 75`
 
 - [ ] **Step 7: 커밋**
 
@@ -3377,14 +3424,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```bash
 dotnet test DotnetTests/Core.Tests
 ```
-Expected: `Failed: 0, Passed: 73`
+Expected: `Failed: 0, Passed: 75`
 
 ```bash
 UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/Unity | head -1)
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="73" passed="73" failed="0"`
+Expected: `total="75" passed="75" failed="0"`
 
 - [ ] **Step 2: 수동 플레이 체크리스트**
 
