@@ -1740,6 +1740,18 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(1000, economy.Money);
             Assert.AreEqual(1, unlocks.Purchased.Count);
         }
+
+        [Test]
+        public void Grant_OutOfOrder_AppliesPrerequisiteFirst()
+        {
+            unlocks.Grant(UnlockId.Plot2);
+            Assert.AreEqual(12, grid.UnlockedSize);
+            Assert.IsTrue(unlocks.IsPurchased(UnlockId.Plot1));
+            Assert.IsTrue(unlocks.IsPurchased(UnlockId.Plot2));
+            unlocks.Grant(UnlockId.Plot1);
+            Assert.AreEqual(2, unlocks.Purchased.Count);
+            Assert.AreEqual(1000, economy.Money);
+        }
     }
 }
 ```
@@ -1823,10 +1835,15 @@ namespace ParcelFactory.Core
             return UnlockResult.Ok;
         }
 
-        /// <summary>저장 복원용. 결제 없이 효과만 적용한다. 이미 보유 중이면 무시.</summary>
+        /// <summary>
+        /// 저장 복원용. 결제 없이 효과만 적용한다. 이미 보유 중이면 무시.
+        /// 선행 항목이 미보유면 먼저 적용하므로 호출 순서에 의존하지 않는다.
+        /// </summary>
         public void Grant(UnlockId id)
         {
             if (purchased.Contains(id)) return;
+            var def = UnlockCatalog.Get(id);
+            if (def.Requires.HasValue) Grant(def.Requires.Value);
             Apply(id);
         }
 
@@ -1855,7 +1872,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 61`
+Expected: `Failed: 0, Passed: 62`
 
 - [ ] **Step 5: 커밋**
 
@@ -1999,7 +2016,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 66`
+Expected: `Failed: 0, Passed: 67`
 
 - [ ] **Step 5: 커밋**
 
@@ -2323,7 +2340,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 5: 테스트 통과 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 72`
+Expected: `Failed: 0, Passed: 73`
 
 - [ ] **Step 6: 커밋**
 
@@ -2383,12 +2400,12 @@ UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/U
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="72" passed="72" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
+Expected: `total="73" passed="73" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
 
 - [ ] **Step 6: dotnet 테스트도 여전히 통과하는지 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 72`
+Expected: `Failed: 0, Passed: 73`
 
 - [ ] **Step 7: 커밋**
 
@@ -3358,14 +3375,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```bash
 dotnet test DotnetTests/Core.Tests
 ```
-Expected: `Failed: 0, Passed: 72`
+Expected: `Failed: 0, Passed: 73`
 
 ```bash
 UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/Unity | head -1)
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="72" passed="72" failed="0"`
+Expected: `total="73" passed="73" failed="0"`
 
 - [ ] **Step 2: 수동 플레이 체크리스트**
 
