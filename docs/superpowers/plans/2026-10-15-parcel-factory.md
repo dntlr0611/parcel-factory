@@ -1540,6 +1540,8 @@ namespace ParcelFactory.Core
     {
         public const float DemolishSeconds = 2f;
         public const float RefundRate = 0.8f;
+        /// <summary>float 누적 오차 허용치. 1.9+0.1 같은 합이 정확히 0이 되지 않는 문제를 흡수한다.</summary>
+        private const float TimerEpsilon = 1e-4f;
 
         private readonly FactoryGrid grid;
         private readonly Economy economy;
@@ -1591,7 +1593,8 @@ namespace ParcelFactory.Core
                     var c = grid.Get(x, y);
                     if (!c.Demolishing) continue;
                     c.DemolishRemaining -= dt;
-                    if (c.DemolishRemaining > 0f) continue;
+                    if (c.DemolishRemaining > TimerEpsilon) continue;
+                    c.DemolishRemaining = 0f;
 
                     int refund = RefundFor(c.Type);
                     sim.RemovePackagesAt(x, y);
