@@ -9,7 +9,7 @@
 플레이어는 돈을 벌어 새 부품과 부지를 해금하고, 레일 배치를 바꿔 처리량을 늘린다.
 
 - 플랫폼: PC (마우스 + 키보드)
-- 엔진: Unity 6 LTS, 2D URP, C#
+- 엔진: Unity 6 LTS, C#. 1차는 내장 렌더 파이프라인(2D 스프라이트·Tilemap)으로 충분하며 URP는 쓰지 않는다.
 - 진행: 실시간, 일시정지와 배속 가능
 - 1차 범위: 공장 1개
 
@@ -24,7 +24,7 @@
 ## 3. 규칙
 
 ### 3.1 그리드
-- 크기 12×12. 초기 해금 영역은 좌측 상단 6×6.
+- 크기 12×12. 원점 (0,0)은 좌측 하단이며 y는 위로 증가한다. 초기 해금 영역은 x, y 모두 0 이상 6 미만인 6×6.
 - 셀 상태: `Empty`, `Conveyor(dir)`, `FastConveyor(dir)`, `Splitter(dir)`, `Inlet`, `Outlet`, `Locked`.
 - 부품이 있는 셀은 `Demolishing` 플래그와 남은 시간을 가질 수 있다 (3.3 참고).
 - 입고구는 (0,2), 출고구는 (5,2)에 고정 배치. 부지를 확장해도 위치는 바뀌지 않으며, 플레이어가 철거할 수 없다.
@@ -88,7 +88,7 @@ MonoBehaviour와 UnityEngine 의존이 없다. EditMode 테스트 대상.
 - `Toolbar` 상태 — 보유한 도구 목록 (부품 종류 + 방향). `UnlockService`가 구매 시 추가한다.
 - `UnlockCatalog`, `UnlockService` — 해금 항목 정의와 구매 처리. 부지 확장은 `FactoryGrid.UnlockRegion`을 호출.
 - `GameState` — 위 상태를 담는 직렬화 DTO. `SaveSerializer`가 JSON으로 변환·복원.
-- `OutletCell.AcceptedKinds` — 1차에서는 모든 종류 허용. 2차 분류 기능의 확장 지점.
+- 2차 분류 기능의 확장 지점은 `PackageKind` enum이다. 1차에서 출고구는 모든 종류를 받는다.
 
 ### 4.2 Unity 레이어 (`Assets/Scripts/Game/`, asmdef `ParcelFactory.Game`)
 
@@ -96,7 +96,7 @@ MonoBehaviour와 UnityEngine 의존이 없다. EditMode 테스트 대상.
 - `GridView` — Tilemap 2개(바닥, 부품). 잠긴 셀은 어두운 타일. 레일 타일은 방향별 스프라이트.
 - `PackageView` — 오브젝트 풀. 코어의 셀 좌표 + 진행도를 월드 좌표로 보간.
 - `BuildController` — 입력 처리. 툴바에서 방향별 도구 선택, 호버 고스트, 좌클릭 설치, 우클릭 해체 시작(확인 팝업에 환불액과 소요 시간 표시). 해체 중인 셀은 진행 바를 띄운다.
-- `HudView` (UGUI) — 잔액, 속도 버튼, 툴바, 해금 상점 패널, 저장/불러오기 버튼.
+- `HudView` (IMGUI, `OnGUI`) — 잔액, 속도 버튼, 툴바, 해금 상점 패널, 저장/불러오기 버튼, 토스트, 해체 확인 팝업과 진행 바. 씬 편집 없이 코드만으로 구성하기 위해 1차는 IMGUI를 쓴다.
 - `SaveFile` — `Application.persistentDataPath/save.json` 읽기·쓰기.
 
 데이터 흐름: 입력 → `BuildController` → 코어 서비스 → 코어 이벤트 → 뷰 갱신. 뷰는 코어를 읽기만 하고, 코어는 뷰를 모른다.
@@ -104,7 +104,7 @@ MonoBehaviour와 UnityEngine 의존이 없다. EditMode 테스트 대상.
 ## 5. 오류 처리
 
 - 설치 실패(잔액 부족, 잠긴 칸, 점유된 칸): HUD에 1초 토스트로 사유 표시. 상태 변화 없음.
-- 저장 파일 손상: 불러오기 실패 시 새 게임으로 시작하고 토스트로 알림.
+- 저장 파일 손상 또는 없음: 불러오기 실패 시 현재 세션을 유지하고 토스트로 사유를 알림.
 - 저장 파일에 버전 필드를 두고, 불일치 시 불러오기를 거부한다.
 
 ## 6. 테스트
@@ -131,5 +131,7 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 ## 8. 환경
 
 - 이 Mac에는 Unity Hub와 .NET SDK가 아직 없다. 구현 전 `brew install --cask unity-hub dotnet-sdk` 로 설치하고 Unity Hub에서 Unity 6 LTS를 받는다.
-- 메모리 8GB이므로 2D URP 템플릿 사용, 에디터 외 무거운 앱은 동시에 띄우지 않는다.
+- 코어와 코어 테스트는 `DotnetTests/` 아래 .NET 프로젝트가 `Assets/` 안의 같은 .cs 파일을 포함해 Unity 없이 `dotnet test`로 실행한다. Unity 설치 후에는 같은 테스트를 Unity Test Framework(EditMode)로도 실행한다.
+- JSON 직렬화는 Newtonsoft.Json을 쓴다 (Unity: `com.unity.nuget.newtonsoft-json`, .NET: NuGet `Newtonsoft.Json`).
+- 메모리 8GB이므로 에디터 외 무거운 앱은 동시에 띄우지 않는다.
 - `.gitignore`는 Unity 표준 템플릿을 사용한다 (`Library/`, `Temp/`, `Logs/`, `UserSettings/` 제외).
