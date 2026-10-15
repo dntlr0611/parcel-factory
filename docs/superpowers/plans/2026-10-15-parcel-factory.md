@@ -1946,8 +1946,10 @@ namespace ParcelFactory.Core.Tests
         public void Speed2_RunsTwiceAsFast()
         {
             var s = new GameSession { Speed = 2f };
-            s.Tick(1.5f);
+            s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
+            s.Tick(1.5f); // 3초 상당: 생성되고 같은 틱에 (1,2)로 이동
             Assert.AreEqual(1, s.Sim.Packages.Count);
+            Assert.AreEqual((1, 2), (s.Sim.Packages[0].X, s.Sim.Packages[0].Y));
         }
 
         [Test]
