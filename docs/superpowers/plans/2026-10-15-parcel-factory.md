@@ -60,6 +60,8 @@ Phase A(Task 1~9)는 Unity 없이 지금 바로 진행한다. Phase B(Task 10~16
 
 ## Phase A — 코어 (Unity 불필요)
 
+> 구현 완료. 리뷰 중 적용된 수정(타이머 epsilon, Grant 선행 적용, 저장 검증 강화, 분배기 역방향 금지, EntryHeading 등)은 git 이력과 `.superpowers/sdd/.../progress.md` 레저에 기록되어 있다. 아래 코드 블록은 최초 계획이며 현재 소스가 우선한다.
+
 ### Task 1: 프로젝트 골격과 테스트 러너
 
 **Files:**
@@ -2389,7 +2391,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 5: 테스트 통과 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 75`
+Expected: `Failed: 0, Passed: 80`
 
 - [ ] **Step 6: 커밋**
 
@@ -2449,12 +2451,12 @@ UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/U
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="75" passed="75" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
+Expected: `total="80" passed="80" failed="0"`. 컴파일 오류가 나면 `/tmp/unity-test.log`에서 `error CS`를 찾아 고친다. 흔한 원인: C# 9 초과 문법, `System.Linq` 누락.
 
 - [ ] **Step 6: dotnet 테스트도 여전히 통과하는지 확인**
 
 Run: `dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0, Passed: 75`
+Expected: `Failed: 0, Passed: 80`
 
 - [ ] **Step 7: 커밋**
 
@@ -2784,7 +2786,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Consumes: `GameSession.Tick`, `ConveyorSim.Packages`, `Package`, `GridView.CellCenter`, `GameBootstrap.SessionReplaced`.
 - Produces:
   - `class GameLoop : MonoBehaviour { const float TickSeconds=0.05f; }` — `Update`에서 누적 시간만큼 `Session.Tick(0.05f)` 반복, 한 프레임 최대 0.25초.
-  - `class PackageView : MonoBehaviour` — 택배 id별 SpriteRenderer 풀. 위치 = 셀 중심 + Heading × (Progress − 0.5).
+  - `class PackageView : MonoBehaviour` — 택배 id별 SpriteRenderer 풀. 위치 = 셀 중심 + (Progress<0.5 ? EntryHeading : Heading) × (Progress − 0.5).
 
 - [ ] **Step 1: GameLoop 작성**
 
@@ -2850,7 +2852,9 @@ namespace ParcelFactory.Game
                     sr = Acquire();
                     active[p.Id] = sr;
                 }
-                var offset = new Vector3(p.Heading.Dx(), p.Heading.Dy(), 0f) * (p.Progress - 0.5f);
+                // 전반(진입)은 들어온 방향, 후반(진출)은 나가는 방향을 따라 보간해 코너에서 점프가 없다.
+                var dir = p.Progress < 0.5f ? p.EntryHeading : p.Heading;
+                var offset = new Vector3(dir.Dx(), dir.Dy(), 0f) * (p.Progress - 0.5f);
                 sr.transform.position = GridView.CellCenter(p.X, p.Y) + offset + new Vector3(0f, 0f, -1f);
             }
 
@@ -3336,7 +3340,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `SaveSerializer`, `GameBootstrap.ReplaceSession/StartNewGame`, `HudView.Toast`.
-- Produces: `static class SaveFile { string Path; void Save(GameSession); bool TryLoad(out GameSession, out string error); }`
+- Produces: `static class SaveFile { string Path; bool TrySave(GameSession, out string error); bool TryLoad(out GameSession, out string error); }`
 
 - [ ] **Step 1: SaveFile 작성**
 
@@ -3353,9 +3357,23 @@ namespace ParcelFactory.Game
     {
         public static string Path => System.IO.Path.Combine(Application.persistentDataPath, "save.json");
 
-        public static void Save(GameSession session)
+        /// <summary>임시 파일에 쓴 뒤 교체한다. 실패 시 false와 사유를 돌려주고 기존 파일은 유지된다.</summary>
+        public static bool TrySave(GameSession session, out string error)
         {
-            File.WriteAllText(Path, SaveSerializer.ToJson(SaveSerializer.Capture(session)));
+            error = null;
+            try
+            {
+                var tmp = Path + ".tmp";
+                File.WriteAllText(tmp, SaveSerializer.ToJson(SaveSerializer.Capture(session)));
+                if (File.Exists(Path)) File.Delete(Path);
+                File.Move(tmp, Path);
+                return true;
+            }
+            catch (Exception e)
+            {
+                error = $"저장 실패: {e.GetType().Name}";
+                return false;
+            }
         }
 
         public static bool TryLoad(out GameSession session, out string error)
@@ -3388,7 +3406,7 @@ namespace ParcelFactory.Game
 `HudView.DrawTopBar`의 마지막 `if (GUI.Button(... "상점"))` 줄 뒤에 추가:
 ```csharp
             x += 80;
-            if (GUI.Button(new Rect(x, 6, 60, 24), "저장")) { SaveFile.Save(s); Toast("저장했습니다"); }
+            if (GUI.Button(new Rect(x, 6, 60, 24), "저장")) { Toast(SaveFile.TrySave(s, out var saveErr) ? "저장했습니다" : saveErr); }
             x += 66;
             if (GUI.Button(new Rect(x, 6, 70, 24), "불러오기"))
             {
@@ -3424,14 +3442,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```bash
 dotnet test DotnetTests/Core.Tests
 ```
-Expected: `Failed: 0, Passed: 75`
+Expected: `Failed: 0, Passed: 80`
 
 ```bash
 UNITY=$(ls -d /Applications/Unity/Hub/Editor/6000.0.*/Unity.app/Contents/MacOS/Unity | head -1)
 "$UNITY" -batchmode -nographics -projectPath /Users/mac/Documents/development/parcel-factory -runTests -testPlatform EditMode -testResults /tmp/unity-editmode.xml -logFile /tmp/unity-test.log
 grep -o 'total="[0-9]*" passed="[0-9]*" failed="[0-9]*"' /tmp/unity-editmode.xml | head -1
 ```
-Expected: `total="75" passed="75" failed="0"`
+Expected: `total="80" passed="80" failed="0"`
 
 - [ ] **Step 2: 수동 플레이 체크리스트**
 
