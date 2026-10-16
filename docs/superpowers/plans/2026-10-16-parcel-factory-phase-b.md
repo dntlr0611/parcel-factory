@@ -1957,3 +1957,41 @@ public sealed class WorkerService
 - Unity EditMode: `$UNITY -batchmode -nographics -projectPath . -runTests -testPlatform EditMode -testResults /tmp/pf-a3-edit.xml -logFile /tmp/pf-a3-edit.log` 전부 통과.
 - Unity 컴파일(게임 레이어 포함): `-quit` 실행 후 `grep -c "error CS"` = 0. PlayMode 스모크 1/1.
 - 커밋 1개(.meta 포함).
+
+### Task 9 (B7a): 월드 재작업 — 공장 실내, 작업자 애니메이션, 벨트 화살표 (스펙 9.4 개정판; Task 6 이후, Task 7 이전)
+
+프로토타입(https://claude.ai/artifact/S6mAdo8JggxwFW6uV6f2JK, 소스 `docs/design/prototype/parcel-factory-3d.html`의 `buildStatic`/`rebuildLot`/`dock`/`frameLot`)과 같은 그림을 Unity에서 만든다. 프로토타입은 three.js 오른손 좌표라 x가 뒤집혀 있다(`W = 5.5 − gx`). Unity는 `Grid3D.Tile(gx, gy) = (gx − 5.5, 0, gy − 5.5)`이므로 **동쪽 = +x**, 아래 좌표는 모두 Unity 기준이다.
+
+**Files:**
+- Modify: `Assets/Scripts/Game/WorldBuilder.cs`, `Assets/Scripts/Game/MaterialLibrary.cs`, `Assets/Scripts/Game/CellViews.cs`, `Assets/Scripts/Game/WorkerView.cs`, `Assets/Editor/CatalogBuilder.cs`
+- Modify: `Assets/Tests/Game/BootSmokeTests.cs` (오브젝트 이름 갱신: `World/Lot` 아래 `Slab`, `World/Walls`, `World/Yard`)
+
+**Interfaces:** 바깥에서 쓰는 API(`WorldBuilder.Build/Bind/RebuildLot/MainCamera`, `CellViews.*`, `WorkerView.Model/CarryAnchor`)는 그대로. 추가: `MaterialLibrary.Concrete(int tiles, Color baseTone)`(절차적 타일 텍스처, 캐시), `MaterialLibrary.Asphalt()`, `MaterialLibrary.Hazard()`(노랑/검정 사선, 반복).
+
+- [ ] **Step 1: 카탈로그 확장** — `CatalogBuilder.Wanted`에 추가: factory-kit `structure-window-wide, structure-doorway-wide, machine-window, hopper-round, pipe-large-long, robot-arm-a, screen-hanging-wide, box-wide, box-long, indicator-special-area`; city-kit-industrial `water-tower, chimney-medium, building-a, building-c, building-h, detail-tank`; car-kit `truck-flat, cone-flat`. nature-kit 항목은 목록에서 제거한다(에셋 파일은 그대로 둔다). `BuildAll` 재실행 후 `PF_Catalog.asset`이 갱신되어야 한다.
+  - 같은 스크립트에서 `Assets/ThirdParty/Kenney/mini-characters/FBX/character-male-a.fbx`의 `ModelImporter`를 `animationType = Legacy`, `importAnimation = true`로 설정하고 재임포트한다(FBX에 idle/walk/holding-both/pick-up 테이크가 들어 있다). 결과: 프리팹 루트에 `Animation` 컴포넌트와 클립이 붙는다. 클립 이름 목록을 로그로 남긴다.
+- [ ] **Step 2: 재질** — `Concrete(n, tone)`: n×64px 캔버스 느낌의 `Texture2D`(기본색 tone, 미세 노이즈, 칸마다 어두운 이음새 2px + 밝은 하이라이트 1px), sRGB, 캐시. `Asphalt()`: 512px 어두운 회색 노이즈, 타일링 16. `Hazard()`: 64×16 노랑 `#F2C230`/검정 사선, `wrapMode Repeat`.
+- [ ] **Step 3: WorldBuilder.Build** (숲·울타리·잔디 코드는 삭제):
+  - 지면: 90×90 평면, `Asphalt()`, y = −0.03.
+  - 건물 바닥: 14×14 평면(HALF = 7, 원점 중심), `Concrete(14, #8F8C86)`, y = −0.02.
+  - 벽(`World/Walls`): 두께 0.3, 높이 1.7, 색 `#D9D3C8`, 굽도리 0.22 `#5A5F66`, 윗면 캡 0.08. 북쪽 벽 전체(z = +7, x −7..7). 서쪽 벽(x = −7)은 입고구 줄(z = Z(InletY))에 폭 2의 출입구, 동쪽 벽(x = +7)은 출고구·반품구 줄(z = Z(OutletY), Z(ReturnDockY))에 출입구. 출입구 = 상인방(높이 0.5, 벽 윗부분) + 양쪽 기둥(0.12) + 노란 띠. 네 모서리 기둥 0.5×2.0×0.5 `#5A5F66`. 남쪽 벽 없음.
+  - 북쪽 벽 앞 설비(`World/Props`, z = 7 − 0.9 근처, 벽을 등지게 180° 회전): machine-window(x = 4.6, 0.9배), machine(3.3), hopper-round(1.6, 0.9배), pipe-large-long(−0.6, 0.8배), pipe-large-long(−2.2), robot-arm-a(−4.0, 0.6배), screen-hanging-wide(−5.6, y = 1.0).
+  - 재고 더미(미해금 느낌): (6.2,5.6) (5.2,5.7) (6.1,4.6) (−6.1,5.5) (−6.2,4.4) (−5.1,5.6)에 box-large/box-wide/box-long 중 시드 랜덤, 절반은 위에 box-small 0.5 높이.
+  - 야드(`World/Yard`): shipping-container-a (11.5, 4.0) 3.0배, -b (11.5, 7.5), -c (13.2, 1.2) yaw 5°; water-tower (−10.5, 9.5) 2.6배; detail-tank (−11.5, 6.0) 3.0배; chimney-medium (9.0, 10.5) 2.6배; building-a (2.0, 13.5) 5배, building-c (−8.0, 14.2) 5배, building-h (10.0, 14.0) 5배; cone-flat 3개 서쪽 벽 밖(x = −8.2, z = −6, −2.8, 0.4).
+  - 도크(`World/Docks`): 슬래브 1×0.22×1 + 흰 표식 0.72×0.02 (기존 유지), 콘 `warning-traffic` 0.6배를 슬래브 북쪽 +0.62. 차량은 **벽 밖 출입구 앞에 후진 주차**: 입고 van (x = −8.5, z = Z(InletY)), 출고 delivery (x = +8.6, z = Z(OutletY)), 반품 truck (x = +8.6, z = Z(ReturnDockY)); 차량 모델의 앞이 +z라고 가정하고 van은 yaw −90°(앞이 −x, 뒤가 출입구), delivery/truck은 yaw +90°. B7 플레이 체크에서 반대면 180° 더한다. 도크 칸 가장자리에서 벽까지 바닥 차선 2줄(0.06 폭, `#E9C94A`, z ± 0.42, y 0.0).
+  - 도크 좌표는 `FactoryGrid.OutletX/Y`, `ReturnDockX/Y`, `InletX/Y`만 쓴다(상수가 함수로 바뀌어도 그대로 따라가게 한 곳에서 읽는다).
+  - 카메라: FOV 36. 방향 `dir = normalize(0, 14.5, −10.5)`. `FrameLot(n)`: `t = tan(18°)`, `a = 화면 종횡비`, `hw = n/2 + 5`, `hv = n/2 + 2.8`, `dist = max(hw/(t·a), hv/t)·1.04`, `target = (cx·0.2, 0, cz + 0.5)`(cx, cz = 해금 영역 중심), `position = target + dir·dist`, `LookAt(target)`. 안개 near = dist + 6, far = dist + 30, 색 `#1D2127`, 배경색 같음. 화면 크기가 바뀌면(`Screen.width/height` 변화) 다시 계산한다(Update에서 비교).
+  - 조명: 방향광 1.05, 색 `#FFE6C2`, 반구/환경광은 하늘 `#DFE7F2` 지면 `#6B655C` 0.55 수준(URP: `RenderSettings.ambientMode = Trilight` 로 근사).
+- [ ] **Step 4: RebuildLot** — `World/Lot`: 슬래브 `Slab` = n×0.08×n 박스, `Concrete(n, #CFCAC1)`, y = −0.04 (윗면 0.0). 둘레 위험 테이프: 폭 0.14 평면 4개, `Hazard()` 반복 n×1.5, y = 0.012. 모서리 cone 4개(1.0배). 울타리·잔디 없음. 해금 후 차량 위치는 바뀌지 않는다(벽 밖 고정). 차선은 도크 칸이 바뀌지 않는 한 그대로.
+- [ ] **Step 5: 벨트 화살표** — Kenney `arrow` 대신 절차 메시: Shape (0,0.16) (0.14,−0.02) (0.05,−0.02) (0.05,−0.16) (−0.05,−0.16) (−0.05,−0.02) (−0.14,−0.02)를 XZ 평면에 +z를 가리키게 깔고(윗면이 +y를 보도록 와인딩 확인), `Emissive(#FFD36A, 0.5)` 재질. `BeltArrow`는 그대로(로컬 z −0.32..0.32 왕복, 높이 0.43).
+- [ ] **Step 6: 작업자 애니메이션** — `WorkerView.Start`에서 모델의 `Animation` 컴포넌트를 찾아 `idle/walk/holding-both` 클립을 확인하고(없으면 bob 유지), `LateUpdate`에서 이동 중이면 `walk`(속도 1.6배), 아니면 `Carrying != null ? "holding-both" : "idle"`을 `CrossFade(name, 0.12f)`. 모델 스케일 1.45, 이동 판정은 코어 위치 변화량 > 1e-4/프레임. `ModelFacesMinusZ`는 유지.
+- [ ] **Step 7: 검증** — 컴파일 0 오류, EditMode 전부, PlayMode 전부(스모크의 오브젝트 이름 갱신), `AssetProbe.Run`을 돌려 character-male-a의 클립 이름이 로그에 찍히는지 확인(`grep -a "walk" /tmp/pf-b7a.log`). 커밋 1개.
+
+### Task 10 (B7b): 스크린샷 하네스 + 전체 검증 + 빌드 (Task 7을 대체)
+
+- [ ] **Step 1: 스크린샷 테스트** — `Assets/Tests/Game/ScreenshotTests.cs`(PlayMode, `[UnityTest]`, 카테고리 `"Screenshot"`): 부트 후 (a) 시작 상태, (b) 샘플 배치(코어 API로 (1,2)E (2,2)E (3,2) Table (4,2)E 설치, 작업자를 (2.6, 1.2)로, 핫바 1 선택) 두 장면을 각각 1.0초 돌린 뒤 `ScreenCapture.CaptureScreenshot("docs/design/unity-start.png")`, `unity-demo.png`, 그리고 터치 모드 강제 후 `unity-touch.png`. 캡처 뒤 2프레임 대기. `-nographics` 없이 `-batchmode`로 실행해야 렌더링된다: `"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode -testCategory Screenshot -testResults /tmp/pf-shot.xml -logFile /tmp/pf-shot.log`. 해상도는 `Screen.SetResolution(1600, 900, false)` 호출 후 2프레임 대기(배치 모드에서 무시되면 로그에 남기고 기본 해상도로 진행). 결과 PNG는 커밋한다.
+- [ ] **Step 2: 전체 검증** — Task 7 Step 1 명령(기대: 컴파일 0, EditMode 136/136, PlayMode 전부, dotnet 136).
+- [ ] **Step 3: macOS 빌드** — Task 7 Step 2.
+- [ ] **Step 4: 모바일 모듈** — Task 7 Step 4(설치만; 실패하면 로그 첫 오류 보고).
+- [ ] **Step 5: 플레이 체크리스트** — Task 7 Step 3의 항목을 스크린샷으로 가능한 것(1, 2의 레일 배치, 7의 방향)은 스크린샷에서 확인하고, 나머지는 사용자 확인 항목으로 보고서에 남긴다.
+- [ ] **Step 6: `git status --short` 비어 있음.**
