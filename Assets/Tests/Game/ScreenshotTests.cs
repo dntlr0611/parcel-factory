@@ -40,6 +40,15 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 yield return new WaitForSeconds(1.0f);
                 Debug.Log($"[Screenshot] booted, loop ticks {boot.Loop.Ticks}");
+                var yard = GameObject.Find("World/Yard");
+                if (yard != null)
+                    foreach (Transform t in yard.transform)
+                    {
+                        var rs = t.GetComponentsInChildren<Renderer>();
+                        if (rs.Length == 0) continue;
+                        var b = rs[0].bounds; foreach (var r in rs) b.Encapsulate(r.bounds);
+                        Debug.Log($"[Screenshot] yard {t.name} center {b.center:F1} size {b.size:F1}");
+                    }
 
                 // 참고용: 화면 버퍼 캡처가 배치 모드에서 동작하는지 기록만 한다(결과물로 쓰지 않는다).
                 string probe = Path.Combine(Path.GetTempPath(), "pf-screencapture-probe.png");

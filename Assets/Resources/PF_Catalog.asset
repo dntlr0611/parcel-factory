@@ -45,8 +45,6 @@ MonoBehaviour:
     Prefab: {fileID: 919132149155446097, guid: 05685cc9a85e345f091b1ebd70945fd0, type: 3}
   - Key: warning-traffic
     Prefab: {fileID: 919132149155446097, guid: 5a906ce7e2a1741b3b1e69393dfe4134, type: 3}
-  - Key: arrow
-    Prefab: {fileID: 919132149155446097, guid: bec331b28f32545a4b0e9f695fc1d854, type: 3}
   - Key: cone
     Prefab: {fileID: 919132149155446097, guid: a9d8f47643e624187ada8efda2eb6f53, type: 3}
   - Key: machine

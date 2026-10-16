@@ -129,19 +129,19 @@ namespace ParcelFactory.Game
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = Hex(0xFFE6C2);
-            sun.intensity = 1.05f;
+            sun.intensity = 1.6f;
             sun.shadows = LightShadows.Soft;
             sun.shadowStrength = 0.85f;
             // 프로토타입 태양 위치 (−9, 17, 4)를 Unity x로 뒤집은 (9, 17, 4)에서 원점을 비춘다.
             sunGo.transform.rotation = Quaternion.LookRotation(-new Vector3(9f, 17f, 4f).normalized, Vector3.up);
 
-            // 반구광 근사: 하늘 #DFE7F2, 지면 #6B655C, 세기 0.55
-            const float hemi = 0.55f;
+            // 반구광 근사: 하늘 #DFE7F2, 지면 #6B655C, 세기 0.55. URP가 three.js보다 어두워 하늘·적도는 40% 올린다.
+            const float hemi = 0.55f, lift = 1.4f;
             var sky = Hex(0xDFE7F2) * hemi;
             var gnd = Hex(0x6B655C) * hemi;
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = sky;
-            RenderSettings.ambientEquatorColor = Color.Lerp(sky, gnd, 0.5f);
+            RenderSettings.ambientSkyColor = sky * lift;
+            RenderSettings.ambientEquatorColor = Color.Lerp(sky, gnd, 0.5f) * lift;
             RenderSettings.ambientGroundColor = gnd;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
@@ -258,15 +258,17 @@ namespace ParcelFactory.Game
         private void BuildYard()
         {
             var yard = Group("Yard");
-            Spawn("shipping-container-a", new Vector3(11.5f, 0f, 4.0f), Quaternion.identity, 3.0f, yard);
-            Spawn("shipping-container-b", new Vector3(11.5f, 0f, 7.5f), Quaternion.identity, 3.0f, yard);
-            Spawn("shipping-container-c", new Vector3(13.2f, 0f, 1.2f), Quaternion.Euler(0f, 5f, 0f), 3.0f, yard);
+            // 컨테이너 FBX는 1배에서 약 1.4×1.3×3.0m다. 1.6배(≈2.2×2.1×4.9m)로 두고 동쪽 벽(+7)에서 4m 이상 띄운다.
+            Spawn("shipping-container-a", new Vector3(12.5f, 0f, 3.5f), Quaternion.identity, 1.6f, yard);
+            Spawn("shipping-container-b", new Vector3(12.5f, 0f, 9.0f), Quaternion.identity, 1.6f, yard);
+            Spawn("shipping-container-c", new Vector3(15.0f, 0f, 0.5f), Quaternion.Euler(0f, 5f, 0f), 1.6f, yard);
             Spawn("water-tower", new Vector3(-10.5f, 0f, 9.5f), Quaternion.identity, 2.6f, yard);
             Spawn("detail-tank", new Vector3(-11.5f, 0f, 6.0f), Quaternion.identity, 3.0f, yard);
             Spawn("chimney-medium", new Vector3(9.0f, 0f, 10.5f), Quaternion.identity, 2.6f, yard);
-            Spawn("building-a", new Vector3(2.0f, 0f, 13.5f), Quaternion.identity, 5f, yard);
-            Spawn("building-c", new Vector3(-8.0f, 0f, 14.2f), Quaternion.identity, 5f, yard);
-            Spawn("building-h", new Vector3(10.0f, 0f, 14.0f), Quaternion.identity, 5f, yard);
+            // 멀리 보이는 공장 건물 실루엣: 건물 벽(±7)에서 충분히 떨어뜨린다.
+            Spawn("building-c", new Vector3(-9.0f, 0f, 17.5f), Quaternion.identity, 3.2f, yard);
+            Spawn("building-a", new Vector3(2.0f, 0f, 17.5f), Quaternion.identity, 3.2f, yard);
+            Spawn("building-h", new Vector3(11.0f, 0f, 17.5f), Quaternion.identity, 3.2f, yard);
             foreach (var z in new[] { -6f, -2.8f, 0.4f })
                 Spawn("cone-flat", new Vector3(-8.2f, 0f, z), Quaternion.identity, 0.9f, yard);
         }
@@ -340,7 +342,10 @@ namespace ParcelFactory.Game
             framedW = Screen.width;
             framedH = Screen.height;
             float t = Mathf.Tan(CameraFov * 0.5f * Mathf.Deg2Rad);
-            float a = MainCamera.aspect > 0.01f ? MainCamera.aspect : 1f;
+            // 화면 비율. 카메라가 RenderTexture에 그리는 동안(스크린샷 하네스)에는 그 텍스처 비율을 쓴다.
+            var rt = MainCamera.targetTexture;
+            float a = rt != null ? (float)rt.width / rt.height : (float)Screen.width / Mathf.Max(1, Screen.height);
+            if (a < 0.01f) a = 1f;
             float hw = n / 2f + 5f, hv = n / 2f + 2.8f;
             float dist = Mathf.Max(hw / (t * a), hv / t) * 1.04f;
             var c = Grid3D.TileF((n - 1) / 2f, (n - 1) / 2f);

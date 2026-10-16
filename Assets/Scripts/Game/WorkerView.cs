@@ -65,7 +65,6 @@ namespace ParcelFactory.Game
                 st.wrapMode = WrapMode.Loop;
                 st.speed = n == WalkClip ? 1.6f : 1f;
             }
-            anim.playAutomatically = false;
             anim.Play(IdleClip);
             currentClip = IdleClip;
         }

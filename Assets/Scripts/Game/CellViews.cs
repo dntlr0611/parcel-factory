@@ -117,6 +117,18 @@ namespace ParcelFactory.Game
             return m;
         }
 
+        private static GameObject Box(string name, Transform parent, Vector3 localPos, Vector3 size, Material mat)
+        {
+            var b = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            b.name = name;
+            Destroy(b.GetComponent<Collider>());
+            b.transform.SetParent(parent, false);
+            b.transform.localPosition = localPos;
+            b.transform.localScale = size;
+            b.GetComponent<Renderer>().sharedMaterial = mat;
+            return b;
+        }
+
         private GameObject Make(Cell c)
         {
             if (!c.IsBuilding) return null;
@@ -163,9 +175,16 @@ namespace ParcelFactory.Game
                     Model("conveyor-junction-t", go.transform, Vector3.zero, facing, 1f);
                     break;
                 case CellType.Table:
-                    Model("floor", go.transform, Vector3.zero, Quaternion.identity, 1f);
-                    Model("screen-panel-flat", go.transform, Vector3.zero, facing, 0.8f);
+                {
+                    // 강철 작업대: 몸체 0.9×0.56×0.9 + 밝은 상판 0.96×0.04×0.96, 윗면 = 택배 표면 높이(0.6).
+                    float top = PackageViews.SurfaceHeight(CellType.Table);
+                    Box("TableBody", go.transform, new Vector3(0f, (top - 0.04f) / 2f, 0f), new Vector3(0.9f, top - 0.04f, 0.9f), MaterialLibrary.Lit(new Color(0x8E / 255f, 0x94 / 255f, 0x9B / 255f), 0.3f));
+                    Box("TableTop", go.transform, new Vector3(0f, top - 0.02f, 0f), new Vector3(0.96f, 0.04f, 0.96f), MaterialLibrary.Lit(new Color(0xC9 / 255f, 0xCD / 255f, 0xD2 / 255f), 0.35f));
+                    // 검사 화면: 상판 뒤쪽(북쪽) 가장자리에 카메라를 향해 세운다. 택배를 가리지 않도록 작게.
+                    var panel = Model("screen-panel-flat", go.transform, new Vector3(0f, top, 0.3f), Quaternion.Euler(0f, 180f, 0f), 0.4f);
+                    panel.name = "TableScreen";
                     break;
+                }
             }
             return go;
         }

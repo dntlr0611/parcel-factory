@@ -17,6 +17,8 @@ namespace ParcelFactory.Game
         private RectTransform hotbar, prompt, toast, help, touchPad, touchButtons;
         private readonly List<Button> slotButtons = new List<Button>();
         private readonly List<Text> slotArrows = new List<Text>();
+        private readonly List<Text> slotPrices = new List<Text>();
+        private readonly List<Text> slotKeys = new List<Text>();
         private float toastUntil;
         private InputController input;
 
@@ -52,49 +54,61 @@ namespace ParcelFactory.Game
 
         private void BuildTopLeft()
         {
-            var box = UiKit.PanelBox("TopLeft", Root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -12f), new Vector2(300f, 74f));
+            var box = UiKit.PanelBox("TopLeft", Root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -12f), new Vector2(340f, 80f));
             money = UiKit.Label("Money", box.transform, "100", 28, UiKit.Accent, TextAnchor.UpperLeft, FontStyle.Bold);
             money.rectTransform.offsetMin = new Vector2(14f, 30f); money.rectTransform.offsetMax = new Vector2(-14f, -6f);
-            var lbl = UiKit.Label("MoneyLbl", box.transform, "잔액", 12, UiKit.Muted, TextAnchor.UpperLeft);
-            lbl.rectTransform.offsetMin = new Vector2(110f, 36f); lbl.rectTransform.offsetMax = new Vector2(-14f, -14f);
-            delivered = UiKit.Label("Delivered", box.transform, "배송 0", 13, UiKit.Good, TextAnchor.LowerLeft);
-            delivered.rectTransform.offsetMin = new Vector2(14f, 8f); delivered.rectTransform.offsetMax = new Vector2(-200f, -40f);
-            lost = UiKit.Label("Lost", box.transform, "소실 0", 13, UiKit.Bad, TextAnchor.LowerLeft);
-            lost.rectTransform.offsetMin = new Vector2(100f, 8f); lost.rectTransform.offsetMax = new Vector2(-120f, -40f);
-            waiting = UiKit.Label("Waiting", box.transform, "검사 대기 0", 13, UiKit.Fg, TextAnchor.LowerLeft);
-            waiting.rectTransform.offsetMin = new Vector2(180f, 8f); waiting.rectTransform.offsetMax = new Vector2(-10f, -40f);
+            var lbl = UiKit.Label("MoneyLbl", box.transform, "잔액", 14, UiKit.Muted, TextAnchor.UpperRight);
+            lbl.rectTransform.offsetMin = new Vector2(14f, 40f); lbl.rectTransform.offsetMax = new Vector2(-14f, -12f);
+            delivered = UiKit.Label("Delivered", box.transform, "배송 0", 16, UiKit.Good, TextAnchor.LowerLeft);
+            delivered.rectTransform.offsetMin = new Vector2(14f, 8f); delivered.rectTransform.offsetMax = new Vector2(-226f, -44f);
+            lost = UiKit.Label("Lost", box.transform, "소실 0", 16, UiKit.Bad, TextAnchor.LowerLeft);
+            lost.rectTransform.offsetMin = new Vector2(112f, 8f); lost.rectTransform.offsetMax = new Vector2(-128f, -44f);
+            waiting = UiKit.Label("Waiting", box.transform, "검사 대기 0", 16, UiKit.Fg, TextAnchor.LowerLeft);
+            waiting.rectTransform.offsetMin = new Vector2(210f, 8f); waiting.rectTransform.offsetMax = new Vector2(-8f, -44f);
         }
+
+        /// <summary>상단 버튼 높이. 터치 기준 최소 44px를 항상 지킨다.</summary>
+        private const float TopButtonHeight = 44f;
+        private const float SlotW = 92f, SlotH = 78f;
 
         private void BuildTopRight()
         {
-            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(660f, 40f));
+            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(720f, TopButtonHeight));
             UiKit.Row(row, 6f, new RectOffset(0, 0, 0, 0)).childAlignment = TextAnchor.MiddleRight;
             var boot = GameBootstrap.Instance;
-            pauseBtn = UiKit.Button("Pause", row, "일시정지 P", new Vector2(100f, 36f), () => boot.Session.Paused = !boot.Session.Paused);
-            speedBtn = UiKit.Button("Speed", row, "1x T", new Vector2(64f, 36f), () => boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f);
-            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(80f, 36f), () => { if (input.UiBlocksInput && !boot.Panels.ShopIsOnlyOpen) return; input.RequestShop(); });
-            helpBtn = UiKit.Button("Help", row, "조작 O", new Vector2(80f, 36f), () => SetHelp(!help.gameObject.activeSelf));
-            var saveBtn = UiKit.Button("Save", row, "저장", new Vector2(60f, 36f), () => Toast(SaveFile.TrySave(boot.Session, out var e1) ? "저장했습니다" : e1));
-            var loadBtn = UiKit.Button("Load", row, "불러오기", new Vector2(80f, 36f), () => { if (SaveFile.TryLoad(out var s2, out var e2)) { boot.ReplaceSession(s2); Toast("불러왔습니다"); } else Toast(e2); });
-            var newBtn = UiKit.Button("New", row, "새 게임", new Vector2(74f, 36f), () => { boot.StartNewGame(); Toast("새 게임"); });
-            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, helpBtn, saveBtn, loadBtn, newBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, 36f);
+            const float h = TopButtonHeight;
+            const int fs = 15;
+            pauseBtn = UiKit.Button("Pause", row, "일시정지 P", new Vector2(116f, h), () => boot.Session.Paused = !boot.Session.Paused, fontSize: fs);
+            speedBtn = UiKit.Button("Speed", row, "1x T", new Vector2(70f, h), () => boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f, fontSize: fs);
+            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(86f, h), () => { if (input.UiBlocksInput && !boot.Panels.ShopIsOnlyOpen) return; input.RequestShop(); }, fontSize: fs);
+            helpBtn = UiKit.Button("Help", row, "조작 O", new Vector2(86f, h), () => SetHelp(!help.gameObject.activeSelf), fontSize: fs);
+            var saveBtn = UiKit.Button("Save", row, "저장", new Vector2(66f, h), () => Toast(SaveFile.TrySave(boot.Session, out var e1) ? "저장했습니다" : e1), fontSize: fs);
+            var loadBtn = UiKit.Button("Load", row, "불러오기", new Vector2(94f, h), () => { if (SaveFile.TryLoad(out var s2, out var e2)) { boot.ReplaceSession(s2); Toast("불러왔습니다"); } else Toast(e2); }, fontSize: fs);
+            var newBtn = UiKit.Button("New", row, "새 게임", new Vector2(84f, h), () => { boot.StartNewGame(); Toast("새 게임"); }, fontSize: fs);
+            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, helpBtn, saveBtn, loadBtn, newBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, h);
         }
 
         private void BuildHotbar()
         {
-            hotbar = UiKit.PanelBox("Hotbar", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(5 * 70f + 16f, 76f)).rectTransform;
+            hotbar = UiKit.PanelBox("Hotbar", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(5 * (SlotW + 6f) - 6f + 16f, SlotH + 16f)).rectTransform;
             UiKit.Row(hotbar, 6f, new RectOffset(8, 8, 8, 8)).childAlignment = TextAnchor.MiddleCenter;
             for (int i = 0; i < 5; i++)
             {
                 int idx = i;
-                var b = UiKit.Button("Slot" + (i + 1), hotbar, "", new Vector2(64f, 60f), () => { if (input.UiBlocksInput) return; input.SelectSlot(idx); }, new Color(0f, 0f, 0f, 0.35f));
-                UiKit.Size(b, 64f, 60f);
-                var key = UiKit.Label("Key", b.transform, (i + 1).ToString(), 11, UiKit.Muted, TextAnchor.UpperLeft, FontStyle.Bold);
-                key.rectTransform.offsetMin = new Vector2(5f, 0f); key.rectTransform.offsetMax = new Vector2(0f, -3f);
+                var b = UiKit.Button("Slot" + (i + 1), hotbar, "", new Vector2(SlotW, SlotH), () => { if (input.UiBlocksInput) return; input.SelectSlot(idx); }, new Color(0f, 0f, 0f, 0.35f), fontSize: 15);
+                UiKit.Size(b, SlotW, SlotH);
+                // 이름(15)은 가운데, 가격은 그 아래 자기 줄, 키 번호·방향은 위쪽 모서리.
+                var name = b.GetComponentInChildren<Text>();
+                name.alignment = TextAnchor.MiddleCenter;
+                name.horizontalOverflow = HorizontalWrapMode.Overflow;
+                name.rectTransform.offsetMin = new Vector2(2f, 22f); name.rectTransform.offsetMax = new Vector2(-2f, -18f);
+                var price = UiKit.Label("Price", b.transform, "", 13, UiKit.Muted, TextAnchor.LowerCenter, FontStyle.Bold);
+                price.rectTransform.offsetMin = new Vector2(2f, 5f); price.rectTransform.offsetMax = new Vector2(-2f, -54f);
+                var key = UiKit.Label("Key", b.transform, (i + 1).ToString(), 13, UiKit.Muted, TextAnchor.UpperLeft, FontStyle.Bold);
+                key.rectTransform.offsetMin = new Vector2(6f, 0f); key.rectTransform.offsetMax = new Vector2(0f, -3f);
                 var arrow = UiKit.Label("Arrow", b.transform, "", 16, UiKit.Accent, TextAnchor.UpperRight, FontStyle.Bold);
-                arrow.rectTransform.offsetMin = new Vector2(0f, 0f); arrow.rectTransform.offsetMax = new Vector2(-5f, -2f);
-                b.GetComponentInChildren<Text>().alignment = TextAnchor.LowerCenter;
-                slotButtons.Add(b); slotArrows.Add(arrow);
+                arrow.rectTransform.offsetMin = new Vector2(0f, 0f); arrow.rectTransform.offsetMax = new Vector2(-6f, -2f);
+                slotButtons.Add(b); slotArrows.Add(arrow); slotPrices.Add(price); slotKeys.Add(key);
             }
         }
 
@@ -107,14 +121,14 @@ namespace ParcelFactory.Game
 
         private void BuildStatus()
         {
-            var box = UiKit.PanelBox("Status", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 96f), new Vector2(420f, 26f));
-            workerText = UiKit.Label("Text", box.transform, "", 12, UiKit.Muted, TextAnchor.MiddleCenter);
+            var box = UiKit.PanelBox("Status", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, SlotH + 16f + 14f + 8f), new Vector2(560f, 32f));
+            workerText = UiKit.Label("Text", box.transform, "", 16, UiKit.Fg, TextAnchor.MiddleCenter);
         }
 
         private void BuildToast()
         {
-            toast = UiKit.PanelBox("Toast", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -110f), new Vector2(360f, 34f), UiKit.Panel2).rectTransform;
-            toastText = UiKit.Label("Text", toast, "", 14, UiKit.Fg, TextAnchor.MiddleCenter);
+            toast = UiKit.PanelBox("Toast", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -110f), new Vector2(440f, 40f), UiKit.Panel2).rectTransform;
+            toastText = UiKit.Label("Text", toast, "", 16, UiKit.Fg, TextAnchor.MiddleCenter);
             toast.gameObject.SetActive(false);
         }
 
@@ -183,15 +197,20 @@ namespace ParcelFactory.Game
         public void RefreshHotbar()
         {
             var slots = input.AvailableSlots();
+            int shown = Mathf.Clamp(slots.Count, 1, slotButtons.Count);
+            hotbar.sizeDelta = new Vector2(shown * (SlotW + 6f) - 6f + 16f, SlotH + 16f); // 보이는 칸 수에 맞춘다
             for (int i = 0; i < slotButtons.Count; i++)
             {
                 bool has = i < slots.Count;
                 slotButtons[i].gameObject.SetActive(has);
                 if (!has) continue;
                 var type = slots[i];
-                slotButtons[i].GetComponentInChildren<Text>().text = Name(type) + "\n" + BuildingCosts.Cost(type);
+                slotButtons[i].GetComponentInChildren<Text>().text = Name(type);
+                slotPrices[i].text = "₩ " + BuildingCosts.Cost(type);
                 bool on = input.SelectedSlot == i && input.SelectedTool.HasValue;
                 UiKit.SetButtonLook(slotButtons[i], on);
+                slotPrices[i].color = on ? UiKit.AccentFg : UiKit.Accent;
+                slotKeys[i].color = on ? UiKit.AccentFg : UiKit.Muted;
                 slotArrows[i].text = on ? Arrow(input.SelectedTool.Value.Direction) : (input.OwnedDirections(type).Count > 1 ? "R" : Arrow(input.OwnedDirections(type)[0]));
             }
         }

@@ -14,7 +14,7 @@ namespace ParcelFactory.EditorTools
         private const string Root = "Assets/ThirdParty/Kenney/";
         private static readonly (string kit, string[] names)[] Wanted =
         {
-            ("factory-kit", new[] { "conveyor", "conveyor-stripe", "conveyor-corner", "conveyor-junction-t", "scanner-low", "box-small", "box-large", "box-wide", "box-long", "screen-panel-flat", "floor", "floor-large", "structure-wall", "structure-window-wide", "structure-doorway-wide", "warning-traffic", "arrow", "cone", "machine", "machine-window", "hopper-round", "pipe-large-long", "robot-arm-a", "screen-hanging-wide", "indicator-special-area" }),
+            ("factory-kit", new[] { "conveyor", "conveyor-stripe", "conveyor-corner", "conveyor-junction-t", "scanner-low", "box-small", "box-large", "box-wide", "box-long", "screen-panel-flat", "floor", "floor-large", "structure-wall", "structure-window-wide", "structure-doorway-wide", "warning-traffic", "cone", "machine", "machine-window", "hopper-round", "pipe-large-long", "robot-arm-a", "screen-hanging-wide", "indicator-special-area" }),
             ("city-kit-industrial", new[] { "shipping-container-a", "shipping-container-b", "shipping-container-c", "water-tower", "chimney-medium", "building-a", "building-c", "building-h", "detail-tank" }),
             ("car-kit", new[] { "delivery", "truck", "truck-flat", "van", "box", "cone-flat" }),
             ("mini-characters", new[] { "character-male-a", "character-male-b", "character-female-a", "character-female-b" }),
