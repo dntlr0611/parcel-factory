@@ -1,6 +1,6 @@
 namespace ParcelFactory.Core
 {
-    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet }
+    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet, Table, Scanner, ReturnDock }
 
     public sealed class Cell
     {
@@ -18,11 +18,16 @@ namespace ParcelFactory.Core
         /// <summary>택배가 올라가 이동할 수 있는 셀.</summary>
         public bool IsTrack =>
             Type == CellType.Conveyor || Type == CellType.FastConveyor ||
-            Type == CellType.Splitter || Type == CellType.Inlet;
+            Type == CellType.Splitter || Type == CellType.Inlet ||
+            Type == CellType.Table || Type == CellType.Scanner;
 
         /// <summary>플레이어가 설치·해체할 수 있는 셀.</summary>
         public bool IsBuilding =>
-            Type == CellType.Conveyor || Type == CellType.FastConveyor || Type == CellType.Splitter;
+            Type == CellType.Conveyor || Type == CellType.FastConveyor ||
+            Type == CellType.Splitter || Type == CellType.Table || Type == CellType.Scanner;
+
+        /// <summary>택배를 받아 판정하는 셀(출고구, 반품구).</summary>
+        public bool IsDock => Type == CellType.Outlet || Type == CellType.ReturnDock;
 
         public float Speed => Type == CellType.FastConveyor ? 2f : 1f;
     }

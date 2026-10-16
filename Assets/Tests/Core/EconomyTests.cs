@@ -53,6 +53,8 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(10, BuildingCosts.Cost(CellType.Conveyor));
             Assert.AreEqual(25, BuildingCosts.Cost(CellType.FastConveyor));
             Assert.AreEqual(60, BuildingCosts.Cost(CellType.Splitter));
+            Assert.AreEqual(40, BuildingCosts.Cost(CellType.Table));
+            Assert.AreEqual(120, BuildingCosts.Cost(CellType.Scanner));
             Assert.Throws<ArgumentException>(() => BuildingCosts.Cost(CellType.Inlet));
         }
     }

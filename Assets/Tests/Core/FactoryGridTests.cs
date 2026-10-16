@@ -113,5 +113,41 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(1f, c.Speed);
             Assert.IsFalse(c.IsOccupied);
         }
+
+        [Test]
+        public void NewGrid_HasReturnDockFixed()
+        {
+            var g = new FactoryGrid();
+            Assert.AreEqual(CellType.ReturnDock, g.Get(5, 4).Type);
+            Assert.IsTrue(g.Get(5, 4).IsDock);
+            Assert.IsTrue(g.Get(5, 2).IsDock);
+            Assert.IsFalse(g.Get(0, 2).IsDock);
+            Assert.Throws<InvalidOperationException>(() => g.Clear(5, 4));
+            Assert.IsFalse(g.CanPlace(5, 4));
+        }
+
+        [Test]
+        public void Place_AcceptsTableAndScanner()
+        {
+            var g = new FactoryGrid();
+            g.Place(1, 1, CellType.Table, Direction.North);
+            g.Place(2, 1, CellType.Scanner, Direction.West);
+            Assert.AreEqual(CellType.Table, g.Get(1, 1).Type);
+            Assert.AreEqual(Direction.West, g.Get(2, 1).Direction);
+            Assert.IsTrue(FactoryGrid.IsPlaceable(CellType.Table));
+            Assert.IsFalse(FactoryGrid.IsPlaceable(CellType.ReturnDock));
+        }
+
+        [Test]
+        public void Cell_TrackAndBuildingFlags_IncludeTableAndScanner()
+        {
+            Assert.IsTrue(new Cell { Type = CellType.Table }.IsTrack);
+            Assert.IsTrue(new Cell { Type = CellType.Table }.IsBuilding);
+            Assert.IsTrue(new Cell { Type = CellType.Scanner }.IsTrack);
+            Assert.IsTrue(new Cell { Type = CellType.Scanner }.IsBuilding);
+            Assert.IsFalse(new Cell { Type = CellType.ReturnDock }.IsTrack);
+            Assert.IsFalse(new Cell { Type = CellType.ReturnDock }.IsBuilding);
+            Assert.AreEqual(1f, new Cell { Type = CellType.Scanner }.Speed);
+        }
     }
 }
