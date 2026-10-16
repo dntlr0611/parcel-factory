@@ -49,7 +49,7 @@ Assets/Tests/Game/BootSmokeTests.cs   PlayMode: 부팅·틱·뷰 생성 확인
 
 ---
 
-### Task B1: 카탈로그·씬·부트스트랩·게임 루프·스모크 테스트
+### Task 1 (B1): 카탈로그·씬·부트스트랩·게임 루프·스모크 테스트
 
 **Files:**
 - Create: `Assets/Editor/CatalogBuilder.cs`
@@ -438,7 +438,7 @@ git commit -m "feat(game): model catalog, main scene, bootstrap, game loop, play
 
 ---
 
-### Task B2: 월드 — 지면·부지·울타리·숲·트럭·도크·조명·카메라·포스트
+### Task 2 (B2): 월드 — 지면·부지·울타리·숲·트럭·도크·조명·카메라·포스트
 
 **Files:**
 - Create: `Assets/Scripts/Game/WorldBuilder.cs`
@@ -673,7 +673,7 @@ git commit -m "feat(game): world builder — ground, lot, fences, forest, docks,
 
 ---
 
-### Task B3: 뷰 — 셀 오브젝트, 벨트 화살표, 택배, 작업자, 커서, 해체 바
+### Task 3 (B3): 뷰 — 셀 오브젝트, 벨트 화살표, 택배, 작업자, 커서, 해체 바
 
 **Files:**
 - Create: `Assets/Scripts/Game/CellViews.cs`, `PackageViews.cs`, `WorkerView.cs`
@@ -1041,7 +1041,7 @@ git commit -m "feat(game): cell, package and worker views with belt arrows, curs
 
 ---
 
-### Task B4: 입력 — Input System 액션 → 코어
+### Task 4 (B4): 입력 — Input System 액션 → 코어
 
 **Files:**
 - Create: `Assets/Scripts/Game/InputController.cs`
@@ -1241,7 +1241,7 @@ git commit -m "feat(game): input system actions, per-type hotbar with direction 
 
 ---
 
-### Task B5: HUD — UGUI 코드 생성 (상단 바·핫바·프롬프트·상태·토스트·조작·터치 컨트롤)
+### Task 5 (B5): HUD — UGUI 코드 생성 (상단 바·핫바·프롬프트·상태·토스트·조작·터치 컨트롤)
 
 **Files:**
 - Create: `Assets/Scripts/Game/UiKit.cs`, `Assets/Scripts/Game/HudController.cs`
@@ -1608,7 +1608,7 @@ git commit -m "feat(game): UGUI hud — top bar, hotbar, prompt, status, toast, 
 
 ---
 
-### Task B6: 패널(상점·검사 카드·해체 확인)과 저장/불러오기
+### Task 6 (B6): 패널(상점·검사 카드·해체 확인)과 저장/불러오기
 
 **Files:**
 - Create: `Assets/Scripts/Game/Panels.cs`, `Assets/Scripts/Game/SaveFile.cs`
@@ -1861,7 +1861,7 @@ git commit -m "feat(game): shop, inspection card, demolish confirm, save/load/ne
 
 ---
 
-### Task B7: 검증과 마무리
+### Task 7 (B7): 검증과 마무리
 
 - [ ] **Step 1: 전체 배치 검증**
 
