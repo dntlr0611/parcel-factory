@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d9eea5f912004dffb56586546e696ea, type: 3}
+  m_Name: PF_Catalog
+  m_EditorClassIdentifier: ParcelFactory.Game::ParcelFactory.Game.ModelCatalog
+  Entries:
+  - Key: conveyor
+    Prefab: {fileID: 919132149155446097, guid: 444b542a4a7294768acf9566cd0b6bbf, type: 3}
+  - Key: conveyor-stripe
+    Prefab: {fileID: 919132149155446097, guid: fbdf568e0c4e949399d550ce31742c4a, type: 3}
+  - Key: conveyor-corner
+    Prefab: {fileID: 919132149155446097, guid: 5611d78cf6d764f8eb6e369b23af959c, type: 3}
+  - Key: conveyor-junction-t
+    Prefab: {fileID: 919132149155446097, guid: a32093b330d454e25be701b151dc54f7, type: 3}
+  - Key: scanner-low
+    Prefab: {fileID: 919132149155446097, guid: c4cdb754987e84a81a9fe8054c5854f3, type: 3}
+  - Key: box-small
+    Prefab: {fileID: 919132149155446097, guid: 0747bd13d50374c1f832be25e0d8f875, type: 3}
+  - Key: box-large
+    Prefab: {fileID: 919132149155446097, guid: ae5b43a74a73047bfa95164a8af92016, type: 3}
+  - Key: screen-panel-flat
+    Prefab: {fileID: 919132149155446097, guid: ba39c4567a0374e79bd886861868a2ab, type: 3}
+  - Key: floor
+    Prefab: {fileID: 919132149155446097, guid: b8a11ddec0cb54313b5c0a6e8b0442f4, type: 3}
+  - Key: floor-large
+    Prefab: {fileID: 919132149155446097, guid: 477b85ba3622b41d3aef1cbc26c93bde, type: 3}
+  - Key: structure-wall
+    Prefab: {fileID: 919132149155446097, guid: 2bc34d13f88904a3c922af0b57404e60, type: 3}
+  - Key: warning-traffic
+    Prefab: {fileID: 919132149155446097, guid: 5a906ce7e2a1741b3b1e69393dfe4134, type: 3}
+  - Key: arrow
+    Prefab: {fileID: 919132149155446097, guid: bec331b28f32545a4b0e9f695fc1d854, type: 3}
+  - Key: cone
+    Prefab: {fileID: 919132149155446097, guid: a9d8f47643e624187ada8efda2eb6f53, type: 3}
+  - Key: machine
+    Prefab: {fileID: 919132149155446097, guid: f13138e6b969148e48c0efad73cabeff, type: 3}
+  - Key: shipping-container-a
+    Prefab: {fileID: 919132149155446097, guid: 527ad0b6af04c443e8a30379a16d5551, type: 3}
+  - Key: shipping-container-b
+    Prefab: {fileID: 919132149155446097, guid: 13de136b3d6cd40f9bb586810c46cabb, type: 3}
+  - Key: shipping-container-c
+    Prefab: {fileID: 919132149155446097, guid: ecda0c43c9b654c518badf3eadd21be9, type: 3}
+  - Key: tree_pineRoundA
+    Prefab: {fileID: 919132149155446097, guid: b62cc8ad9f0594009a84ac209ec871c0, type: 3}
+  - Key: tree_pineRoundB
+    Prefab: {fileID: 919132149155446097, guid: 622c3e14952544f7ebd18ac4c3e9657b, type: 3}
+  - Key: tree_pineRoundC
+    Prefab: {fileID: 919132149155446097, guid: 01fa177a9ad634e1491fe2fabe6ff201, type: 3}
+  - Key: tree_pineRoundD
+    Prefab: {fileID: 919132149155446097, guid: cc1255298c26e4b509b930df88c935a2, type: 3}
+  - Key: tree_pineRoundE
+    Prefab: {fileID: 919132149155446097, guid: 6b0381bdc79e74ff0ae5f9ef526e79b0, type: 3}
+  - Key: tree_pineRoundF
+    Prefab: {fileID: 919132149155446097, guid: 8c1d5ae354463475d8cc1ec40ba53d2d, type: 3}
+  - Key: tree_pineTallA
+    Prefab: {fileID: 919132149155446097, guid: 61f7e2717abe64b7d8f88daab7870df5, type: 3}
+  - Key: tree_pineTallB
+    Prefab: {fileID: 919132149155446097, guid: b6240cb140b0e4062a7223636b895a9c, type: 3}
+  - Key: tree_pineTallC
+    Prefab: {fileID: 919132149155446097, guid: 69176540b1e3b4fd3a865836e3e540ee, type: 3}
+  - Key: tree_pineTallD
+    Prefab: {fileID: 919132149155446097, guid: eb4612f58ebf047708474994089b8be0, type: 3}
+  - Key: tree_default
+    Prefab: {fileID: 919132149155446097, guid: 0205532ac38fa4fe189021f83ace0b39, type: 3}
+  - Key: tree_oak
+    Prefab: {fileID: 919132149155446097, guid: c67cde0d6e69e450da0acb3a7c4f7907, type: 3}
+  - Key: tree_detailed
+    Prefab: {fileID: 919132149155446097, guid: b62db0f700c0b4ea0a90d7d70daec77a, type: 3}
+  - Key: rock_largeA
+    Prefab: {fileID: 919132149155446097, guid: 710f5b58c8bf74b93a176672ca7a3a24, type: 3}
+  - Key: rock_largeB
+    Prefab: {fileID: 919132149155446097, guid: e0393cc57eec94e04ba3c3d571b75775, type: 3}
+  - Key: rock_largeC
+    Prefab: {fileID: 919132149155446097, guid: 8ac8df7f54a444c4e95daf87f4d5dc8b, type: 3}
+  - Key: rock_smallA
+    Prefab: {fileID: 919132149155446097, guid: 21ae536fbd4ba4adeaeb2f2b0b23574b, type: 3}
+  - Key: rock_smallB
+    Prefab: {fileID: 919132149155446097, guid: 1f81a49c3e7394e899f5f3931d1befab, type: 3}
+  - Key: plant_bush
+    Prefab: {fileID: 919132149155446097, guid: a8dad5924d88b4bc89d548692d2cba67, type: 3}
+  - Key: plant_bushLarge
+    Prefab: {fileID: 919132149155446097, guid: e54af7e26ebf14ecbb6e15cfb36ac6f5, type: 3}
+  - Key: fence_simple
+    Prefab: {fileID: 919132149155446097, guid: 8ffc7e5fed78340ea9f1e908d37df182, type: 3}
+  - Key: fence_corner
+    Prefab: {fileID: 919132149155446097, guid: f393cad3aa1f143ed8a97d6e262d0593, type: 3}
+  - Key: grass_large
+    Prefab: {fileID: 919132149155446097, guid: d819867fbab7d48f3b149e0c352cc593, type: 3}
+  - Key: grass
+    Prefab: {fileID: 919132149155446097, guid: 68da9d11a977a4fb3a4d312a22a3ec08, type: 3}
+  - Key: ground_grass
+    Prefab: {fileID: 919132149155446097, guid: 3b21fd8fbe53e486aa96f945fcd818d9, type: 3}
+  - Key: stump_round
+    Prefab: {fileID: 919132149155446097, guid: 21ed4c812d608471988aae9a20cf5dfe, type: 3}
+  - Key: log
+    Prefab: {fileID: 919132149155446097, guid: 14d017b855e9743619498cd059a111c5, type: 3}
+  - Key: delivery
+    Prefab: {fileID: 919132149155446097, guid: 4101a4aee3d0d4f08af3a17163a90a8c, type: 3}
+  - Key: truck
+    Prefab: {fileID: 919132149155446097, guid: bf02693d140fd42d9b5eb43e1947edb4, type: 3}
+  - Key: van
+    Prefab: {fileID: 919132149155446097, guid: 4072224c98fca46bfbb31fb3e4390b5a, type: 3}
+  - Key: box
+    Prefab: {fileID: 919132149155446097, guid: 78e4e6b5e6bad462f96a6a1c892e68e6, type: 3}
+  - Key: character-male-a
+    Prefab: {fileID: 919132149155446097, guid: 8d644fdc2a6cb4dfcb44a191f56b3146, type: 3}
+  - Key: character-male-b
+    Prefab: {fileID: 919132149155446097, guid: ce855a5becc374ec3834ce072d889119, type: 3}
+  - Key: character-female-a
+    Prefab: {fileID: 919132149155446097, guid: c03f906a94648423883d7010cff170db, type: 3}
+  - Key: character-female-b
+    Prefab: {fileID: 919132149155446097, guid: 252a9eaff51664baaaf57ea7513fc028, type: 3}
