@@ -1081,6 +1081,7 @@ namespace ParcelFactory.Game
         private readonly InputAction[] slots = new InputAction[5];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
+        private const float MoveSubStep = 0.05f;
 
         private void Awake()
         {
@@ -1147,7 +1148,7 @@ namespace ParcelFactory.Game
 
             var v = move.ReadValue<Vector2>();
             foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
-            if (v.sqrMagnitude > 0.04f) S.Worker.Move(v.x, v.y, Time.deltaTime); // 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
+            if (v.sqrMagnitude > 0.04f) for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep)); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
         }
 
         public void RequestShop() => ToggleShop?.Invoke();
