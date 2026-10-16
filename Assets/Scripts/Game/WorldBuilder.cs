@@ -14,6 +14,7 @@ namespace ParcelFactory.Game
         private ModelCatalog cat;
         private Transform root, lotRoot;
         private GameSession bound;
+        private GameObject vanIn, vanOut, truckRet;
 
         public void Build(GameSession session)
         {
@@ -53,8 +54,6 @@ namespace ParcelFactory.Game
             MainCamera.fieldOfView = 38f;
             MainCamera.nearClipPlane = 0.3f;
             MainCamera.farClipPlane = 80f;
-            MainCamera.transform.position = new Vector3(0f, 17f, -9.5f);
-            MainCamera.transform.LookAt(Vector3.zero);
             MainCamera.clearFlags = CameraClearFlags.SolidColor;
             MainCamera.backgroundColor = new Color(0.15f, 0.21f, 0.12f);
             var camData = MainCamera.GetUniversalAdditionalCameraData();
@@ -100,7 +99,7 @@ namespace ParcelFactory.Game
             ground.transform.SetParent(root, false);
             ground.transform.localScale = new Vector3(8f, 1f, 8f);
             ground.transform.position = new Vector3(0f, -0.02f, 0f);
-            ground.GetComponent<Renderer>().material = MaterialLibrary.Lit(new Color(0.36f, 0.52f, 0.25f));
+            ground.GetComponent<Renderer>().sharedMaterial = MaterialLibrary.Lit(new Color(0.36f, 0.52f, 0.25f));
             Destroy(ground.GetComponent<Collider>());
         }
 
@@ -132,27 +131,29 @@ namespace ParcelFactory.Game
         {
             var docks = new GameObject("Docks").transform;
             docks.SetParent(root, false);
-            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", Grid3D.Tile(FactoryGrid.InletX, FactoryGrid.InletY) + new Vector3(-1.9f, 0f, 0f), Quaternion.Euler(0f, 90f, 0f));
-            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", Grid3D.Tile(FactoryGrid.OutletX, FactoryGrid.OutletY) + new Vector3(2.1f, 0f, 0f), Quaternion.Euler(0f, -90f, 0f));
-            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", Grid3D.Tile(FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY) + new Vector3(2.1f, 0f, 0f), Quaternion.Euler(0f, -90f, 0f));
+            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f));
+            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f));
+            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f));
+            vanIn = Spawn("van", Grid3D.Tile(FactoryGrid.InletX, FactoryGrid.InletY) + new Vector3(-1.9f, 0f, 0f), Quaternion.Euler(0f, 90f, 0f), 0.62f, docks);
+            vanOut = Spawn("delivery", Grid3D.Tile(FactoryGrid.OutletX, FactoryGrid.OutletY) + new Vector3(2.1f, 0f, 0f), Quaternion.Euler(0f, -90f, 0f), 0.62f, docks);
+            truckRet = Spawn("truck", Grid3D.Tile(FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY) + new Vector3(2.1f, 0f, 0f), Quaternion.Euler(0f, -90f, 0f), 0.62f, docks);
         }
 
-        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, Vector3 vehiclePos, Quaternion vehicleRot)
+        private void Dock(Transform parent, int gx, int gy, Color color)
         {
             var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
             slab.name = "DockSlab";
             slab.transform.SetParent(parent, false);
             slab.transform.position = Grid3D.Tile(gx, gy) + new Vector3(0f, 0.11f, 0f);
             slab.transform.localScale = new Vector3(1f, 0.22f, 1f);
-            slab.GetComponent<Renderer>().material = MaterialLibrary.Lit(color, 0.25f);
+            slab.GetComponent<Renderer>().sharedMaterial = MaterialLibrary.Lit(color, 0.25f);
             Destroy(slab.GetComponent<Collider>());
             var mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
             mark.transform.SetParent(parent, false);
             mark.transform.position = Grid3D.Tile(gx, gy) + new Vector3(0f, 0.23f, 0f);
             mark.transform.localScale = new Vector3(0.7f, 0.02f, 0.7f);
-            mark.GetComponent<Renderer>().material = MaterialLibrary.Lit(Color.white, 0.2f);
+            mark.GetComponent<Renderer>().sharedMaterial = MaterialLibrary.Lit(Color.white, 0.2f);
             Destroy(mark.GetComponent<Collider>());
-            Spawn(vehicle, vehiclePos, vehicleRot, 0.62f, parent);
             Spawn("warning-traffic", Grid3D.Tile(gx, gy) + new Vector3(0f, 0f, 0.55f), Quaternion.identity, 0.6f, parent);
         }
 
@@ -162,12 +163,12 @@ namespace ParcelFactory.Game
             lotRoot = new GameObject("Lot").transform;
             lotRoot.SetParent(root, false);
             int n = session.Grid.UnlockedSize;
-            var rng = new System.Random(11);
             for (int gy = 0; gy < FactoryGrid.Height; gy++)
             {
                 for (int gx = 0; gx < FactoryGrid.Width; gx++)
                 {
                     var pos = Grid3D.Tile(gx, gy);
+                    var rng = new System.Random(gx * 31 + gy * 17 + 5);
                     if (gx < n && gy < n)
                     {
                         Spawn("floor", pos, Quaternion.identity, 1f, lotRoot);
@@ -191,6 +192,23 @@ namespace ParcelFactory.Game
                 if (!IsDock(n - 1, i)) Spawn("fence_simple", Grid3D.Tile(n - 1, i), Quaternion.Euler(0f, 90f, 0f), 1f, lotRoot);     // 동쪽 변 (+x)
                 if (!IsDock(0, i)) Spawn("fence_simple", Grid3D.Tile(0, i), Quaternion.Euler(0f, -90f, 0f), 1f, lotRoot);        // 서쪽 변 (−x)
             }
+
+            float eastX = Grid3D.Tile(n - 1, 0).x + 1.1f + 1.0f;   // 울타리 바깥 한 칸 + 여유
+            vanOut.transform.position = new Vector3(eastX, 0f, Grid3D.Tile(FactoryGrid.OutletX, FactoryGrid.OutletY).z);
+            truckRet.transform.position = new Vector3(eastX, 0f, Grid3D.Tile(FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY).z);
+            FrameLot(n);
+        }
+
+        private void FrameLot(int n)
+        {
+            var center = Grid3D.TileF((n - 1) / 2f, (n - 1) / 2f);
+            MainCamera.transform.position = center + new Vector3(0f, 17f, -9.5f);
+            MainCamera.transform.LookAt(center);
+        }
+
+        private void OnDestroy()
+        {
+            if (bound != null) bound.Unlocks.Unlocked -= OnUnlocked;
         }
     }
 }
