@@ -13,7 +13,7 @@ namespace ParcelFactory.Game
         public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Table, CellType.Splitter, CellType.Scanner };
 
         public Tool? SelectedTool { get; private set; }
-        public int SelectedSlot { get; private set; } = -1;
+        public int SelectedSlot => SelectedTool.HasValue ? AvailableSlots().IndexOf(SelectedTool.Value.Type) : -1;
         public bool UiBlocksInput { get; set; }
 
         public event Action<InteractResult> Interacted;
@@ -63,6 +63,11 @@ namespace ParcelFactory.Game
         private void OnDisable()
         {
             foreach (var a in All()) a.Disable();
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var a in All()) a.Dispose();
         }
 
         private IEnumerable<InputAction> All()
@@ -130,20 +135,18 @@ namespace ParcelFactory.Game
 
         public void SelectSlot(int i)
         {
-            var slots = AvailableSlots();
-            if (i < 0 || i >= slots.Count) return;
-            if (SelectedSlot == i) { ClearTool(); return; }
-            var type = slots[i];
+            var available = AvailableSlots();
+            if (i < 0 || i >= available.Count) return;
+            var type = available[i];
+            if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { RotateTool(); return; }
             var dirs = OwnedDirections(type);
             var dir = lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
-            SelectedSlot = i;
             SelectedTool = new Tool(type, dir);
             ToolChanged?.Invoke();
         }
 
         public void ClearTool()
         {
-            SelectedSlot = -1;
             SelectedTool = null;
             ToolChanged?.Invoke();
         }

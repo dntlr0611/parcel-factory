@@ -26,6 +26,13 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNotNull(GameObject.Find("World/WorkerView"), "worker view not created");
                 Assert.IsNotNull(boot.Input);
                 Assert.AreEqual(2, boot.Input.AvailableSlots().Count); // Conveyor + Table (Table is owned by default)
+                boot.Input.SelectSlot(0);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Conveyor, boot.Input.SelectedTool.Value.Type);
+                Assert.AreEqual(0, boot.Input.SelectedSlot);
+                boot.Input.SelectSlot(0);
+                Assert.IsTrue(boot.Input.SelectedTool.HasValue); // re-tap cycles, does not clear
+                boot.Input.ClearTool();
+                Assert.AreEqual(-1, boot.Input.SelectedSlot);
                 LogAssert.NoUnexpectedReceived();
             }
             finally
