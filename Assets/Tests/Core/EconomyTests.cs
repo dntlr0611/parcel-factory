@@ -40,6 +40,19 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
+        public void Adjust_AllowsNegativeBalance()
+        {
+            var e = new Economy(5);
+            int seen = 0;
+            e.MoneyChanged += m => seen = m;
+            e.Adjust(-20);
+            Assert.AreEqual(-15, e.Money);
+            Assert.AreEqual(-15, seen);
+            e.Adjust(30);
+            Assert.AreEqual(15, e.Money);
+        }
+
+        [Test]
         public void NegativeAmounts_Throw()
         {
             var e = new Economy();

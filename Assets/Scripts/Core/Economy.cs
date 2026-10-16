@@ -32,5 +32,12 @@ namespace ParcelFactory.Core
             Money += amount;
             MoneyChanged?.Invoke(Money);
         }
+
+        /// <summary>판정에 따른 증감. 잔액이 음수가 될 수 있다.</summary>
+        public void Adjust(int delta)
+        {
+            Money += delta;
+            MoneyChanged?.Invoke(Money);
+        }
     }
 }

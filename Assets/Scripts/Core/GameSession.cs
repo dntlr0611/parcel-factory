@@ -13,13 +13,15 @@ namespace ParcelFactory.Core
         public bool Paused { get; set; }
         public float Speed { get; set; } = 1f;
 
-        public GameSession() : this(new Economy()) { }
+        public GameSession() : this(new Economy(), null) { }
 
-        public GameSession(Economy economy)
+        public GameSession(Economy economy) : this(economy, null) { }
+
+        public GameSession(Economy economy, PackageFactory factory)
         {
             Grid = new FactoryGrid();
             Economy = economy;
-            Sim = new ConveyorSim(Grid, Economy);
+            Sim = new ConveyorSim(Grid, Economy, factory);
             Spawner = new Spawner(Grid, Sim);
             Toolbar = new Toolbar();
             Build = new BuildService(Grid, Economy, Toolbar, Sim);

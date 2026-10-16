@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using ParcelFactory.Core;
@@ -15,7 +16,7 @@ namespace ParcelFactory.Core.Tests
         {
             grid = new FactoryGrid();
             economy = new Economy(0);
-            sim = new ConveyorSim(grid, economy);
+            sim = new ConveyorSim(grid, economy, new PackageFactory(new Random(1), 0.0));
         }
 
         private void Rail(int x, int y, Direction d, CellType type = CellType.Conveyor) =>
@@ -106,11 +107,13 @@ namespace ParcelFactory.Core.Tests
         {
             for (int x = 1; x <= 4; x++) Rail(x, 2, Direction.East);
             var p = SpawnAtInlet();
+            p.Inspect(false);
             var delivered = new List<Package>();
-            sim.PackageDelivered += delivered.Add;
+            sim.PackageDelivered += (pk, outcome, delta) => delivered.Add(pk);
             for (int i = 0; i < 5; i++) sim.Tick(1f);
             Assert.AreEqual(0, sim.Packages.Count);
             Assert.AreEqual(15, economy.Money);
+            Assert.AreEqual(1, sim.DeliveredCount);
             Assert.AreSame(p, delivered[0]);
             Assert.AreEqual(-1, grid.Get(4, 2).OccupantId);
         }
@@ -127,6 +130,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(0, sim.Packages.Count);
             Assert.AreSame(p, lost[0]);
             Assert.AreEqual(0, economy.Money);
+            Assert.AreEqual(1, sim.LostCount);
         }
 
         [Test]

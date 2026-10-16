@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using ParcelFactory.Core;
 
@@ -17,14 +18,29 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void StraightLine_DeliversAndEarns()
+        public void StraightLine_UninspectedDeliveryIsPenalized()
         {
-            var s = new GameSession();
+            var s = new GameSession(new Economy(), new PackageFactory(new Random(1), 0.0));
             for (int x = 1; x <= 4; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(60, s.Economy.Money);
-            for (int i = 0; i < 180; i++) s.Tick(0.05f); // 9초: 3초에 생성, 5초 이동. 두 번째 택배(6초 생성)는 아직 도착 전
-            Assert.AreEqual(75, s.Economy.Money);
+            for (int i = 0; i < 180; i++) s.Tick(0.05f); // 9초: 3초에 생성, 5초 이동, 검사 없이 출고 → −10
+            Assert.AreEqual(50, s.Economy.Money);
+            Assert.AreEqual(0, s.Sim.DeliveredCount);
+        }
+
+        [Test]
+        public void StraightLine_WithScanner_Earns15()
+        {
+            var s = new GameSession(new Economy(300), new PackageFactory(new Random(1), 0.0));
+            s.Toolbar.Add(CellType.Scanner, Direction.East);
+            Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 2, CellType.Scanner, Direction.East));
+            for (int x = 2; x <= 4; x++)
+                Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(150, s.Economy.Money);
+            for (int i = 0; i < 180; i++) s.Tick(0.05f);
+            Assert.AreEqual(165, s.Economy.Money);
+            Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
 
         [Test]
