@@ -17,16 +17,22 @@ namespace ParcelFactory.Game
         private Renderer cursorRenderer;
         private Vector3 lastPos;
         private float bob;
+        private Animation anim;
+        private string currentClip;
+        private bool hasHolding;
+
+        private const string IdleClip = "idle", WalkClip = "walk", HoldingClip = "holding-both";
 
         private void Start()
         {
             var boot = GameBootstrap.Instance;
             Model = Instantiate(boot.Catalog.Get("character-male-a"), transform).transform;
-            Model.localScale = Vector3.one * 1.6f;
+            Model.localScale = Vector3.one * 1.45f;
             Model.localRotation = ModelFacesMinusZ ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
+            SetupAnimation();
             CarryAnchor = new GameObject("CarryAnchor").transform;
             CarryAnchor.SetParent(transform, false);
-            CarryAnchor.localPosition = new Vector3(0f, 1.25f, 0f);
+            CarryAnchor.localPosition = new Vector3(0f, 1.22f, 0f);
             carried = PackageViews.MakeBox(boot.Catalog, CarryAnchor);
             carried.SetActive(false);
 
@@ -45,6 +51,32 @@ namespace ParcelFactory.Game
             transform.position = lastPos = Grid3D.TileF(w.X, w.Y);
         }
 
+        /// <summary>Kenney 캐릭터 FBX(Legacy 임포트)에 내장된 idle/walk/holding-both 클립을 쓴다. 없으면 bob으로 대신한다.</summary>
+        private void SetupAnimation()
+        {
+            anim = Model.GetComponent<Animation>();
+            if (anim == null) anim = Model.GetComponentInChildren<Animation>();
+            if (anim == null || anim.GetClip(IdleClip) == null || anim.GetClip(WalkClip) == null) { anim = null; return; }
+            hasHolding = anim.GetClip(HoldingClip) != null;
+            foreach (var n in new[] { IdleClip, WalkClip, HoldingClip })
+            {
+                var st = anim[n];
+                if (st == null) continue;
+                st.wrapMode = WrapMode.Loop;
+                st.speed = n == WalkClip ? 1.6f : 1f;
+            }
+            anim.playAutomatically = false;
+            anim.Play(IdleClip);
+            currentClip = IdleClip;
+        }
+
+        private void PlayClip(string name)
+        {
+            if (anim == null || name == currentClip) return;
+            anim.CrossFade(name, 0.12f);
+            currentClip = name;
+        }
+
         private void LateUpdate()
         {
             var boot = GameBootstrap.Instance;
@@ -54,10 +86,17 @@ namespace ParcelFactory.Game
             transform.position = Grid3D.TileF(w.X, w.Y); // 코어가 이미 연속 좌표라 보간하지 않는다
             transform.rotation = Quaternion.Slerp(transform.rotation, Grid3D.Facing(w.Facing), 1f - Mathf.Pow(0.0005f, Time.deltaTime));
 
-            bool moving = (transform.position - lastPos).sqrMagnitude > 1e-6f;
+            bool moving = (transform.position - lastPos).magnitude > 1e-4f; // 코어 위치 변화량 / 프레임
             lastPos = transform.position;
-            bob = moving ? bob + Time.deltaTime * 14f : 0f;
-            Model.localPosition = new Vector3(0f, moving ? Mathf.Abs(Mathf.Sin(bob)) * 0.06f : 0f, 0f);
+            if (anim != null)
+            {
+                PlayClip(moving ? WalkClip : (w.Carrying != null && hasHolding ? HoldingClip : IdleClip));
+            }
+            else
+            {
+                bob = moving ? bob + Time.deltaTime * 14f : 0f;
+                Model.localPosition = new Vector3(0f, moving ? Mathf.Abs(Mathf.Sin(bob)) * 0.06f : 0f, 0f);
+            }
 
             carried.SetActive(w.Carrying != null);
             if (w.Carrying != null) PackageViews.SetStamp(carried, w.Carrying.Inspected && w.Carrying.Rejected);

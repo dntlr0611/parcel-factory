@@ -25,13 +25,19 @@ namespace ParcelFactory.EditorTools
             "Assets/ThirdParty/Kenney/factory-kit/FBX/warning-traffic.fbx",
             "Assets/ThirdParty/Kenney/factory-kit/FBX/screen-panel-flat.fbx",
             "Assets/ThirdParty/Kenney/city-kit-industrial/FBX/shipping-container-a.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/tree_pineRoundA.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/tree_pineTallA.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/tree_default.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/rock_largeA.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/fence_simple.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/grass_large.fbx",
-            "Assets/ThirdParty/Kenney/nature-kit/FBX/ground_grass.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/machine-window.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/hopper-round.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/pipe-large-long.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/robot-arm-a.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/screen-hanging-wide.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/box-wide.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/box-long.fbx",
+            "Assets/ThirdParty/Kenney/factory-kit/FBX/cone.fbx",
+            "Assets/ThirdParty/Kenney/city-kit-industrial/FBX/water-tower.fbx",
+            "Assets/ThirdParty/Kenney/city-kit-industrial/FBX/chimney-medium.fbx",
+            "Assets/ThirdParty/Kenney/city-kit-industrial/FBX/building-a.fbx",
+            "Assets/ThirdParty/Kenney/city-kit-industrial/FBX/detail-tank.fbx",
+            "Assets/ThirdParty/Kenney/car-kit/FBX/cone-flat.fbx",
             "Assets/ThirdParty/Kenney/car-kit/FBX/delivery.fbx",
             "Assets/ThirdParty/Kenney/car-kit/FBX/truck.fbx",
             "Assets/ThirdParty/Kenney/car-kit/FBX/van.fbx",
@@ -63,6 +69,17 @@ namespace ParcelFactory.EditorTools
                   .Append('\n');
                 Object.DestroyImmediate(inst);
             }
+            var ch = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ThirdParty/Kenney/mini-characters/FBX/character-male-a.fbx");
+            var anim = ch != null ? ch.GetComponent<Animation>() : null;
+            sb.Append("ANIM character-male-a animation=").Append(anim != null);
+            if (anim != null)
+            {
+                var clips = AnimationUtility.GetAnimationClips(ch);
+                sb.Append(" clips=").Append(clips.Length).Append(':');
+                foreach (var c in clips) if (c != null) sb.Append(' ').Append(c.name).Append(c.legacy ? "" : "(non-legacy)");
+                sb.Append(" default=").Append(anim.clip != null ? anim.clip.name : "null");
+            }
+            sb.Append('\n');
             var tex = AssetDatabase.FindAssets("colormap t:Texture2D", new[] { "Assets/ThirdParty/Kenney" });
             foreach (var g in tex) sb.Append("TEX ").Append(AssetDatabase.GUIDToAssetPath(g)).Append('\n');
             sb.Append("ASSETPROBE_END");

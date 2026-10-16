@@ -18,6 +18,59 @@ namespace ParcelFactory.Game
         }
     }
 
+    /// <summary>벨트 흐름 표시용 납작한 화살표(셰브런) 메시. XZ 평면에 +z를 가리키고 윗면 법선은 +y.</summary>
+    public static class ChevronMesh
+    {
+        private static Mesh mesh;
+
+        // 7점 다각형 (x, z): 머리 삼각형 + 몸통 사각형으로 나눈다.
+        private static readonly Vector2[] Shape =
+        {
+            new Vector2(0f, 0.16f), new Vector2(0.14f, -0.02f), new Vector2(0.05f, -0.02f), new Vector2(0.05f, -0.16f),
+            new Vector2(-0.05f, -0.16f), new Vector2(-0.05f, -0.02f), new Vector2(-0.14f, -0.02f),
+        };
+
+        // 위(+y)에서 내려다볼 때 시계 방향 = Unity 앞면. 머리 (0,1,6), 몸통 (2,3,4)·(2,4,5).
+        private static readonly int[] TopTris = { 0, 1, 6, 2, 3, 4, 2, 4, 5 };
+
+        public static Mesh Get()
+        {
+            if (mesh != null) return mesh;
+            int n = Shape.Length;
+            var verts = new Vector3[n * 2];
+            var normals = new Vector3[n * 2];
+            for (int i = 0; i < n; i++)
+            {
+                verts[i] = verts[i + n] = new Vector3(Shape[i].x, 0f, Shape[i].y);
+                normals[i] = Vector3.up;
+                normals[i + n] = Vector3.down;
+            }
+            var tris = new int[TopTris.Length * 2];
+            for (int i = 0; i < TopTris.Length; i += 3)
+            {
+                tris[i] = TopTris[i]; tris[i + 1] = TopTris[i + 1]; tris[i + 2] = TopTris[i + 2];
+                // 뒷면(아래에서 볼 때)도 보이도록 반대 와인딩 복사본
+                int j = TopTris.Length + i;
+                tris[j] = TopTris[i] + n; tris[j + 1] = TopTris[i + 2] + n; tris[j + 2] = TopTris[i + 1] + n;
+            }
+            mesh = new Mesh { name = "Chevron", vertices = verts, normals = normals, triangles = tris };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        public static GameObject Create(Transform parent)
+        {
+            var go = new GameObject("Chevron");
+            go.transform.SetParent(parent, false);
+            go.AddComponent<MeshFilter>().sharedMesh = Get();
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = MaterialLibrary.Emissive(new Color(1f, 0xD3 / 255f, 0x6A / 255f), 0.5f);
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            return go;
+        }
+    }
+
     public sealed class CellViews : MonoBehaviour
     {
         private readonly Dictionary<(int, int), GameObject> objs = new Dictionary<(int, int), GameObject>();
@@ -79,7 +132,8 @@ namespace ParcelFactory.Game
                     var arrowPivot = new GameObject("ArrowPivot").transform;
                     arrowPivot.SetParent(go.transform, false);
                     arrowPivot.localRotation = facing;
-                    var arrow = Model("arrow", arrowPivot, Vector3.zero, Quaternion.identity, 0.3f);
+                    var arrow = ChevronMesh.Create(arrowPivot);
+                    arrow.transform.localPosition = new Vector3(0f, 0.43f, -0.32f);
                     var ba = arrow.AddComponent<BeltArrow>();
                     ba.Speed = c.Type == CellType.FastConveyor ? 2f : 1f;
                     if (c.Type == CellType.FastConveyor)

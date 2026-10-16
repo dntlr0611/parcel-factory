@@ -24,6 +24,14 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 Assert.IsNotNull(GameObject.Find("World/Cells/Conveyor"), "cell view not created");
                 Assert.IsNotNull(GameObject.Find("World/WorkerView"), "worker view not created");
+                Assert.IsNotNull(GameObject.Find("World/Lot/Slab"), "lot slab not created");
+                Assert.IsNotNull(GameObject.Find("World/Walls"), "factory walls not created");
+                Assert.IsNotNull(GameObject.Find("World/Yard"), "yard not created");
+                Assert.IsNotNull(GameObject.Find("World/Cells/Conveyor/ArrowPivot/Chevron"), "belt chevron not created");
+                var workerAnim = boot.Worker.Model.GetComponent<Animation>();
+                Assert.IsNotNull(workerAnim, "worker model has no legacy Animation (CatalogBuilder.ConfigureCharacterImport)");
+                Assert.IsNotNull(workerAnim.GetClip("walk"), "walk clip missing");
+                Assert.IsNotNull(workerAnim.GetClip("holding-both"), "holding-both clip missing");
                 Assert.IsNotNull(boot.Input);
                 Assert.AreEqual(2, boot.Input.AvailableSlots().Count); // Conveyor + Table (Table is owned by default)
                 boot.Input.SelectSlot(0);
