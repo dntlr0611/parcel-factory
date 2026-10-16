@@ -14,7 +14,9 @@ namespace ParcelFactory.Game
 
         public Tool? SelectedTool { get; private set; }
         public int SelectedSlot => SelectedTool.HasValue ? AvailableSlots().IndexOf(SelectedTool.Value.Type) : -1;
-        public bool UiBlocksInput { get; set; }
+        private readonly HashSet<string> blockers = new HashSet<string>();
+        /// <summary>UI가 월드 입력을 막고 있는가. 차단 주체(조작 서랍, 패널 등)가 하나라도 있으면 true.</summary>
+        public bool UiBlocksInput => blockers.Count > 0;
 
         public event Action<InteractResult> Interacted;
         public event Action<BuildResult> DemolishRequested;
@@ -99,6 +101,12 @@ namespace ParcelFactory.Game
             if (v.sqrMagnitude > 0.04f) for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep)); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
         }
 
+        /// <summary>차단 주체별로 입력 차단을 켜고 끈다. 서로 다른 UI가 서로의 차단을 풀어버리지 않는다.</summary>
+        public void SetBlock(string owner, bool on)
+        {
+            if (on) blockers.Add(owner); else blockers.Remove(owner);
+        }
+
         public void RequestShop() => ToggleShop?.Invoke();
         public void RequestHelp() => ToggleHelp?.Invoke();
 
@@ -123,7 +131,9 @@ namespace ParcelFactory.Game
         public void Demolish()
         {
             if (S == null) return;
-            DemolishRequested?.Invoke(S.Worker.TryDemolishFacing());
+            var panels = GameBootstrap.Instance.Panels;
+            if (panels != null) panels.Ask();
+            else DemolishRequested?.Invoke(S.Worker.TryDemolishFacing());
         }
 
         /// <summary>보유 방향이 하나라도 있는 종류만 슬롯이 된다.</summary>

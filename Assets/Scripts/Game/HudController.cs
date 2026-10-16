@@ -67,14 +67,17 @@ namespace ParcelFactory.Game
 
         private void BuildTopRight()
         {
-            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(420f, 40f));
+            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(660f, 40f));
             UiKit.Row(row, 6f, new RectOffset(0, 0, 0, 0)).childAlignment = TextAnchor.MiddleRight;
             var boot = GameBootstrap.Instance;
             pauseBtn = UiKit.Button("Pause", row, "일시정지 P", new Vector2(100f, 36f), () => boot.Session.Paused = !boot.Session.Paused);
             speedBtn = UiKit.Button("Speed", row, "1x T", new Vector2(64f, 36f), () => boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f);
-            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(80f, 36f), () => input.RequestShop());
+            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(80f, 36f), () => { if (input.UiBlocksInput) return; input.RequestShop(); });
             helpBtn = UiKit.Button("Help", row, "조작 O", new Vector2(80f, 36f), () => SetHelp(!help.gameObject.activeSelf));
-            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, helpBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, 36f);
+            var saveBtn = UiKit.Button("Save", row, "저장", new Vector2(60f, 36f), () => Toast(SaveFile.TrySave(boot.Session, out var e1) ? "저장했습니다" : e1));
+            var loadBtn = UiKit.Button("Load", row, "불러오기", new Vector2(80f, 36f), () => { if (SaveFile.TryLoad(out var s2, out var e2)) { boot.ReplaceSession(s2); Toast("불러왔습니다"); } else Toast(e2); });
+            var newBtn = UiKit.Button("New", row, "새 게임", new Vector2(74f, 36f), () => { boot.StartNewGame(); Toast("새 게임"); });
+            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, helpBtn, saveBtn, loadBtn, newBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, 36f);
         }
 
         private void BuildHotbar()
@@ -84,7 +87,7 @@ namespace ParcelFactory.Game
             for (int i = 0; i < 5; i++)
             {
                 int idx = i;
-                var b = UiKit.Button("Slot" + (i + 1), hotbar, "", new Vector2(64f, 60f), () => input.SelectSlot(idx), new Color(0f, 0f, 0f, 0.35f));
+                var b = UiKit.Button("Slot" + (i + 1), hotbar, "", new Vector2(64f, 60f), () => { if (input.UiBlocksInput) return; input.SelectSlot(idx); }, new Color(0f, 0f, 0f, 0.35f));
                 UiKit.Size(b, 64f, 60f);
                 var key = UiKit.Label("Key", b.transform, (i + 1).ToString(), 11, UiKit.Muted, TextAnchor.UpperLeft, FontStyle.Bold);
                 key.rectTransform.offsetMin = new Vector2(5f, 0f); key.rectTransform.offsetMax = new Vector2(0f, -3f);
@@ -132,9 +135,9 @@ namespace ParcelFactory.Game
             void Pad(string name, string txt, Vector2 pos, Direction d) { var b = UiKit.Button(name, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20, Vector2.zero); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => input.SetPad(d, held)); et.triggers.Add(entry); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
             Pad("TouchPadN", "↑", new Vector2(85f, 140f), Direction.North); Pad("TouchPadW", "←", new Vector2(28f, 85f), Direction.West); Pad("TouchPadE", "→", new Vector2(142f, 85f), Direction.East); Pad("TouchPadS", "↓", new Vector2(85f, 30f), Direction.South);
             touchButtons = UiKit.Rect("TouchButtons", Root, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 110f), new Vector2(200f, 170f));
-            var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => input.Interact(), UiKit.Accent, UiKit.AccentFg, 20, new Vector2(1f, 0f)); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(-50f, 50f);
-            var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => input.Demolish(), new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
-            var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => input.RotateTool(), null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
+            var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => { if (input.UiBlocksInput) return; input.Interact(); }, UiKit.Accent, UiKit.AccentFg, 20, new Vector2(1f, 0f)); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(-50f, 50f);
+            var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.Demolish(); }, new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
+            var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.RotateTool(); }, null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
             hotbar.anchoredPosition = new Vector2(0f, 14f);
         }
 
@@ -142,7 +145,7 @@ namespace ParcelFactory.Game
         private void SetHelp(bool open)
         {
             help.gameObject.SetActive(open);
-            input.UiBlocksInput = open;
+            input.SetBlock("help", open);
             if (open) input.ClearPad();
         }
 
