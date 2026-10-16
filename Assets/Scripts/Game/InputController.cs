@@ -108,7 +108,10 @@ namespace ParcelFactory.Game
             if (held) padHeld.Add(d); else padHeld.Remove(d);
         }
 
-        private void OnApplicationFocus(bool focus) { if (!focus) padHeld.Clear(); }
+        /// <summary>화면 D-패드 입력을 모두 해제한다. 패널이 열릴 때 이동을 멈추는 데 쓴다.</summary>
+        public void ClearPad() => padHeld.Clear();
+
+        private void OnApplicationFocus(bool focus) { if (!focus) ClearPad(); }
 
         public void Interact()
         {

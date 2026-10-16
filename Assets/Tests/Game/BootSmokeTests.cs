@@ -33,6 +33,10 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(boot.Input.SelectedTool.HasValue); // re-tap cycles, does not clear
                 boot.Input.ClearTool();
                 Assert.AreEqual(-1, boot.Input.SelectedSlot);
+                Assert.IsNotNull(boot.Hud);
+                Assert.IsNotNull(GameObject.Find("HUD"));
+                boot.Hud.Toast("test");
+                yield return null;
                 LogAssert.NoUnexpectedReceived();
             }
             finally
