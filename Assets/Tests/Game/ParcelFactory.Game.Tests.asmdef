@@ -1,7 +1,7 @@
 {
   "name": "ParcelFactory.Game.Tests",
   "rootNamespace": "ParcelFactory.Game.Tests",
-  "references": ["ParcelFactory.Core", "ParcelFactory.Game", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "references": ["ParcelFactory.Core", "ParcelFactory.Game", "UnityEngine.UI", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

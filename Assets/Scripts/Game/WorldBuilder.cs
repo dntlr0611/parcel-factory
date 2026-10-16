@@ -258,10 +258,10 @@ namespace ParcelFactory.Game
         private void BuildYard()
         {
             var yard = Group("Yard");
-            // 컨테이너 FBX는 1배에서 약 1.4×1.3×3.0m다. 1.6배(≈2.2×2.1×4.9m)로 두고 동쪽 벽(+7)에서 4m 이상 띄운다.
-            Spawn("shipping-container-a", new Vector3(12.5f, 0f, 3.5f), Quaternion.identity, 1.6f, yard);
-            Spawn("shipping-container-b", new Vector3(12.5f, 0f, 9.0f), Quaternion.identity, 1.6f, yard);
-            Spawn("shipping-container-c", new Vector3(15.0f, 0f, 0.5f), Quaternion.Euler(0f, 5f, 0f), 1.6f, yard);
+            // 컨테이너 FBX는 1배에서 약 1.4×1.3×3.0m다. 1.6배(≈2.2×2.1×4.9m)로 두고 x ≥ 18에 둬 16:9·2400x1080 화면 가장자리에 걸리지 않게 한다.
+            Spawn("shipping-container-a", new Vector3(18.0f, 0f, 3.5f), Quaternion.identity, 1.6f, yard);
+            Spawn("shipping-container-b", new Vector3(18.0f, 0f, 9.0f), Quaternion.identity, 1.6f, yard);
+            Spawn("shipping-container-c", new Vector3(19.0f, 0f, 0.5f), Quaternion.Euler(0f, 5f, 0f), 1.6f, yard);
             Spawn("water-tower", new Vector3(-10.5f, 0f, 9.5f), Quaternion.identity, 2.6f, yard);
             Spawn("detail-tank", new Vector3(-11.5f, 0f, 6.0f), Quaternion.identity, 3.0f, yard);
             Spawn("chimney-medium", new Vector3(9.0f, 0f, 10.5f), Quaternion.identity, 2.6f, yard);

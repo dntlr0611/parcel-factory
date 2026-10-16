@@ -4,6 +4,7 @@ using NUnit.Framework;
 using ParcelFactory.Core;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace ParcelFactory.Game.Tests
 {
@@ -136,11 +137,23 @@ namespace ParcelFactory.Game.Tests
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
             rt.Create();
             var prevMode = canvas.renderMode;
+            // 배치 모드 화면(640x480) 기준 배율 대신 RenderTexture 높이 기준(게임 기준 해상도 1280x800의 800)으로 HUD를 키워 글자를 선명하게 한다.
+            var scaler = canvas.GetComponent<CanvasScaler>();
+            var prevScaleMode = scaler != null ? scaler.uiScaleMode : CanvasScaler.ScaleMode.ConstantPixelSize;
+            float prevScaleFactor = scaler != null ? scaler.scaleFactor : 1f;
+            if (scaler != null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = h / 800f;
+            }
             cam.targetTexture = rt;
             Reframe(boot.World);
             canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.worldCamera = cam;
             canvas.planeDistance = cam.nearClipPlane + 0.2f;
+            yield return null;
+            // 배율이 바뀌어도 Text는 예전 픽셀 크기로 만든 글리프를 그대로 늘려 쓰므로 다시 만들게 한다.
+            Redraw(canvas);
             yield return null;
             yield return null;
             FixPrompt(boot, cam);
@@ -159,6 +172,12 @@ namespace ParcelFactory.Game.Tests
             cam.targetTexture = null;
             canvas.renderMode = prevMode;
             canvas.worldCamera = null;
+            if (scaler != null)
+            {
+                scaler.scaleFactor = prevScaleFactor;
+                scaler.uiScaleMode = prevScaleMode;
+            }
+            Redraw(canvas);
             Reframe(boot.World);
             rt.Release();
             Object.Destroy(rt);
@@ -169,6 +188,11 @@ namespace ParcelFactory.Game.Tests
             Debug.Log($"[Screenshot] wrote {path} via RenderTexture {w}x{h}, {size} bytes, luminance spread {spread:F3}");
             Assert.Greater(spread, 0.05f, path + " looks blank (uniform colour)");
             Assert.Greater(size, MinBytes, path + " is too small (blank render?)");
+        }
+
+        private static void Redraw(Canvas canvas)
+        {
+            foreach (var g in canvas.GetComponentsInChildren<Graphic>(true)) g.SetAllDirty();
         }
 
         /// <summary>WorldBuilder.FrameLot(현재 크기)를 다시 불러 카메라 비율(=RenderTexture 비율)에 맞춘다.</summary>
