@@ -17,7 +17,7 @@
 - 월드 단위: 1칸 = 1m. 격자 (gx, gy) → 월드 `(gx − 5.5, 0, gy − 5.5)`. 북쪽(gy+) = +z = 화면 위.
 - 카메라 고정: 위치 (0, 17, −9.5), 원점을 바라봄, FOV 38. 따뜻한 방향광 + 부드러운 그림자, 안개, URP Volume(ACES 톤매핑, 비네팅, 약한 블룸).
 - 핫바: 부품 종류당 1칸(레일, 고속 레일, 검사대, 분배기, 자동 검사기 순, 키 1~5), 방향은 R 또는 칸 재탭으로 보유 방향 순환.
-- 조작(9.1): WASD/방향키/게임패드 스틱 이동(0.16초마다 1칸), E 상호작용, X 해체, R 방향, Q 빈손, P 일시정지, T 배속, B 상점, O 조작, Esc 패널 닫기. 터치 기기에서는 화면 D-패드와 E/X/R 버튼.
+- 조작(9.1·9.7): WASD/방향키/게임패드 스틱 이동(누르고 있는 동안 연속 이동, `Worker.Move(vx, vy, dt)`), E 상호작용, X 해체, R 방향, Q 빈손, P 일시정지, T 배속, B 상점, O 조작, Esc 패널 닫기. 터치 기기에서는 화면 D-패드와 E/X/R 버튼.
 - 작업자가 이동하면 `Worker.CancelInspection()`을 호출한다. 프롬프트 문구는 `Worker.Preview(tool)` 결과로 만든다.
 - 모든 Unity 검증은 배치 모드로 한다: `UNITY="/Applications/Unity/Hub/Editor/6000.3.26f1/Unity.app/Contents/MacOS/Unity"`, 항상 `-batchmode -nographics -logFile <path>`. 컴파일 확인은 `-quit` 실행 후 `grep -c "error CS" <log>`가 0.
 - 커밋 트레일러: 서브에이전트는 자기 모델의 `Co-Authored-By`를 쓴다.
@@ -1048,8 +1048,8 @@ git commit -m "feat(game): cell, package and worker views with belt arrows, curs
 - Modify: `Assets/Scripts/Game/GameBootstrap.cs`
 
 **Interfaces:**
-- Consumes: `WorkerService.TryMove/Interact/TryDemolishFacing/CancelInspection/PendingInspection`, `Toolbar.OwnedTools()`.
-- Produces: `class InputController : MonoBehaviour { Tool? SelectedTool; IReadOnlyList<CellType> SlotTypes; int SelectedSlot; void SelectSlot(int i); void ClearTool(); void RotateTool(); void Move(Direction); void Interact(); void Demolish(); bool UiBlocksInput (set by HUD); event Action<InteractResult> Interacted; event Action<BuildResult> DemolishRequested; event Action TogglePause, ToggleSpeed, ToggleShop, ToggleHelp, Escape; }`
+- Consumes: `WorkerService.Move(vx, vy, dt)/Interact/TryDemolishFacing/CancelInspection/PendingInspection`, `Toolbar.OwnedTools()`. (Task 8이 먼저 끝나 있어야 한다.)
+- Produces: `class InputController : MonoBehaviour { Tool? SelectedTool; IReadOnlyList<CellType> SlotTypes; int SelectedSlot; void SelectSlot(int i); void ClearTool(); void RotateTool(); void SetPad(Direction d, bool held); void Interact(); void Demolish(); bool UiBlocksInput (set by HUD); event Action<InteractResult> Interacted; event Action<BuildResult> DemolishRequested; event Action TogglePause, ToggleSpeed, ToggleShop, ToggleHelp, Escape; }`
 
 - [ ] **Step 1: InputController 작성**
 
@@ -1068,7 +1068,6 @@ namespace ParcelFactory.Game
     public sealed class InputController : MonoBehaviour
     {
         public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Table, CellType.Splitter, CellType.Scanner };
-        private const float MoveRepeatSeconds = 0.16f;
 
         public Tool? SelectedTool { get; private set; }
         public int SelectedSlot { get; private set; } = -1;
@@ -1081,7 +1080,7 @@ namespace ParcelFactory.Game
         private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, help, escape;
         private readonly InputAction[] slots = new InputAction[5];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
-        private float lastMove;
+        private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
 
         private void Awake()
         {
@@ -1147,23 +1146,20 @@ namespace ParcelFactory.Game
             if (demolish.WasPressedThisFrame()) Demolish();
 
             var v = move.ReadValue<Vector2>();
-            if (v.sqrMagnitude > 0.25f && Time.unscaledTime - lastMove >= MoveRepeatSeconds)
-            {
-                lastMove = Time.unscaledTime;
-                var d = Mathf.Abs(v.x) > Mathf.Abs(v.y) ? (v.x > 0 ? Direction.East : Direction.West) : (v.y > 0 ? Direction.North : Direction.South);
-                Move(d);
-            }
+            foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
+            if (v.sqrMagnitude > 0.04f) S.Worker.Move(v.x, v.y, Time.deltaTime); // 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
         }
 
         public void RequestShop() => ToggleShop?.Invoke();
         public void RequestHelp() => ToggleHelp?.Invoke();
 
-        public void Move(Direction d)
+        /// <summary>화면 D-패드용. 누르는 동안 held=true, 떼면 false. 이동 자체는 Update에서 매 프레임 적용된다.</summary>
+        public void SetPad(Direction d, bool held)
         {
-            if (S == null) return;
-            S.Worker.TryMove(d);
-            S.Worker.CancelInspection();
+            if (held) padHeld.Add(d); else padHeld.Remove(d);
         }
+
+        private void OnApplicationFocus(bool focus) { if (!focus) padHeld.Clear(); }
 
         public void Interact()
         {
@@ -1227,6 +1223,8 @@ namespace ParcelFactory.Game
 - [ ] **Step 2: Bootstrap에 연결**
 
 `GameBootstrap.Awake`에서 `Cells = gameObject.AddComponent<CellViews>();` 다음에 `Input = gameObject.AddComponent<InputController>();`, 프로퍼티 `public InputController Input { get; private set; }`. `ReplaceSession`에서 `Input?.ClearTool();`를 호출한다.
+
+이동이 연속이므로 B5의 `Interacted` 처리에서 `InteractResult.Standing`은 토스트 "서 있는 자리에는 놓을 수 없습니다"로 보여준다. B5의 터치 D-패드는 `onClick` 대신 `EventTrigger`의 PointerDown/PointerUp/PointerExit로 `input.SetPad(d, true/false)`를 호출한다.
 
 - [ ] **Step 3: 컴파일·PlayMode**
 
@@ -1496,7 +1494,7 @@ namespace ParcelFactory.Game
         private void BuildTouchControls()
         {
             touchPad = UiKit.Rect("TouchPad", Root, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(16f, 110f), new Vector2(170f, 170f));
-            void Pad(string txt, Vector2 pos, Direction d) { var b = UiKit.Button("Pad" + txt, touchPad, txt, new Vector2(52f, 52f), () => input.Move(d), null, null, 20); b.GetComponent<RectTransform>().anchoredPosition = pos; }
+            void Pad(string txt, Vector2 pos, Direction d) { var b = UiKit.Button("Pad" + txt, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var e = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; e.callback.AddListener(_ => input.SetPad(d, held)); et.triggers.Add(e); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
             Pad("↑", new Vector2(85f, 140f), Direction.North); Pad("←", new Vector2(28f, 85f), Direction.West); Pad("→", new Vector2(142f, 85f), Direction.East); Pad("↓", new Vector2(85f, 30f), Direction.South);
             touchButtons = UiKit.Rect("TouchButtons", Root, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 110f), new Vector2(200f, 170f));
             var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => input.Interact(), UiKit.Accent, UiKit.AccentFg, 20); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(150f, 60f);
@@ -1523,6 +1521,7 @@ namespace ParcelFactory.Game
                 case InteractResult.Occupied: Toast("이미 무언가 있습니다"); break;
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다"); break;
+                case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
             }
         }
 
