@@ -51,8 +51,9 @@ namespace ParcelFactory.Core
 
     public sealed class WorkerState
     {
-        public int X;
-        public int Y;
+        /// <summary>연속 좌표(칸 단위). v2 저장의 정수 좌표는 그대로 칸 중심으로 읽힌다.</summary>
+        public float X;
+        public float Y;
         public string Facing;
         /// <summary>들고 있는 택배. 없으면 null. X/Y는 무시된다.</summary>
         public PackageState Carrying;

@@ -16,7 +16,9 @@ namespace ParcelFactory.Core.Tests
             Assert.IsFalse(s.Paused);
             Assert.AreEqual(1f, s.Speed);
             Assert.IsNotNull(s.Worker);
-            Assert.AreEqual((2, 4), (s.Worker.Worker.X, s.Worker.Worker.Y));
+            Assert.AreEqual(WorkerService.StartX, s.Worker.Worker.X);
+            Assert.AreEqual(WorkerService.StartY, s.Worker.Worker.Y);
+            Assert.AreEqual((2, 4), s.Worker.Tile());
             Assert.IsTrue(s.Toolbar.TableOwned);
         }
 
@@ -100,6 +102,15 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(InteractResult.Delivered, s.Worker.Interact(null));
             Assert.AreEqual(75, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
+        }
+
+        [Test]
+        public void Worker_WalksAcrossRails_InSession()
+        {
+            var s = new GameSession(new Economy(100), new PackageFactory(new Random(1), 0.0));
+            Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 4, CellType.Conveyor, Direction.East));
+            for (int i = 0; i < 10; i++) s.Worker.Move(-1f, 0f, 0.1f);
+            Assert.AreEqual((0, 4), s.Worker.Tile());
         }
     }
 }

@@ -24,28 +24,171 @@ namespace ParcelFactory.Core.Tests
             ws = new WorkerService(grid, sim, build);
         }
 
+        private const float R = WorkerService.Radius;
+
+        private void MoveRepeatedly(float vx, float vy, int steps, float dt = 0.1f)
+        {
+            for (int i = 0; i < steps; i++) ws.Move(vx, vy, dt);
+        }
+
         [Test]
         public void StartsAt2_4FacingSouth()
         {
-            Assert.AreEqual((2, 4), (ws.Worker.X, ws.Worker.Y));
+            Assert.AreEqual(2f, ws.Worker.X);
+            Assert.AreEqual(4f, ws.Worker.Y);
             Assert.AreEqual(Direction.South, ws.Worker.Facing);
             Assert.IsNull(ws.Worker.Carrying);
+            Assert.AreEqual((2, 4), ws.Tile());
             Assert.AreEqual((2, 3), ws.FacingTile());
         }
 
         [Test]
-        public void Move_WalksOnlyOnEmptyFloor()
+        public void Move_StopsAtUnlockedBoundary()
         {
-            Assert.IsTrue(ws.TryMove(Direction.North));
-            Assert.AreEqual((2, 5), (ws.Worker.X, ws.Worker.Y));
-            Assert.IsFalse(ws.TryMove(Direction.North)); // (2,6)은 잠긴 칸
-            Assert.AreEqual((2, 5), (ws.Worker.X, ws.Worker.Y));
+            Assert.IsFalse(ws.Move(0f, 1f, 0.5f)); // 1.7칸 → 5.7은 경계 밖이라 취소
+            Assert.IsFalse(ws.Move(0f, 1f, 0.5f));
+            Assert.LessOrEqual(ws.Worker.Y, 5.5f - R + 1e-4f);
+            MoveRepeatedly(0f, 1f, 20);
+            Assert.LessOrEqual(ws.Worker.Y, 5.5f - R + 1e-4f); // 5.22
+            Assert.Greater(ws.Worker.Y, 5f);
             Assert.AreEqual(Direction.North, ws.Worker.Facing);
-            grid.Place(1, 5, CellType.Conveyor, Direction.East);
-            Assert.IsFalse(ws.TryMove(Direction.West)); // 레일 위로는 못 감
-            Assert.AreEqual(Direction.West, ws.Worker.Facing); // 몸은 돌아감
-            Assert.IsFalse(ws.CanWalk(0, 2)); // 입고구
-            Assert.IsFalse(ws.CanWalk(-1, 0));
+            var (fx, fy) = ws.FacingTile();
+            Assert.IsTrue(grid.InBounds(fx, fy));
+        }
+
+        [Test]
+        public void Move_Diagonal_IsNormalized()
+        {
+            Assert.IsTrue(ws.Move(1f, 1f, 0.1f));
+            float dx = ws.Worker.X - 2f, dy = ws.Worker.Y - 4f;
+            Assert.AreEqual(WorkerService.Speed * 0.1f, (float)Math.Sqrt(dx * dx + dy * dy), 1e-4f);
+            Assert.AreEqual(dx, dy, 1e-5f);
+        }
+
+        [Test]
+        public void Move_ZeroVector_DoesNothing()
+        {
+            Assert.IsFalse(ws.Move(0f, 0f, 1f));
+            Assert.AreEqual(Direction.South, ws.Worker.Facing);
+            Assert.AreEqual(2f, ws.Worker.X);
+            Assert.AreEqual(4f, ws.Worker.Y);
+        }
+
+        [Test]
+        public void Move_WalksOverRail()
+        {
+            grid.Place(1, 4, CellType.Conveyor, Direction.East);
+            MoveRepeatedly(-1f, 0f, 10); // 서쪽으로 1초
+            Assert.Less(ws.Worker.X, 1.5f);
+            Assert.AreEqual(4f, ws.Worker.Y);
+        }
+
+        [Test]
+        public void Move_BlockedByTable_SlidesAlongIt()
+        {
+            grid.Place(1, 4, CellType.Table, Direction.East);
+            MoveRepeatedly(-1f, 0f, 10);
+            Assert.GreaterOrEqual(ws.Worker.X, 1.5f + R - 1e-4f);
+            Assert.AreEqual(4f, ws.Worker.Y);
+
+            // 대각선으로 밀면 x는 막히고 y 성분만 남아 벽을 따라 미끄러진다
+            float x0 = ws.Worker.X;
+            Assert.IsTrue(ws.Move(-1f, 1f, 0.1f));
+            Assert.AreEqual(x0, ws.Worker.X);
+            Assert.AreEqual(4f + WorkerService.Speed * 0.1f / (float)Math.Sqrt(2), ws.Worker.Y, 1e-4f);
+            Assert.AreEqual(Direction.West, ws.Worker.Facing);
+        }
+
+        [Test]
+        public void Move_WalksOntoInlet_ButNotIntoLockedCells()
+        {
+            ws.Worker.X = 0f; ws.Worker.Y = 3f;
+            MoveRepeatedly(0f, -1f, 3); // 3 → 1.98
+            Assert.AreEqual((0, 2), ws.Tile());
+            Assert.IsTrue(ws.CanStand(0f, 2f));
+
+            ws.Worker.X = 4f; ws.Worker.Y = 3f;
+            MoveRepeatedly(1f, 0f, 20);
+            Assert.LessOrEqual(ws.Worker.X, 5.5f - R + 1e-4f);
+            Assert.AreEqual(5, ws.Tile().x);
+            Assert.IsFalse(ws.CanStand(6f, 3f));
+            Assert.IsFalse(ws.CanStand(-0.3f, 3f));
+            Assert.IsFalse(ws.CanStand(float.NaN, 3f));
+        }
+
+        [Test]
+        public void IsWalkable_PerSpec()
+        {
+            foreach (var t in new[] { CellType.Empty, CellType.Conveyor, CellType.FastConveyor, CellType.Inlet, CellType.Outlet, CellType.ReturnDock })
+                Assert.IsTrue(WorkerService.IsWalkable(t), t.ToString());
+            foreach (var t in new[] { CellType.Locked, CellType.Splitter, CellType.Table, CellType.Scanner })
+                Assert.IsFalse(WorkerService.IsWalkable(t), t.ToString());
+        }
+
+        [Test]
+        public void Move_FacingFollowsDominantAxis()
+        {
+            Assert.IsTrue(ws.Move(1f, 0.2f, 0.05f));
+            Assert.AreEqual(Direction.East, ws.Worker.Facing);
+            Assert.IsTrue(ws.Move(-0.2f, 1f, 0.05f));
+            Assert.AreEqual(Direction.North, ws.Worker.Facing);
+            Assert.IsTrue(ws.Move(-1f, -1f, 0.05f)); // 같으면 동/서
+            Assert.AreEqual(Direction.West, ws.Worker.Facing);
+            Assert.IsTrue(ws.Move(0.1f, -1f, 0.05f));
+            Assert.AreEqual(Direction.South, ws.Worker.Facing);
+        }
+
+        [Test]
+        public void FacingTile_UsesReach()
+        {
+            ws.Worker.X = 2.3f; ws.Worker.Y = 3.6f;
+            ws.Worker.Facing = Direction.East;
+            Assert.AreEqual((3, 4), ws.FacingTile()); // round(3.1), round(3.6)
+            ws.Worker.Facing = Direction.South;
+            Assert.AreEqual((2, 3), ws.FacingTile()); // round(2.3), round(2.8)
+            Assert.AreEqual((2, 4), ws.Tile());
+        }
+
+        [Test]
+        public void Overlaps_UsesRadius()
+        {
+            ws.Worker.X = 2f; ws.Worker.Y = 3.6f;
+            Assert.IsTrue(ws.Overlaps(2, 4));
+            Assert.IsTrue(ws.Overlaps(2, 3));
+            Assert.IsFalse(ws.Overlaps(2, 2));
+            Assert.IsFalse(ws.Overlaps(3, 4));
+        }
+
+        [Test]
+        public void Preview_BlockingPartOnOverlappedTile_IsStanding()
+        {
+            ws.Worker.Y = 3.6f; // 남쪽 (2,3)을 바라보며 그 칸에 몸이 걸침
+            Assert.AreEqual((2, 3), ws.FacingTile());
+            Assert.AreEqual(InteractResult.Standing, ws.Preview(new Tool(CellType.Table, Direction.East)));
+            Assert.AreEqual(InteractResult.Standing, ws.Interact(new Tool(CellType.Table, Direction.East)));
+            Assert.AreEqual(CellType.Empty, grid.Get(2, 3).Type);
+            Assert.AreEqual(200, economy.Money);
+            Assert.AreEqual(InteractResult.Placed, ws.Preview(new Tool(CellType.Conveyor, Direction.East)));
+            Assert.AreEqual(InteractResult.Placed, ws.Interact(new Tool(CellType.Conveyor, Direction.East)));
+
+            ws.Worker.Y = 4f; // 더 이상 겹치지 않음
+            grid.Clear(2, 3);
+            Assert.AreEqual(InteractResult.Placed, ws.Preview(new Tool(CellType.Table, Direction.East)));
+        }
+
+        [Test]
+        public void Move_CancelsPendingInspection()
+        {
+            grid.Place(1, 2, CellType.Table, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out _));
+            sim.Tick(1f);
+            ws.Worker.X = 1; ws.Worker.Y = 3; ws.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.InspectionRequired, ws.Interact(null));
+            Assert.IsNotNull(ws.PendingInspection);
+            Assert.IsFalse(ws.Move(0f, 0f, 0.1f));
+            Assert.IsNotNull(ws.PendingInspection); // 움직이지 않으면 유지
+            Assert.IsTrue(ws.Move(1f, 0f, 0.05f));
+            Assert.IsNull(ws.PendingInspection);
         }
 
         [Test]

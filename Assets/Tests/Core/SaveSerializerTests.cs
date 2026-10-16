@@ -29,7 +29,7 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(2, st.Version);
+            Assert.AreEqual(3, st.Version);
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
             Assert.AreEqual(4, st.Cells.Count);
@@ -71,7 +71,8 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(original.Spawner.Timer, restored.Spawner.Timer, 1e-4f);
             Assert.IsTrue(restored.Paused);
             Assert.AreEqual(2f, restored.Speed);
-            Assert.AreEqual((1, 4), (restored.Worker.Worker.X, restored.Worker.Worker.Y));
+            Assert.AreEqual(1f, restored.Worker.Worker.X);
+            Assert.AreEqual(4f, restored.Worker.Worker.Y);
             Assert.AreEqual(Direction.West, restored.Worker.Worker.Facing);
             Assert.AreEqual(original.Sim.Packages[0].Bad, p.Bad);
             Assert.AreEqual(original.Sim.Packages[0].Label.Destination, p.Label.Destination);
@@ -143,16 +144,60 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Restore_RejectsWorkerOnNonFloor()
+        public void Restore_RejectsWorkerOnInvalidPosition()
         {
-            var st = SaveSerializer.Capture(new GameSession());
-            st.Worker.X = 0; st.Worker.Y = 2; // 입고구
+            var s = new GameSession(new Economy(500));
+            Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 3, CellType.Table, Direction.East));
+            var st = SaveSerializer.Capture(s);
+            st.Worker.X = 1f; st.Worker.Y = 3f; // 검사대 위
+            var e = Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            StringAssert.Contains("worker on invalid position", e.Message);
+            st.Worker.X = 1.5f; st.Worker.Y = 3.4f; // 검사대에 걸침
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
-            st.Worker.X = 99;
+            st.Worker.X = 99f;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st.Worker.X = float.NaN;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st.Worker.X = 0f; st.Worker.Y = 2f; // 입고구 위는 이제 유효
+            Assert.AreEqual(0f, SaveSerializer.Restore(st).Worker.Worker.X);
             var st2 = SaveSerializer.Capture(new GameSession());
             st2.Worker = null;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st2));
+        }
+
+        [Test]
+        public void RoundTrip_PreservesFloatWorkerPosition()
+        {
+            var s = new GameSession();
+            s.Worker.Worker.X = 1.37f; s.Worker.Worker.Y = 3.62f; s.Worker.Worker.Facing = Direction.North;
+            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(SaveSerializer.Capture(s))));
+            Assert.AreEqual(1.37f, restored.Worker.Worker.X, 1e-5f);
+            Assert.AreEqual(3.62f, restored.Worker.Worker.Y, 1e-5f);
+            Assert.AreEqual(Direction.North, restored.Worker.Worker.Facing);
+        }
+
+        [Test]
+        public void V2Save_WithIntegerWorkerCoords_IsRead()
+        {
+            const string json = "{\"Version\":2,\"Money\":90,\"UnlockedSize\":6,\"Purchased\":[]," +
+                "\"Cells\":[{\"X\":1,\"Y\":2,\"Type\":\"Conveyor\",\"Direction\":\"East\",\"Demolishing\":false,\"DemolishRemaining\":0.0,\"SplitterToggle\":false}]," +
+                "\"Packages\":[],\"SpawnTimer\":0.5,\"NextPackageId\":1,\"DeliveredCount\":0,\"LostCount\":0,\"Paused\":false,\"Speed\":1.0," +
+                "\"Worker\":{\"X\":1,\"Y\":3,\"Facing\":\"West\",\"Carrying\":null}}";
+            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(json));
+            Assert.AreEqual(1f, restored.Worker.Worker.X);
+            Assert.AreEqual(3f, restored.Worker.Worker.Y);
+            Assert.AreEqual(Direction.West, restored.Worker.Worker.Facing);
+            Assert.AreEqual(CellType.Conveyor, restored.Grid.Get(1, 2).Type);
+            Assert.AreEqual(90, restored.Economy.Money);
+            Assert.AreEqual(3, SaveSerializer.Capture(restored).Version);
+        }
+
+        [Test]
+        public void FutureVersion_IsRejected()
+        {
+            var st = SaveSerializer.Capture(new GameSession());
+            st.Version = 4;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
         }
 
         [Test]

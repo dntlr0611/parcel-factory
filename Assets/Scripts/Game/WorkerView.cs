@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>작업자 모델을 코어 Worker 위치로 부드럽게 옮기고, 들고 있는 택배와 바라보는 칸 커서를 그린다.</summary>
+    /// <summary>작업자 모델을 코어 Worker의 연속 좌표에 그대로 두고(회전만 보간), 들고 있는 택배와 바라보는 칸 커서를 그린다.</summary>
     public sealed class WorkerView : MonoBehaviour
     {
         /// <summary>Kenney 캐릭터의 정면이 로컬 −z면 true로 바꾼다 (Play에서 확인).</summary>
@@ -42,7 +42,7 @@ namespace ParcelFactory.Game
             cursor = q.transform;
 
             var w = boot.Session.Worker.Worker;
-            transform.position = lastPos = Grid3D.Tile(w.X, w.Y);
+            transform.position = lastPos = Grid3D.TileF(w.X, w.Y);
         }
 
         private void LateUpdate()
@@ -51,8 +51,7 @@ namespace ParcelFactory.Game
             if (boot == null || boot.Session == null || Model == null) return;
             var ws = boot.Session.Worker;
             var w = ws.Worker;
-            var target = Grid3D.Tile(w.X, w.Y);
-            transform.position = Vector3.Lerp(transform.position, target, 1f - Mathf.Pow(0.0005f, Time.deltaTime));
+            transform.position = Grid3D.TileF(w.X, w.Y); // 코어가 이미 연속 좌표라 보간하지 않는다
             transform.rotation = Quaternion.Slerp(transform.rotation, Grid3D.Facing(w.Facing), 1f - Mathf.Pow(0.0005f, Time.deltaTime));
 
             bool moving = (transform.position - lastPos).sqrMagnitude > 1e-6f;

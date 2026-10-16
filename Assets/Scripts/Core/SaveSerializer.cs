@@ -12,7 +12,9 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
+        /// <summary>읽을 수 있는 가장 오래된 버전. v2는 작업자 좌표가 정수였을 뿐 구조가 같다.</summary>
+        public const int MinReadableVersion = 2;
 
         public static GameState Capture(GameSession s)
         {
@@ -60,8 +62,8 @@ namespace ParcelFactory.Core
         public static GameSession Restore(GameState st)
         {
             if (st == null) throw new SaveVersionException("empty save");
-            if (st.Version != CurrentVersion)
-                throw new SaveVersionException($"save version {st.Version} != {CurrentVersion}");
+            if (st.Version < MinReadableVersion || st.Version > CurrentVersion)
+                throw new SaveVersionException($"save version {st.Version} not in [{MinReadableVersion},{CurrentVersion}]");
             try
             {
                 return RestoreUnchecked(st);
@@ -117,8 +119,8 @@ namespace ParcelFactory.Core
             }
 
             if (st.Worker == null) throw new SaveVersionException("missing worker");
-            if (!s.Grid.InBounds(st.Worker.X, st.Worker.Y) || s.Grid.Get(st.Worker.X, st.Worker.Y).Type != CellType.Empty)
-                throw new SaveVersionException($"worker on invalid cell ({st.Worker.X},{st.Worker.Y})");
+            if (!s.Worker.CanStand(st.Worker.X, st.Worker.Y))
+                throw new SaveVersionException($"worker on invalid position ({st.Worker.X},{st.Worker.Y})");
             s.Worker.Worker.X = st.Worker.X;
             s.Worker.Worker.Y = st.Worker.Y;
             s.Worker.Worker.Facing = ParseDefined<Direction>(st.Worker.Facing);
