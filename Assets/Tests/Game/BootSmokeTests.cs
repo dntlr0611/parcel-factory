@@ -20,6 +20,10 @@ namespace ParcelFactory.Game.Tests
                 int t0 = boot.Loop.Ticks;
                 yield return new WaitForSeconds(0.6f);
                 Assert.Greater(boot.Loop.Ticks, t0, "game loop did not tick");
+                boot.Session.Build.TryPlace(1, 2, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East);
+                yield return null;
+                Assert.IsNotNull(GameObject.Find("World/Cells/Conveyor"), "cell view not created");
+                Assert.IsNotNull(GameObject.Find("World/WorkerView"), "worker view not created");
                 LogAssert.NoUnexpectedReceived();
             }
             finally
