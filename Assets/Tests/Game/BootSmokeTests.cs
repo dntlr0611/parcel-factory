@@ -45,5 +45,38 @@ namespace ParcelFactory.Game.Tests
             }
             yield return null;
         }
+
+        [UnityTest]
+        public IEnumerator TouchControls_StayInsideCanvas()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                boot.Hud.ForceTouchMode(true);
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+                var canvasCorners = new Vector3[4];
+                boot.Hud.Root.GetWorldCorners(canvasCorners);
+                var min = canvasCorners[0];
+                var max = canvasCorners[2];
+                foreach (var name in new[] { "TouchE", "TouchX", "TouchR", "TouchPadN", "TouchPadS", "TouchPadW", "TouchPadE" })
+                {
+                    var go = GameObject.Find(name);
+                    Assert.IsNotNull(go, name + " missing");
+                    var corners = new Vector3[4];
+                    go.GetComponent<RectTransform>().GetWorldCorners(corners);
+                    foreach (var c in corners)
+                        Assert.IsTrue(c.x >= min.x - 0.01f && c.x <= max.x + 0.01f && c.y >= min.y - 0.01f && c.y <= max.y + 0.01f,
+                            name + " corner " + c + " outside canvas " + min + ".." + max);
+                }
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
     }
 }

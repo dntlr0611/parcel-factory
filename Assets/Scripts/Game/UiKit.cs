@@ -30,7 +30,7 @@ namespace ParcelFactory.Game
             scaler.matchWidthOrHeight = 0.5f;
             if (Object.FindFirstObjectByType<EventSystem>() == null)
             {
-                var es = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+                var es = new GameObject("EventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
                 es.transform.SetParent(go.transform, false);
             }
             return canvas;
@@ -64,12 +64,15 @@ namespace ParcelFactory.Game
             return t;
         }
 
-        public static Button Button(string name, Transform parent, string text, Vector2 size, System.Action onClick, Color? bg = null, Color? fg = null, int fontSize = 14)
+        public static Button Button(string name, Transform parent, string text, Vector2 size, System.Action onClick, Color? bg = null, Color? fg = null, int fontSize = 14, Vector2? anchor = null)
         {
-            var rt = Rect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            // anchor: 부모 rect 안의 기준점(0~1). 생략하면 중앙. 피벗은 항상 버튼 중심이라 anchoredPosition은 기준점에서 버튼 중심까지의 거리다.
+            var a = anchor ?? new Vector2(0.5f, 0.5f);
+            var rt = Rect(name, parent, a, a, new Vector2(0.5f, 0.5f), Vector2.zero, size);
             var img = rt.gameObject.AddComponent<Image>();
             img.color = bg ?? new Color(0.15f, 0.17f, 0.2f, 0.9f);
             var b = rt.gameObject.AddComponent<Button>();
+            b.navigation = new Navigation { mode = Navigation.Mode.None };
             var colors = b.colors; colors.highlightedColor = new Color(1f, 1f, 1f, 0.9f); colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f); b.colors = colors;
             b.onClick.AddListener(() => onClick?.Invoke());
             var label = Label("Label", rt, text, fontSize, fg ?? Fg, TextAnchor.MiddleCenter, FontStyle.Bold);

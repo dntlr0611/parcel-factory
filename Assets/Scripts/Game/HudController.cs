@@ -129,12 +129,12 @@ namespace ParcelFactory.Game
         private void BuildTouchControls()
         {
             touchPad = UiKit.Rect("TouchPad", Root, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(16f, 110f), new Vector2(170f, 170f));
-            void Pad(string txt, Vector2 pos, Direction d) { var b = UiKit.Button("Pad" + txt, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => input.SetPad(d, held)); et.triggers.Add(entry); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
-            Pad("↑", new Vector2(85f, 140f), Direction.North); Pad("←", new Vector2(28f, 85f), Direction.West); Pad("→", new Vector2(142f, 85f), Direction.East); Pad("↓", new Vector2(85f, 30f), Direction.South);
+            void Pad(string name, string txt, Vector2 pos, Direction d) { var b = UiKit.Button(name, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20, Vector2.zero); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => input.SetPad(d, held)); et.triggers.Add(entry); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
+            Pad("TouchPadN", "↑", new Vector2(85f, 140f), Direction.North); Pad("TouchPadW", "←", new Vector2(28f, 85f), Direction.West); Pad("TouchPadE", "→", new Vector2(142f, 85f), Direction.East); Pad("TouchPadS", "↓", new Vector2(85f, 30f), Direction.South);
             touchButtons = UiKit.Rect("TouchButtons", Root, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 110f), new Vector2(200f, 170f));
-            var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => input.Interact(), UiKit.Accent, UiKit.AccentFg, 20); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(150f, 60f);
-            var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => input.Demolish(), new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(62f, 40f);
-            var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => input.RotateTool(), null, null, 14); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(62f, 118f);
+            var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => input.Interact(), UiKit.Accent, UiKit.AccentFg, 20, new Vector2(1f, 0f)); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(-50f, 50f);
+            var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => input.Demolish(), new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
+            var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => input.RotateTool(), null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
             hotbar.anchoredPosition = new Vector2(0f, 14f);
         }
 
@@ -144,6 +144,15 @@ namespace ParcelFactory.Game
             help.gameObject.SetActive(open);
             input.UiBlocksInput = open;
             if (open) input.ClearPad();
+        }
+
+        /// <summary>플랫폼 감지와 상관없이 터치 컨트롤을 켜거나 끈다(테스트·디버그용).</summary>
+        public void ForceTouchMode(bool on)
+        {
+            TouchMode = on;
+            if (on && touchPad == null) BuildTouchControls();
+            if (touchPad != null) touchPad.gameObject.SetActive(on);
+            if (touchButtons != null) touchButtons.gameObject.SetActive(on);
         }
 
         public void Toast(string message)
