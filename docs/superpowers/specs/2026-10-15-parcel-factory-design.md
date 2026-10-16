@@ -157,7 +157,7 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 ### 9.3 검사와 분류
 - 택배는 생성 시 30% 확률로 **불량**(표기 무게와 실측이 다름)이다. 겉모습으로는 구분되지 않는다.
 - 새 부품 **검사대**(설치비 40, 시작부터 보유, 방향 있음): 택배가 올라오면 검사 전까지 멈춘다. 작업자가 검사대를 바라보고 상호작용하면 라벨 카드(목적지, 표기 무게, 배송 방법, 저울 실측)가 뜨고 **승인/거부**를 고른다. 판정 후 택배는 `inspected`, `rejected` 상태를 갖고 검사대 방향으로 계속 흐른다.
-- 해금 항목 **자동 검사기**(해금 250, 설치비 120, 4방향): 레일처럼 흐르면서 진입 즉시 정확히 판정한다. 1차에서는 오판 없음.
+- 해금 항목 **자동 검사기**(해금 250, 설치비 120, 4방향): 레일처럼 흐르면서 진입(또는 작업자가 내려놓는) 즉시 정확히 판정한다. 1차에서는 오판 없음. 이미 사람이 판정한 택배는 다시 판정하지 않는다.
 - 새 고정 도크 **반품구**: (5,4)에 고정. 출고구처럼 택배를 받는다.
 - 배송 판정(출고구 / 반품구):
 
@@ -181,17 +181,19 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 - 월드 단위: 1칸 = 1m. 부지는 12×12m 콘크리트 슬래브, 미해금 구역은 웃자란 풀, 둘레는 나무 울타리, 바깥은 침엽수 숲과 바위. 도크 바깥에 트럭이 주차되어 있다(입고 초록, 출고 파랑, 반품 빨강).
 - 부품 표현: 레일 = 금속 측면 레일 + 흐르는 고무 벨트(텍스처 오프셋 애니메이션) · 고속 레일 = 붉은 벨트 + 빨간 띠 · 분배기 = 보라 하우징 + Y 표시 · 검사대 = 나무 탁자 + 검사지 + 램프 · 자동 검사기 = 파란 아치 + 빨간 레이저 · 택배 = 골판지 상자(거부 시 빨간 도장).
 - 작업자가 바라보는 칸은 노란 반투명 하이라이트, 그 위에 상호작용 말풍선("집기 E", "검사 E", "레일 설치 E").
-- HUD: 반투명 어두운 둥근 패널, 흰 글자. 좌상단 잔액·배송·소실·검사 대기, 우상단 일시정지/배속/상점/조작, 하단 중앙 숫자 핫바(1~9 도구). 모바일은 좌하단 D-패드, 우하단 E/해체 버튼.
+- HUD: 반투명 어두운 둥근 패널, 흰 글자. 좌상단 잔액·배송·소실·검사 대기, 우상단 일시정지/배속/상점/조작, 하단 중앙 숫자 핫바. **핫바는 부품 종류당 한 칸**(레일, 고속 레일, 검사대, 분배기, 자동 검사기 → 최대 5칸, 키 1~5)이고, 방향은 PC에서 R키, 모바일에서 같은 칸을 다시 탭해 보유한 방향 중에서 순환한다. 모바일은 좌하단 D-패드, 우하단 E/해체 버튼.
 - Unity: URP 3D 템플릿, Cinemachine 없이 고정 카메라, 캐릭터·택배는 Transform 보간. Tilemap은 쓰지 않는다.
 
-### 9.5 코어 변경 요약 (4.1절에 추가)
-- `Worker` — 위치(정수 칸), 방향, `Carrying`(Package 또는 null). `TryMove(dir)`, `Interact()`, `TryDemolish()`.
-- `Package` — `Bad`, `Inspected`, `Rejected`, `Label{Dest, Weight, Method, Scale}` 추가.
-- `CellType` — `Table`, `Scanner`, `ReturnDock` 추가. `BuildingCosts` — Table 40, Scanner 120.
-- `ConveyorSim` — 검사대 위 미검사 택배 정지, 자동 검사기 진입 시 판정, 도크 도달 시 9.3 판정표로 `Economy` 증감. `PackageDelivered` 이벤트는 `(Package, int delta)`로 바뀐다.
-- `UnlockCatalog` — `Scanner` 항목(250) 추가, 총 11개.
-- `GameState` — Worker와 Package의 새 필드를 저장한다. 저장 버전은 2로 올린다(이전 버전 파일은 거부).
-- 테스트: 운반(집기/놓기/도크에 놓기), 검사대 정지·판정 후 재개, 자동 검사기, 판정표 10칸 전부, 작업자 이동 제한, 저장 왕복.
+### 9.5 코어 변경 요약 (구현 완료 2026-10-16, 테스트 121개)
+- `WorkerService` — `Worker { X, Y, Facing, Carrying }`, `TryMove(dir)`, `Preview(Tool?)`(부작용 없음, UI 프롬프트용), `Interact(Tool?)`(Preview와 같은 결정을 실행), `PendingInspection`, `Inspect(reject)`(택배가 검사대에 있고 작업자가 그 칸을 바라볼 때만 true), `CancelInspection()`, `TryDemolishFacing()`. 결과는 `InteractResult { PickedUp, PutDown, Delivered, InspectionRequired, Placed, NoFloor, CannotPutHere, NoTool, Locked, Occupied, NotOwned, NotEnoughMoney }`.
+- `Package` — `Bad`, `Inspected`, `Rejected`, `Label { Destination, Weight, Method, Scale, Mismatch }`, `Inspect(reject)`. `PackageFactory(Random, badChance = 0.3)`.
+- `CellType` — `Table`, `Scanner`, `ReturnDock` 추가. `Cell.IsDock`. `FactoryGrid.ReturnDockX/Y = 5,4`, `IsPlaceable`. `BuildingCosts` — Table 40, Scanner 120.
+- `DeliveryScoring` — `Outcome(Package, dock)`, `Delta(outcome)`, `IsSuccess(outcome)`; 9.3 판정표 그대로. `Economy.Adjust(delta)`로 음수 잔액 허용.
+- `ConveyorSim` — 검사대 위 미검사 택배 정지, 자동 검사기 진입·내려놓기 시 판정, 도크 도달 시 판정, `PackageDelivered(Package, DeliveryOutcome, int delta)`, `DeliveredCount`/`LostCount`, `PackageAt`, `Take`, `PlaceCarried`, `DeliverCarried`, `IsAwaitingInspection`, `AwaitingInspectionCount`.
+- `BuildService.Check(x, y, type, dir)` — TryPlace와 같은 검사, 지출 없음.
+- `Toolbar` — `TableOwned`(기본 true), `ScannerOwned`; `OwnedTools()` 순서: 레일·고속 → 검사대 4방향 → 분배기 4방향 → 자동 검사기 4방향. `UnlockCatalog` — `Scanner`(250) 추가, 총 11개.
+- `GameSession(Economy, PackageFactory)` — `Worker` 포함. `GameState` v2: 작업자(위치·방향·들고 있는 택배), 택배의 Bad/Inspected/Rejected/Label, 배송·소실 수. 버전 1은 거부.
+- Unity 레이어 규칙: 뷰는 매 프레임 `Sim.Packages`와 `Worker.Carrying`을 읽어 그린다(들고 있는 택배는 작업자 머리 위). 작업자가 이동하면 `CancelInspection()`을 호출한다. 프롬프트 문구는 `Preview` 결과 + 바라보는 칸 종류 + 선택 도구로 만든다.
 
 ### 9.6 2차로 미루는 것
 - 자동 검사기 오판률과 업그레이드, 라벨 종류(목적지 오류, 배송 방법 오류), 금지 물품 개봉 검사.
