@@ -16,6 +16,7 @@ namespace ParcelFactory.Game
         public WorldBuilder World { get; private set; }
         public CellViews Cells { get; private set; }
         public WorkerView Worker { get; private set; }
+        public InputController Input { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
 
@@ -40,6 +41,7 @@ namespace ParcelFactory.Game
             Loop = gameObject.AddComponent<GameLoop>();
             World = gameObject.AddComponent<WorldBuilder>();
             Cells = gameObject.AddComponent<CellViews>();
+            Input = gameObject.AddComponent<InputController>();
             gameObject.AddComponent<PackageViews>();
             Session = new GameSession();
             World.Build(Session);
@@ -58,6 +60,7 @@ namespace ParcelFactory.Game
             Session = s;
             if (World != null) World.Bind(s);
             if (Cells != null) Cells.Bind(s);
+            Input?.ClearTool();
             SessionReplaced?.Invoke(s);
         }
     }

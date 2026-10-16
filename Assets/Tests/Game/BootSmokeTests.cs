@@ -24,6 +24,8 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 Assert.IsNotNull(GameObject.Find("World/Cells/Conveyor"), "cell view not created");
                 Assert.IsNotNull(GameObject.Find("World/WorkerView"), "worker view not created");
+                Assert.IsNotNull(boot.Input);
+                Assert.AreEqual(2, boot.Input.AvailableSlots().Count); // Conveyor + Table (Table is owned by default)
                 LogAssert.NoUnexpectedReceived();
             }
             finally
