@@ -1904,3 +1904,53 @@ Expected: 빌드 성공. 실패하면 로그의 첫 오류를 보고한다.
 git status --short
 ```
 Expected: 출력 없음.
+
+### Task 8 (A3): 코어 — 작업자 자유 이동 (스펙 9.7; **Task 4보다 먼저 실행**)
+
+이 태스크만 코어와 코어 테스트를 수정한다(Global Constraint의 "코어 불변"은 이 태스크에 한해 해제). 2026-10-16 저녁 스펙 개정(9.7)을 코어·저장·WorkerView에 반영한다. Task 4의 `Move(Direction)`/`TryMove`는 이 태스크 이후 `Move(vx, vy, dt)`로 바뀐다(Task 4 브리프에서 반영).
+
+**Files:**
+- Modify: `Assets/Scripts/Core/Worker.cs`, `Assets/Scripts/Core/GameState.cs`, `Assets/Scripts/Core/SaveSerializer.cs`
+- Modify: `Assets/Tests/Core/WorkerTests.cs`, `Assets/Tests/Core/SaveSerializerTests.cs`, `Assets/Tests/Core/GameSessionTests.cs`
+- Modify: `Assets/Scripts/Game/WorkerView.cs`
+- Modify: `docs/superpowers/specs/2026-10-15-parcel-factory-design.md` 9.5의 WorkerService 줄(새 API로 갱신)
+
+**Interfaces (Produces):**
+```csharp
+public sealed class Worker { public float X, Y; public Direction Facing; public Package Carrying; }
+public enum InteractResult { ..., Standing }   // 막는 부품을 작업자가 겹친 칸에 놓으려 할 때
+public sealed class WorkerService
+{
+    public const float StartX = 2f, StartY = 4f, Speed = 3.4f, Radius = 0.28f, Reach = 0.8f;
+    public static bool IsWalkable(CellType t);               // Empty, Conveyor, FastConveyor, Inlet, Outlet, ReturnDock → true
+    public bool CanStand(float px, float py);                // 해금 영역 [-0.5+R, n-0.5-R] 안 + 충돌원 네 모서리의 칸이 모두 IsWalkable
+    public bool Move(float vx, float vy, float dt);          // 정규화, x축→y축 순서로 따로 시도, 지배 축으로 Facing 갱신, 실제로 움직였으면 true, 움직이면 CancelInspection()
+    public (int x, int y) Tile();                            // (round(X), round(Y))
+    public (int x, int y) FacingTile();                      // (round(X + Dx*Reach), round(Y + Dy*Reach))
+    public bool Overlaps(int gx, int gy);                    // |X-gx| < 0.5+R && |Y-gy| < 0.5+R
+    // Preview/Interact/Inspect/CancelInspection/TryDemolishFacing 유지. TryMove/CanWalk 삭제.
+}
+```
+- `Preview(tool)`: 설치 분기에서 `build.Check` 전에 `!IsWalkable(tool.Type) && Overlaps(fx, fy)`이면 `Standing`. 레일/고속 레일은 작업자가 서 있는 칸에도 놓을 수 있다.
+- `Move`의 영벡터(길이 < 1e-6)는 false를 돌려주고 Facing을 바꾸지 않는다. 대각선은 정규화(속도 일정). Facing: `|vx| >= |vy|`이면 E/W, 아니면 N/S.
+- `GameState`: `WorkerState.X/Y`를 float로. `SaveSerializer.CurrentVersion = 3`. 버전 2 저장은 그대로 읽는다(정수 좌표가 float로 읽힘). 버전 < 2 거부. 읽을 때 `CanStand(X, Y)`가 거짓이면 `SaveVersionException("worker on invalid position")`.
+- `GameSession`은 그대로(`Worker` 시작 위치는 `StartX/StartY`).
+- `WorkerView.LateUpdate`: 위치는 `Grid3D.TileF(w.X, w.Y)`로 **보간 없이** 직접 대입(코어가 이미 연속 좌표). 회전 보간과 커서/운반 로직은 유지. bob은 유지(애니메이션 클립 적용은 B7).
+
+**Tests (NUnit, `Assets/Tests/Core/WorkerTests.cs` 갱신):**
+- 시작 위치 (2,4) → `Tile()` (2,4), `FacingTile()` 남쪽 (2,3).
+- `Move(0,1,0.5)` → Y = 5.7 … 아니, 경계 때문에 `Y <= 5.5-R`에서 멈춘다(n=6). 두 번 호출해도 Y가 5.22를 넘지 않는다. (`5 + 0.5 - 0.28 = 5.22`)
+- 대각선: `Move(1,1,0.1)` 후 이동 거리 ≈ 0.34(허용오차 1e-4).
+- 레일 위로 걷기: (1,4)에 Conveyor 설치 후 (2,4)에서 서쪽으로 1초 → X < 1.5 (들어감). 검사대 설치 후 같은 시도 → X >= 1.5+R−1e-4 (막힘, 벽 따라 미끄러짐은 y 성분 유지로 확인).
+- 입고구 (0,2) 위도 걸을 수 있다. 미해금 칸은 못 들어간다(n=6에서 (6,·)).
+- `Standing`: 작업자 (2,4)에서 남쪽 바라보고 Y=3.6으로 옮겨 (2,3)에 겹치게 한 뒤 Table 도구 Preview → `Standing`; Conveyor 도구 → `Placed`.
+- Facing: `Move(1,0.2,…)` → East; `Move(-0.2,1,…)` → North.
+- Move가 움직이면 `PendingInspection`이 null이 된다.
+- 저장: float 좌표 왕복; 버전 2 JSON(정수 좌표) 읽기 성공; 좌표가 검사대 위면 `SaveVersionException`.
+- 기존 테스트에서 `TryMove`/`CanWalk`를 쓰던 곳은 새 API로 바꾼다. 테스트 총수는 121 이상이어야 한다.
+
+**Verification:**
+- `~/.dotnet/dotnet test DotnetTests/Core.Tests` 전부 통과.
+- Unity EditMode: `$UNITY -batchmode -nographics -projectPath . -runTests -testPlatform EditMode -testResults /tmp/pf-a3-edit.xml -logFile /tmp/pf-a3-edit.log` 전부 통과.
+- Unity 컴파일(게임 레이어 포함): `-quit` 실행 후 `grep -c "error CS"` = 0. PlayMode 스모크 1/1.
+- 커밋 1개(.meta 포함).
