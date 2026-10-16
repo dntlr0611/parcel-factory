@@ -13,6 +13,7 @@ namespace ParcelFactory.Game
         public ModelCatalog Catalog { get; private set; }
         public Transform WorldRoot { get; private set; }
         public GameLoop Loop { get; private set; }
+        public WorldBuilder World { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
 
@@ -35,7 +36,9 @@ namespace ParcelFactory.Game
             WorldRoot = new GameObject("World").transform;
             WorldRoot.SetParent(transform, false);
             Loop = gameObject.AddComponent<GameLoop>();
+            World = gameObject.AddComponent<WorldBuilder>();
             Session = new GameSession();
+            World.Build(Session);
             // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);
         }
@@ -45,6 +48,7 @@ namespace ParcelFactory.Game
         public void ReplaceSession(GameSession s)
         {
             Session = s;
+            if (World != null) World.Bind(s);
             SessionReplaced?.Invoke(s);
         }
     }
