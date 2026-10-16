@@ -175,6 +175,31 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
+        public void PlaceCarried_OnScanner_InspectsImmediately()
+        {
+            var sim = NewSim(1.0);
+            grid.Place(1, 1, CellType.Scanner, Direction.East);
+            var p = new PackageFactory(new Random(1), 1.0).Create(7, 0, 0, Direction.East);
+            Assert.IsFalse(p.Inspected);
+            sim.PlaceCarried(p, 1, 1);
+            Assert.IsTrue(p.Inspected);
+            Assert.IsTrue(p.Rejected);
+        }
+
+        [Test]
+        public void CarryPrimitives_RejectPackageStillOnLine()
+        {
+            var sim = NewSim(0.0);
+            grid.Place(1, 2, CellType.Conveyor, Direction.East);
+            grid.Place(1, 1, CellType.Conveyor, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
+            Assert.Throws<InvalidOperationException>(() => sim.PlaceCarried(p, 1, 1));
+            Assert.Throws<InvalidOperationException>(() => sim.DeliverCarried(p, CellType.Outlet));
+            Assert.AreEqual(1, sim.Packages.Count);
+            Assert.AreEqual(0, economy.Money);
+        }
+
+        [Test]
         public void DeliverCarried_AppliesScoring()
         {
             var sim = NewSim(0.0);

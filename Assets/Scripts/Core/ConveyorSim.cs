@@ -75,6 +75,7 @@ namespace ParcelFactory.Core
             var cell = grid.Get(x, y);
             if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing)
                 throw new InvalidOperationException($"cannot put package at ({x},{y})");
+            if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
             p.X = x;
             p.Y = y;
             p.Progress = 0f;
@@ -82,10 +83,15 @@ namespace ParcelFactory.Core
             p.EntryHeading = p.Heading;
             cell.OccupantId = p.Id;
             packages.Add(p);
+            if (cell.Type == CellType.Scanner && !p.Inspected) p.Inspect(p.Bad); // 스캐너는 놓는 순간에도 판정한다
         }
 
         /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다.</summary>
-        public int DeliverCarried(Package p, CellType dockType) => ApplyDelivery(p, dockType);
+        public int DeliverCarried(Package p, CellType dockType)
+        {
+            if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
+            return ApplyDelivery(p, dockType);
+        }
 
         /// <summary>분배기는 자기 방향 기준 좌·우로 번갈아 내보내되, 들어온 방향의 정반대로는 절대 내보내지 않는다.</summary>
         private static Direction HeadingFor(Cell cell, Direction incoming)
