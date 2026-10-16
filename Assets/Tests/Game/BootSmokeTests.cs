@@ -115,6 +115,15 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsFalse(boot.Panels.AnyOpen);
                 Assert.IsFalse(boot.Input.UiBlocksInput);
 
+                // 상점이 유일하게 열려 있으면 다시 요청해 닫을 수 있다.
+                boot.Input.RequestShop();
+                yield return null;
+                Assert.IsTrue(boot.Panels.ShopIsOnlyOpen);
+                boot.Input.RequestShop();
+                yield return null;
+                Assert.IsFalse(boot.Panels.AnyOpen);
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+
                 boot.Input.SetBlock("help", true);
                 boot.Input.SetBlock("panels", true);
                 boot.Input.SetBlock("panels", false);
@@ -127,6 +136,42 @@ namespace ParcelFactory.Game.Tests
             {
                 SaveFile.PathOverride = null;
                 try { System.IO.File.Delete(tmpPath); System.IO.File.Delete(tmpPath + ".tmp"); } catch { }
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator InspectionCard_BlocksInputInSameFrame_AndSurvivesHeldPad()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 게임 루프가 택배를 움직이지 않게 한다
+                s.Grid.Place(1, 2, ParcelFactory.Core.CellType.Table, ParcelFactory.Core.Direction.East);
+                Assert.IsTrue(s.Sim.TrySpawn(0, 2, ParcelFactory.Core.PackageKind.Normal, out _));
+                s.Sim.Tick(1f);
+                s.Worker.Worker.X = 1; s.Worker.Worker.Y = 3; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.South;
+                boot.Input.SetPad(ParcelFactory.Core.Direction.East, true); // 방향 입력을 누른 채
+                boot.Input.Interact();
+                // 한 프레임도 지나지 않았다
+                Assert.IsNotNull(s.Worker.PendingInspection);
+                Assert.IsTrue(boot.Panels.AnyOpen, "inspection card should be open");
+                Assert.IsTrue(boot.Input.UiBlocksInput, "block must apply in the same frame");
+                yield return null;
+                yield return null;
+                Assert.IsNotNull(s.Worker.PendingInspection, "held pad must not cancel the inspection");
+                Assert.IsTrue(boot.Panels.AnyOpen);
+                boot.Panels.CloseAll();
+                Assert.IsNull(s.Worker.PendingInspection);
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                boot.Input.ClearPad();
                 Object.Destroy(boot.gameObject);
             }
             yield return null;

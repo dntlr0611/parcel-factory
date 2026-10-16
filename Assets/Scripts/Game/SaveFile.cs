@@ -20,8 +20,8 @@ namespace ParcelFactory.Game
             {
                 var tmp = Path + ".tmp";
                 File.WriteAllText(tmp, SaveSerializer.ToJson(SaveSerializer.Capture(session)));
-                if (File.Exists(Path)) File.Delete(Path);
-                File.Move(tmp, Path);
+                if (File.Exists(Path)) File.Replace(tmp, Path, null);
+                else File.Move(tmp, Path);
                 return true;
             }
             catch (Exception e) { error = "저장 실패: " + e.GetType().Name; return false; }

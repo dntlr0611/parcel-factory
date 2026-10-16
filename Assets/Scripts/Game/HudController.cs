@@ -72,7 +72,7 @@ namespace ParcelFactory.Game
             var boot = GameBootstrap.Instance;
             pauseBtn = UiKit.Button("Pause", row, "일시정지 P", new Vector2(100f, 36f), () => boot.Session.Paused = !boot.Session.Paused);
             speedBtn = UiKit.Button("Speed", row, "1x T", new Vector2(64f, 36f), () => boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f);
-            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(80f, 36f), () => { if (input.UiBlocksInput) return; input.RequestShop(); });
+            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(80f, 36f), () => { if (input.UiBlocksInput && !boot.Panels.ShopIsOnlyOpen) return; input.RequestShop(); });
             helpBtn = UiKit.Button("Help", row, "조작 O", new Vector2(80f, 36f), () => SetHelp(!help.gameObject.activeSelf));
             var saveBtn = UiKit.Button("Save", row, "저장", new Vector2(60f, 36f), () => Toast(SaveFile.TrySave(boot.Session, out var e1) ? "저장했습니다" : e1));
             var loadBtn = UiKit.Button("Load", row, "불러오기", new Vector2(80f, 36f), () => { if (SaveFile.TryLoad(out var s2, out var e2)) { boot.ReplaceSession(s2); Toast("불러왔습니다"); } else Toast(e2); });

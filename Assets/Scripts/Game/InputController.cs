@@ -85,10 +85,12 @@ namespace ParcelFactory.Game
         {
             if (S == null) return;
             if (escape.WasPressedThisFrame()) Escape?.Invoke();
+            // 상점이 유일하게 열려 있으면 B 키가 닫기 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
+            var panels = GameBootstrap.Instance.Panels;
+            if (shop.WasPressedThisFrame() && (!UiBlocksInput || (panels != null && panels.ShopIsOnlyOpen))) ToggleShop?.Invoke();
             if (UiBlocksInput) return;
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
-            if (shop.WasPressedThisFrame()) ToggleShop?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
             for (int i = 0; i < 5; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
             if (rotate.WasPressedThisFrame()) RotateTool();
