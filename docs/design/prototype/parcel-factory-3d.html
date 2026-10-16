@@ -1,0 +1,661 @@
+<title>Parcel Factory 3D 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Sora:wght@500;600;700&display=swap">
+<style>
+  /* 디자인 플랜 — 해질녘 숲속 물류 야드. 전체 화면 3D 위에 8px 그리드의 반투명 슬레이트 패널, 앰버 하나만 강조색. */
+  :root {
+    --bg: #1b2417; --panel: rgba(15, 19, 22, 0.66); --panel-2: rgba(15, 19, 22, 0.9); --line: rgba(255,255,255,0.12); --line-2: rgba(255,255,255,0.22);
+    --fg: #f4f3ee; --muted: #a9b0a5; --accent: #f2a33a; --accent-fg: #1f1402; --good: #6fd68a; --bad: #ff6f62; --info: #7cb5ff;
+    --font-body: 'Noto Sans KR', system-ui, -apple-system, sans-serif; --font-num: 'Sora', 'Noto Sans KR', system-ui, sans-serif;
+    --r: 12px; --r-s: 8px; --shadow: 0 10px 30px rgba(0,0,0,0.35);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #app { position: relative; width: 100%; height: 100%; }
+  canvas#gl { display: block; width: 100%; height: 100%; }
+  .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(0,0,0,0.5) 100%); }
+  .hud { position: absolute; inset: 0; pointer-events: none; font-size: 13px; }
+  .hud > * { pointer-events: auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); }
+  .key { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; background: rgba(255,255,255,0.12); border: 1px solid var(--line-2); font: 600 10px var(--font-num); color: var(--fg); letter-spacing: 0.02em; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 500 13px var(--font-body); cursor: pointer; backdrop-filter: blur(10px); transition: background .15s, border-color .15s, transform .08s; }
+  .btn:hover { background: rgba(255,255,255,0.08); border-color: var(--line-2); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn.on .key { background: rgba(0,0,0,0.12); border-color: rgba(0,0,0,0.2); color: var(--accent-fg); }
+  .btn svg { width: 15px; height: 15px; }
+  .topleft { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 8px; }
+  .money { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 10px; }
+  .money .cur { font: 600 14px var(--font-num); color: var(--accent); }
+  .money .val { font: 700 30px/1 var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .money .lbl { font-size: 12px; color: var(--muted); margin-left: 2px; }
+  .chips { display: flex; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); backdrop-filter: blur(10px); }
+  .chip b { font: 600 13px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .topright { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .hotbar { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; gap: 8px; padding: 8px; }
+  .slot { position: relative; width: 72px; height: 72px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,0.3); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; padding: 0 0 7px; color: var(--fg); font: 500 11px var(--font-body); transition: border-color .15s, box-shadow .15s, transform .08s; }
+  .slot:hover { border-color: var(--line-2); }
+  .slot.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(242,163,58,0.45), 0 0 24px rgba(242,163,58,0.25); }
+  .slot .ico { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+  .slot .ico svg { width: 16px; height: 16px; }
+  .slot .k { position: absolute; left: 7px; top: 6px; font: 600 10px var(--font-num); color: var(--muted); }
+  .slot .c { position: absolute; right: 7px; top: 6px; font: 600 10px var(--font-num); color: var(--accent); font-variant-numeric: tabular-nums; }
+  .slot .d { position: absolute; right: 6px; bottom: 6px; min-width: 16px; height: 16px; border-radius: 4px; background: rgba(255,255,255,0.14); font: 700 11px var(--font-num); display: none; align-items: center; justify-content: center; }
+  .slot.on .d { display: inline-flex; background: var(--accent); color: var(--accent-fg); }
+  .prompt { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 10px; align-items: center; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 10px 7px 14px; font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow); }
+  .prompt .pin { position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; background: var(--panel-2); border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); transform: translateX(-50%) rotate(45deg); }
+  .status { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(104px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--muted); padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+  .toast { position: absolute; left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 14px 9px 10px; font-size: 13px; box-shadow: var(--shadow); animation: drop .18s ease-out; }
+  .toast .bar { width: 4px; height: 18px; border-radius: 2px; background: var(--info); }
+  .toast.good .bar { background: var(--good); } .toast.bad .bar { background: var(--bad); }
+  @keyframes drop { from { transform: translate(-50%, -8px); opacity: 0 } to { transform: translate(-50%, 0); opacity: 1 } }
+  .modal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,8,10,0.45); backdrop-filter: blur(2px); }
+  .card { width: min(380px, calc(100% - 32px)); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+  .card h2 { margin: 0; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
+  .card .sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .label { background: #f6f2e8; color: #2a2620; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; font-size: 13px; box-shadow: inset 0 0 0 1px #e2d9c6; }
+  .label .row { display: flex; justify-content: space-between; align-items: baseline; } .label .row span:first-child { color: #7a6e5c; font-size: 12px; }
+  .label .row b { font: 600 14px var(--font-num); }
+  .label .scale { border-top: 1px dashed #cdbfa3; padding-top: 8px; margin-top: 2px; } .label .scale b { color: #c9472f; }
+  .row-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn.danger { background: #c9472f; border-color: #c9472f; color: #fff; } .btn.ok { background: var(--good); border-color: var(--good); color: #0f2a16; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  .drawer { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(62px + env(safe-area-inset-top, 0px)); width: min(330px, calc(100% - 32px)); padding: 14px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100% - 180px); overflow-y: auto; }
+  .drawer h3 { margin: 0 0 6px; font-size: 14px; display: flex; justify-content: space-between; align-items: baseline; }
+  .drawer h3 span { font: 600 12px var(--font-num); color: var(--accent); }
+  .it { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; } .it:first-of-type { border-top: 0; }
+  .it span { flex: 1; } .it small { display: block; color: var(--muted); font-size: 11px; }
+  .buy { min-width: 76px; justify-content: center; height: 30px; font: 600 12px var(--font-num); } .buy[disabled] { opacity: 0.4; cursor: default; }
+  .help { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(62px + env(safe-area-inset-top, 0px)); width: min(320px, calc(100% - 32px)); padding: 14px 16px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+  .help b { color: var(--fg); font-weight: 600; }
+  .help .k { display: inline-flex; gap: 4px; margin-right: 6px; }
+  .touch { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: none; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); gap: 4px; }
+  .touch .btn { padding: 0; justify-content: center; font-size: 20px; height: auto; border-radius: 12px; }
+  .touch2 { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: none; gap: 8px; align-items: flex-end; }
+  .touch2 .big { width: 86px; height: 86px; border-radius: 50%; justify-content: center; font: 700 18px var(--font-num); }
+  .touch2 .mid { width: 62px; height: 62px; border-radius: 50%; justify-content: center; font-size: 12px; }
+  @media (pointer: coarse) { .touch { display: grid; } .touch2 { display: flex; } .hotbar { bottom: calc(112px + env(safe-area-inset-bottom, 0px)); } .status { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); } }
+  .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--bg); z-index: 10; }
+  .loading .logo { font: 700 22px var(--font-num); letter-spacing: 0.08em; color: var(--accent); }
+  .loading .bar { width: 240px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+  .loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .loading .sub { font-size: 12px; color: var(--muted); }
+  .fileRow { display: flex; gap: 6px; margin-top: 10px; }
+  @media (max-width: 1100px) {
+    .topright #saveBtn, .topright #loadBtn, .topright #newBtn { display: none; }
+    .topright .btn span:not(.key) { display: none; }
+    .topright .btn { padding: 0 10px; }
+    .money .val { font-size: 24px; }
+  }
+  @media (max-width: 760px) {
+    .hud { font-size: 12px; }
+    .topleft { gap: 6px; }
+    .money { padding: 8px 12px 6px; } .money .val { font-size: 20px; } .money .lbl { display: none; }
+    .chips { gap: 4px; } .chip { height: 24px; padding: 0 8px; font-size: 11px; }
+    .topright { gap: 4px; max-width: 48%; }
+    .topright .btn { height: 30px; padding: 0 8px; } .topright .btn .key { display: none; } .topright .btn svg { width: 14px; height: 14px; }
+    .hotbar { gap: 6px; padding: 6px; } .slot { width: 60px; height: 60px; font-size: 10px; } .slot .ico { width: 22px; height: 22px; }
+    .status { font-size: 11px; max-width: calc(100% - 32px); white-space: normal; text-align: center; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+    .drawer, .help { top: calc(54px + env(safe-area-inset-top, 0px)); }
+    .prompt { font-size: 12px; padding: 6px 9px 6px 12px; }
+  }
+  @media (max-width: 480px) {
+    .chips { flex-wrap: wrap; } .topright { max-width: 40%; }
+    .slot { width: 52px; height: 52px; } .slot .ico { width: 20px; height: 20px; } .slot .c { display: none; }
+    .touch { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
+    .touch2 .big { width: 72px; height: 72px; } .touch2 .mid { width: 52px; height: 52px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div class="vignette"></div>
+  <div class="hud">
+    <div class="topleft">
+      <div class="panel money"><span class="cur">₩</span><span class="val" id="money">100</span><span class="lbl">잔액</span></div>
+      <div class="chips">
+        <span class="chip"><span class="dot" style="background:var(--good)"></span>배송 <b id="delivered">0</b></span>
+        <span class="chip"><span class="dot" style="background:var(--bad)"></span>소실 <b id="lost">0</b></span>
+        <span class="chip"><span class="dot" style="background:var(--accent)"></span>검사 대기 <b id="waiting">0</b></span>
+      </div>
+    </div>
+    <div class="topright">
+      <button class="btn" id="pauseBtn" aria-label="일시정지"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg><span class="key">P</span></button>
+      <button class="btn" id="speedBtn"><span id="speedLbl">1x</span><span class="key">T</span></button>
+      <button class="btn" id="shopBtn"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11.2L21 8H7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/></svg>상점<span class="key">B</span></button>
+      <button class="btn" id="helpBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="currentColor"/></svg>조작<span class="key">O</span></button>
+      <button class="btn" id="saveBtn">저장</button>
+      <button class="btn" id="loadBtn">불러오기</button>
+      <button class="btn" id="newBtn">새 게임</button>
+    </div>
+    <div class="panel help" id="help" hidden>
+      <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
+      <div><span class="k"><span class="key">1</span>~<span class="key">5</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
+      <div>검사대 위 택배는 검사 전까지 멈춥니다. <b>정상은 출고구</b>, <b>불량은 반품구</b>로 보내세요.</div>
+      <div>입고 3초마다 1개 · 배송 +15 · 해체 2초 후 설치비 80% 환불</div>
+      <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
+    </div>
+    <div class="panel drawer" id="shop" hidden></div>
+    <div class="prompt" id="prompt" hidden><span id="promptText">집기</span><span class="key">E</span><span class="pin"></span></div>
+    <div class="panel status" id="workerText">빈손</div>
+    <div class="panel hotbar" id="hotbar"></div>
+    <div class="touch">
+      <button class="btn" data-move="N" style="grid-column:2;grid-row:1" aria-label="위로 이동">↑</button>
+      <button class="btn" data-move="W" style="grid-column:1;grid-row:2" aria-label="왼쪽으로 이동">←</button>
+      <button class="btn" data-move="E" style="grid-column:3;grid-row:2" aria-label="오른쪽으로 이동">→</button>
+      <button class="btn" data-move="S" style="grid-column:2;grid-row:3" aria-label="아래로 이동">↓</button>
+    </div>
+    <div class="touch2">
+      <button class="btn mid" id="touchRotate">방향</button>
+      <button class="btn mid" id="touchDemolish">해체</button>
+      <button class="btn big primary" id="touchAct">E</button>
+    </div>
+    <div class="toast" id="toast" hidden><span class="bar"></span><span id="toastText"></span></div>
+    <div class="modal" id="inspect" hidden>
+      <div class="card">
+        <h2>택배 검사 <span class="key" id="inspectId">#1</span></h2>
+        <div class="label">
+          <div class="row"><span>목적지</span><b id="iDest"></b></div>
+          <div class="row"><span>표기 무게</span><b id="iWeight"></b></div>
+          <div class="row"><span>배송 방법</span><b id="iMethod"></b></div>
+          <div class="row scale"><span>저울 실측</span><b id="iScale"></b></div>
+        </div>
+        <div class="sub">표기와 실측이 다르면 거부하세요. 거부한 택배는 반품구로 보내야 합니다.</div>
+        <div class="row-btns"><button class="btn danger" id="iReject">거부</button><button class="btn ok" id="iApprove">승인</button></div>
+      </div>
+    </div>
+    <div class="modal" id="demolish" hidden>
+      <div class="card">
+        <h2>해체</h2>
+        <div id="dText" style="font-size:13px"></div>
+        <div class="sub">환불 <b id="dRefund" style="color:var(--good)"></b> · 소요 2초 · 해체 중인 칸에는 택배가 들어오지 않습니다.</div>
+        <div class="row-btns"><button class="btn" id="dCancel">취소</button><button class="btn danger" id="dConfirm">해체</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="loading" id="loading"><div class="logo">PARCEL FACTORY</div><div class="bar"><i id="loadBar"></i></div><div class="sub" id="loadText">모델 불러오는 중…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="models.js"></script>
+<script>
+(function () {
+  'use strict';
+  // ---------------- 게임 로직 (코어와 동일 규칙) ----------------
+  const DX = { N: 0, E: 1, S: 0, W: -1 }, DY = { N: 1, E: 0, S: -1, W: 0 }, ORDER = ['N', 'E', 'S', 'W'];
+  const turnR = d => ORDER[(ORDER.indexOf(d) + 1) % 4], turnL = d => ORDER[(ORDER.indexOf(d) + 3) % 4], opp = d => ORDER[(ORDER.indexOf(d) + 2) % 4];
+  const COST = { conveyor: 10, fast: 25, splitter: 60, table: 40, scanner: 120 };
+  const NAMES = { conveyor: '레일', fast: '고속 레일', splitter: '분배기', table: '검사대', scanner: '자동 검사기', inlet: '입고구', outlet: '출고구', rdock: '반품구', empty: '빈 칸', locked: '잠긴 칸' };
+  const ARROWS = { N: '↑', E: '→', S: '↓', W: '←' };
+  const SLOTS = ['conveyor', 'fast', 'table', 'splitter', 'scanner'];
+  const SW = { conveyor: '#3fa3a3', fast: '#c25a66', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
+  const isTrack = c => ['conveyor', 'fast', 'splitter', 'inlet', 'table', 'scanner'].includes(c.type);
+  const isBuilding = c => ['conveyor', 'fast', 'splitter', 'table', 'scanner'].includes(c.type);
+  const isDock = t => t === 'outlet' || t === 'rdock';
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < 12 && y < 12;
+  const CATALOG = [
+    { id: 'plot1', name: '부지 확장 1', sub: '9×9로 넓힙니다', price: 200, plot: 9 },
+    { id: 'plot2', name: '부지 확장 2', sub: '12×12로 넓힙니다 · 확장 1 필요', price: 500, plot: 12, req: 'plot1' },
+    { id: 'railS', name: '레일 ↓', sub: '남쪽으로 흐르는 레일', price: 50, tool: 'conveyor:S' }, { id: 'railW', name: '레일 ←', sub: '서쪽으로 흐르는 레일', price: 50, tool: 'conveyor:W' }, { id: 'railN', name: '레일 ↑', sub: '북쪽으로 흐르는 레일', price: 50, tool: 'conveyor:N' },
+    { id: 'fastE', name: '고속 레일 →', sub: '2배 속도', price: 100, tool: 'fast:E' }, { id: 'fastS', name: '고속 레일 ↓', sub: '2배 속도', price: 100, tool: 'fast:S' }, { id: 'fastW', name: '고속 레일 ←', sub: '2배 속도', price: 100, tool: 'fast:W' }, { id: 'fastN', name: '고속 레일 ↑', sub: '2배 속도', price: 100, tool: 'fast:N' },
+    { id: 'splitter', name: '분배기', sub: '좌·우로 번갈아 보냅니다 · 4방향', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향', price: 250, scanner: true },
+  ];
+  function cell(type, dir) { return { type, dir: dir || 'E', demolishing: false, remain: 0, toggle: false, occ: -1 }; }
+  function newGame() {
+    const cells = [];
+    for (let y = 0; y < 12; y++) { cells.push([]); for (let x = 0; x < 12; x++) cells[y].push(cell((x < 6 && y < 6) ? 'empty' : 'locked')); }
+    cells[2][0] = cell('inlet'); cells[2][5] = cell('outlet'); cells[4][5] = cell('rdock');
+    return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, worker: { x: 2.5, y: 4, facing: 'S', carrying: null } };
+  }
+  function demoLayout(g) { // #demo — 시안 확인용 샘플 배치
+    g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
+    g.cells[3][3] = cell('conveyor', 'N'); g.cells[4][3] = cell('conveyor', 'E'); g.cells[4][4] = cell('conveyor', 'E');
+    g.worker = { x: 2.6, y: 1.2, facing: 'N', carrying: null }; g.money = 240; return g;
+  }
+  let S = location.hash === '#demo' ? demoLayout(newGame()) : newGame();
+  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null };
+
+  function headingFor(c, incoming) {
+    if (c.type !== 'splitter') return c.dir;
+    const left = turnL(c.dir), right = turnR(c.dir);
+    let chosen = c.toggle ? right : left; const other = c.toggle ? left : right;
+    if (chosen === opp(incoming)) chosen = other;
+    c.toggle = !c.toggle; return chosen;
+  }
+  function makeLabel(bad) {
+    const dests = ['서울', '부산', '대구', '광주', '인천'], methods = ['일반', '익일', '당일'];
+    const w = 1 + Math.floor(Math.random() * 8);
+    return { dest: dests[Math.floor(Math.random() * 5)], weight: w, method: methods[Math.floor(Math.random() * 3)], scale: bad ? w + 3 + Math.floor(Math.random() * 5) : w };
+  }
+  function spawn(x, y) {
+    const c = S.cells[y][x];
+    if (!isTrack(c) || c.occ >= 0 || c.demolishing) return false;
+    const h = headingFor(c, c.dir), bad = Math.random() < 0.3;
+    const p = { id: S.nextId++, x, y, progress: 0, heading: h, entry: h, bad, inspected: false, rejected: false, label: makeLabel(bad) };
+    c.occ = p.id; S.packages.push(p); return true;
+  }
+  function deliver(p, dockType) {
+    let delta = 0, msg = '', kind = 'bad';
+    if (dockType === 'outlet') {
+      if (!p.inspected) { delta = -10; msg = '검사하지 않은 택배가 출고됨 −10'; }
+      else if (p.rejected) { delta = -10; msg = '거부한 택배를 출고함 −10'; }
+      else if (p.bad) { delta = -20; msg = '불량 택배가 출고됨 −20'; }
+      else { delta = 15; S.delivered++; msg = '배송 완료 +15'; kind = 'good'; }
+    } else {
+      if (!p.inspected) { delta = -5; msg = '검사하지 않은 택배를 반품함 −5'; }
+      else if (p.rejected && p.bad) { delta = 5; S.delivered++; msg = '불량 반품 처리 +5'; kind = 'good'; }
+      else { delta = -5; msg = '정상 택배를 반품함 −5'; }
+    }
+    S.money += delta; toast(msg, kind);
+  }
+  function remove(i, delivered) { const p = S.packages[i]; S.cells[p.y][p.x].occ = -1; S.packages.splice(i, 1); if (!delivered) S.lost++; }
+  function tick(dt) {
+    if (S.paused) return;
+    const d = dt * S.speed;
+    S.timer += d; while (S.timer >= 3) { S.timer -= 3; spawn(0, 2); }
+    for (let i = 0; i < S.packages.length; i++) {
+      const p = S.packages[i], c = S.cells[p.y][p.x];
+      p.progress = Math.min(1, p.progress + (c.type === 'fast' ? 2 : 1) * d);
+      if (p.progress < 1 - 1e-4) continue;
+      p.progress = 1;
+      if (c.type === 'table' && !p.inspected) continue;
+      const nx = p.x + DX[p.heading], ny = p.y + DY[p.heading];
+      if (!inBounds(nx, ny)) { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
+      const next = S.cells[ny][nx];
+      if (isDock(next.type)) { deliver(p, next.type); remove(i, true); i--; continue; }
+      if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
+      if (next.occ >= 0 || next.demolishing) continue;
+      c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading);
+      if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; }
+    }
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
+      const c = S.cells[y][x]; if (!c.demolishing) continue;
+      c.remain -= d; if (c.remain > 1e-4) continue;
+      const r = Math.round(COST[c.type] * 0.8);
+      for (let i = S.packages.length - 1; i >= 0; i--) if (S.packages[i].x === x && S.packages[i].y === y) remove(i, false);
+      S.cells[y][x] = cell('empty'); S.money += r; UI.dirty.add(x + ',' + y); toast('해체 완료 · 환불 +' + r, 'good');
+    }
+  }
+  const WALK_SPEED = 3.4, WORKER_R = 0.28; // 칸/초, 충돌 반지름(칸)
+  const walkableCell = c => c.type !== 'locked' && c.type !== 'table' && c.type !== 'scanner' && c.type !== 'splitter'; // 레일·도크 위는 걸어 다닐 수 있다
+  const walkableAt = (px, py) => { const n = S.unlocked; if (px < -0.5 + WORKER_R || py < -0.5 + WORKER_R || px > n - 0.5 - WORKER_R || py > n - 0.5 - WORKER_R) return false; for (const dx of [-WORKER_R, WORKER_R]) for (const dy of [-WORKER_R, WORKER_R]) { const cx = Math.round(px + dx), cy = Math.round(py + dy); if (!inBounds(cx, cy) || !walkableCell(S.cells[cy][cx])) return false; } return true; };
+  function moveWorker(vx, vy, dt) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리
+    const w = S.worker; const len = Math.hypot(vx, vy); if (len < 1e-6) return false;
+    vx /= len; vy /= len; const step = WALK_SPEED * dt;
+    const nx = w.x + vx * step; if (walkableAt(nx, w.y)) w.x = nx;
+    const ny = w.y + vy * step; if (walkableAt(w.x, ny)) w.y = ny;
+    w.facing = Math.abs(vx) >= Math.abs(vy) ? (vx > 0 ? 'E' : 'W') : (vy > 0 ? 'N' : 'S');
+    if (UI.inspect) { UI.inspect = null; $('inspect').hidden = true; }
+    return true;
+  }
+  const workerTile = () => ({ x: Math.round(S.worker.x), y: Math.round(S.worker.y) });
+  const facingTile = () => ({ x: Math.round(S.worker.x + DX[S.worker.facing] * 0.8), y: Math.round(S.worker.y + DY[S.worker.facing] * 0.8) }); // 바라보는 쪽 0.8칸 앞의 칸
+  const workerOverlaps = (gx, gy) => Math.abs(S.worker.x - gx) < 0.5 + WORKER_R && Math.abs(S.worker.y - gy) < 0.5 + WORKER_R;
+  const packageAt = (x, y) => inBounds(x, y) ? S.packages.findIndex(p => p.x === x && p.y === y) : -1;
+  function preview() {
+    const w = S.worker, f = facingTile();
+    if (!inBounds(f.x, f.y)) return 'nofloor';
+    const fc = S.cells[f.y][f.x];
+    if (w.carrying) { if (isDock(fc.type)) return 'deliver'; if (isTrack(fc) && fc.occ < 0 && !fc.demolishing) return 'put'; return 'cannotput'; }
+    const pi = packageAt(f.x, f.y);
+    if (pi >= 0) return (fc.type === 'table' && !S.packages[pi].inspected) ? 'inspect' : 'pick';
+    if (!UI.tool) return 'notool';
+    if (!(f.x < S.unlocked && f.y < S.unlocked)) return 'locked';
+    if (fc.type !== 'empty') return 'occupied';
+    if (!walkableCell({ type: UI.tool.type }) && workerOverlaps(f.x, f.y)) return 'standing';
+    if (S.money < COST[UI.tool.type]) return 'nomoney';
+    return 'place';
+  }
+
+  function act() {
+    const w = S.worker, f = facingTile(), r = preview();
+    const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
+    switch (r) {
+      case 'deliver': deliver(w.carrying, fc.type); w.carrying = null; break;
+      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; } break; }
+      case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
+      case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
+      case 'place': S.money -= COST[UI.tool.type]; S.cells[f.y][f.x] = cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
+      case 'nofloor': toast('바닥이 없는 곳입니다'); break;
+      case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
+      case 'notool': toast('도구를 고르세요 (1~5)'); break;
+      case 'standing': toast('서 있는 자리에는 놓을 수 없습니다'); break;
+      case 'locked': toast('아직 사지 않은 부지입니다 · 상점에서 확장'); break;
+      case 'occupied': toast('이미 무언가 있습니다'); break;
+      case 'nomoney': toast('잔액이 부족합니다', 'bad'); break;
+    }
+  }
+  function askDemolish() {
+    const f = facingTile(); if (!inBounds(f.x, f.y)) return toast('해체할 수 있는 부품이 아닙니다');
+    const c = S.cells[f.y][f.x];
+    if (!isBuilding(c)) return toast('해체할 수 있는 부품이 아닙니다');
+    if (c.demolishing) return toast('이미 해체 중입니다');
+    UI.pending = { x: f.x, y: f.y };
+    $('dText').textContent = NAMES[c.type] + ' ' + ARROWS[c.dir] + ' 를 해체합니다.';
+    $('dRefund').textContent = '+' + Math.round(COST[c.type] * 0.8);
+    $('demolish').hidden = false;
+  }
+  function buy(def) {
+    if (S.purchased[def.id]) return toast('이미 보유 중입니다');
+    if (def.req && !S.purchased[def.req]) return toast('먼저 해금해야 하는 항목이 있습니다');
+    if (S.money < def.price) return toast('잔액이 부족합니다', 'bad');
+    S.money -= def.price; S.purchased[def.id] = true;
+    if (def.plot) { S.unlocked = def.plot; for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) if (S.cells[y][x].type === 'locked' && x < def.plot && y < def.plot) S.cells[y][x].type = 'empty'; UI.rebuildAll = true; }
+    if (def.tool) S.owned[def.tool] = true; if (def.splitter) S.splitter = true; if (def.scanner) S.scanner = true;
+    toast(def.name + ' 해금', 'good'); renderShop(); renderHotbar();
+  }
+  function ownedDirs(type) {
+    if (type === 'table') return S.table ? ORDER.slice() : [];
+    if (type === 'splitter') return S.splitter ? ORDER.slice() : [];
+    if (type === 'scanner') return S.scanner ? ORDER.slice() : [];
+    return ORDER.filter(d => S.owned[type + ':' + d]);
+  }
+  const availableSlots = () => SLOTS.filter(t => ownedDirs(t).length > 0);
+  function selectSlot(i) {
+    const slots = availableSlots(); if (i < 0 || i >= slots.length) return;
+    if (UI.slot === i) { clearTool(); return; }
+    const type = slots[i], dirs = ownedDirs(type);
+    const dir = dirs.includes(UI.lastDir[type]) ? UI.lastDir[type] : dirs[0];
+    UI.slot = i; UI.tool = { type, dir }; renderHotbar();
+  }
+  function clearTool() { UI.slot = -1; UI.tool = null; renderHotbar(); }
+  function rotateTool() {
+    if (!UI.tool) return; const dirs = ownedDirs(UI.tool.type); if (!dirs.length) return clearTool();
+    const next = dirs[(dirs.indexOf(UI.tool.dir) + 1) % dirs.length]; UI.lastDir[UI.tool.type] = next; UI.tool = { type: UI.tool.type, dir: next }; renderHotbar();
+    if (dirs.length === 1) toast('이 부품은 아직 한 방향만 보유 중입니다 · 상점에서 추가');
+  }
+
+  // ---------------- HUD ----------------
+  const $ = id => document.getElementById(id);
+  const ICONS = {
+    conveyor: '<svg viewBox="0 0 16 16"><path d="M2 8h9M8 4l4 4-4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    fast: '<svg viewBox="0 0 16 16"><path d="M1 8h6M6 4l4 4-4 4M8 4l4 4-4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    table: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="9" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 6.5h6M5 9h4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    splitter: '<svg viewBox="0 0 16 16"><path d="M2 8h5l4-4M7 8l4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    scanner: '<svg viewBox="0 0 16 16"><path d="M3 12V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 8h6" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round"/></svg>',
+  };
+  let toastTimer;
+  function toast(m, kind) { const t = $('toast'); $('toastText').textContent = m; t.className = 'toast' + (kind ? ' ' + kind : ''); t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 1900); }
+  function renderHotbar() {
+    const bar = $('hotbar'); bar.innerHTML = '';
+    availableSlots().forEach((type, i) => {
+      const on = UI.slot === i && UI.tool;
+      const b = document.createElement('button'); b.className = 'slot' + (on ? ' on' : '');
+      const dirs = ownedDirs(type);
+      b.innerHTML = '<span class="k">' + (i + 1) + '</span><span class="c">' + COST[type] + '</span><span class="ico" style="background:' + SW[type] + '">' + ICONS[type] + '</span><span>' + NAMES[type] + '</span><span class="d">' + (on ? ARROWS[UI.tool.dir] : (dirs.length > 1 ? 'R' : ARROWS[dirs[0]])) + '</span>';
+      b.title = NAMES[type] + ' · ' + (dirs.length > 1 ? 'R로 방향 전환' : '방향 ' + ARROWS[dirs[0]]);
+      b.addEventListener('click', () => selectSlot(i)); bar.appendChild(b);
+    });
+  }
+  function renderShop() {
+    const el = $('shop'); el.innerHTML = '<h3>해금 상점 <span>₩ ' + S.money + '</span></h3>';
+    CATALOG.forEach(def => {
+      const owned = !!S.purchased[def.id], blocked = def.req && !S.purchased[def.req], afford = S.money >= def.price;
+      const row = document.createElement('div'); row.className = 'it';
+      row.innerHTML = '<span>' + def.name + '<small>' + def.sub + '</small></span>';
+      const b = document.createElement('button'); b.className = 'btn buy' + (!owned && !blocked && afford ? ' primary' : ''); b.textContent = owned ? '보유' : blocked ? '잠김' : '₩ ' + def.price; b.disabled = owned || blocked || !afford;
+      b.addEventListener('click', () => buy(def)); row.appendChild(b); el.appendChild(row);
+    });
+  }
+  function showInspect() {
+    const p = UI.inspect; $('inspectId').textContent = '#' + p.id; $('iDest').textContent = p.label.dest; $('iWeight').textContent = p.label.weight + ' kg'; $('iMethod').textContent = p.label.method; $('iScale').textContent = p.label.scale + ' kg'; $('inspect').hidden = false;
+  }
+  $('iApprove').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = false; } UI.inspect = null; $('inspect').hidden = true; });
+  $('iReject').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = true; } UI.inspect = null; $('inspect').hidden = true; });
+  $('dCancel').addEventListener('click', () => { UI.pending = null; $('demolish').hidden = true; });
+  $('dConfirm').addEventListener('click', () => { if (UI.pending) { const c = S.cells[UI.pending.y][UI.pending.x]; if (isBuilding(c)) { c.demolishing = true; c.remain = 2; UI.dirty.add(UI.pending.x + ',' + UI.pending.y); } } UI.pending = null; $('demolish').hidden = true; });
+  $('pauseBtn').addEventListener('click', () => { S.paused = !S.paused; });
+  $('speedBtn').addEventListener('click', () => { S.speed = S.speed === 1 ? 2 : 1; });
+  $('shopBtn').addEventListener('click', () => { $('shop').hidden = !$('shop').hidden; $('help').hidden = true; renderShop(); });
+  $('helpBtn').addEventListener('click', () => { $('help').hidden = !$('help').hidden; $('shop').hidden = true; });
+  $('saveBtn').addEventListener('click', () => { UI.saved = JSON.stringify(S); toast('저장했습니다', 'good'); });
+  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; toast('불러왔습니다', 'good'); });
+  $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; toast('새 게임'); });
+  $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
+  const held = new Set();
+  document.querySelectorAll('[data-move]').forEach(b => { const d = b.dataset.move; const on = e => { e.preventDefault(); held.add('pad' + d); }, off = () => held.delete('pad' + d); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
+  window.addEventListener('keyup', e => held.delete(e.key.toLowerCase())); window.addEventListener('blur', () => held.clear());
+  const KEYDIR = { w: 'N', arrowup: 'N', s: 'S', arrowdown: 'S', a: 'W', arrowleft: 'W', d: 'E', arrowright: 'E', padn: 'N', pads: 'S', padw: 'W', pade: 'E' };
+  function inputVector() { let vx = 0, vy = 0; for (const k of held) { const d = KEYDIR[k]; if (d) { vx += DX[d]; vy += DY[d]; } } return [vx, vy]; }
+  $('touchAct').addEventListener('click', act); $('touchDemolish').addEventListener('click', askDemolish); $('touchRotate').addEventListener('click', rotateTool);
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
+    if (!$('inspect').hidden || !$('demolish').hidden) return;
+    if (KEYDIR[k]) { e.preventDefault(); held.add(k); return; }
+    if (k === 'e') act(); else if (k === 'x') askDemolish(); else if (k === 'q') clearTool(); else if (k === 'r') rotateTool();
+    else if (k === 'p') $('pauseBtn').click(); else if (k === 't') $('speedBtn').click(); else if (k === 'b') $('shopBtn').click(); else if (k === 'o') $('helpBtn').click();
+    else if (/^[1-5]$/.test(k)) selectSlot(parseInt(k, 10) - 1);
+  });
+
+  // ---------------- 3D ----------------
+  const MODEL_FILES = Object.keys(window.PF_MODELS || {});
+  const BELT_YAW = 0, JUNCTION_YAW = 0, WORKER_YAW = 0; // 모델 정면이 다르면 여기서 보정
+  const models = {}, clips = {};
+  const canvas = $('gl');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputEncoding = THREE.sRGBEncoding;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1d2127); scene.fog = new THREE.Fog(0x1d2127, 24, 46);
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+  const camDir = new THREE.Vector3(0, 14.5, -10.5).normalize(), camPos = new THREE.Vector3(), camTarget = new THREE.Vector3(), camLook = new THREE.Vector3();
+  function frameLot(snap) { // 해금된 부지 + 도크 차량이 화면에 들어오도록 카메라를 잡는다
+    const n = S.unlocked, a = camera.aspect || 1, t = Math.tan(camera.fov * Math.PI / 360);
+    const hw = n / 2 + 5.0, hv = n / 2 + 2.8, dist = Math.max(hw / (t * a), hv / t) * 1.04;
+    camTarget.set((W(0) + W(n - 1)) / 2 * 0.2, 0, (Z(0) + Z(n - 1)) / 2 + 0.5); camPos.copy(camTarget).addScaledVector(camDir, dist);
+    scene.fog.near = dist + 6; scene.fog.far = dist + 30;
+    if (snap) { camera.position.copy(camPos); camLook.copy(camTarget); camera.lookAt(camLook); }
+  }
+  scene.add(new THREE.HemisphereLight(0xdfe7f2, 0x6b655c, 0.55));
+  const sun = new THREE.DirectionalLight(0xffe6c2, 1.05); sun.position.set(-9, 17, 4); sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096); sun.shadow.camera.left = -15; sun.shadow.camera.right = 15; sun.shadow.camera.top = 15; sun.shadow.camera.bottom = -15; sun.shadow.camera.near = 1; sun.shadow.camera.far = 50; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 2;
+  scene.add(sun);
+  const W = gx => 5.5 - gx, Z = gy => gy - 5.5;   // 격자 → 월드. 카메라가 -z에서 +z를 보므로 화면 오른쪽 = -x. 동쪽(gx+)이 오른쪽이 되도록 x를 뒤집는다. 북쪽(gy+) = +z = 화면 위
+  const lit = (color, o) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9, metalness: 0 }, o || {}));
+  const PALETTE = { grass: 0x5f9c48, leafsGreen: 0x4e9640, leafsDark: 0x3c7d4b, wood: 0xb98a5c, woodDark: 0x8c5f40, woodBark: 0x8a5a3c, woodBarkDark: 0x7d5238, dirt: 0xa27c5a, woodInner: 0xe6d0ad, _defaultMat: 0xd8d3c6 }; // nature-kit 민트 팔레트를 공장 톤에 맞게 재채색
+  function shadowify(obj) { obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.isMeshBasicMaterial) { const b = o.material, c = PALETTE[b.name]; o.material = new THREE.MeshStandardMaterial({ color: c !== undefined ? c : b.color, map: b.map, vertexColors: c !== undefined ? false : b.vertexColors, roughness: 0.95, metalness: 0 }); } if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } }); return obj; }
+  function make(key, scale, yaw) { const m = models[key]; const g = m ? m.clone(true) : fallback(); g.scale.setScalar(scale || 1); g.rotation.y = yaw || 0; return g; }
+  let chevronGeo = null;
+  function chevron() { // 벨트 위 흐름 표시: +z를 가리키는 납작한 화살표
+    if (!chevronGeo) { const sh = new THREE.Shape(); sh.moveTo(0, 0.16); sh.lineTo(0.14, -0.02); sh.lineTo(0.05, -0.02); sh.lineTo(0.05, -0.16); sh.lineTo(-0.05, -0.16); sh.lineTo(-0.05, -0.02); sh.lineTo(-0.14, -0.02); sh.closePath(); chevronGeo = new THREE.ShapeGeometry(sh); chevronGeo.rotateX(-Math.PI / 2); chevronGeo.scale(1, 1, -1); }
+    const m = new THREE.Mesh(chevronGeo, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.5, roughness: 0.6, side: THREE.DoubleSide })); m.castShadow = false; return m;
+  }
+  function fallback() { const g = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), lit(0x888888)); g.position.y = 0.25; g.castShadow = true; return g; }
+  function box(w, h, d, m, x, y, z) { const g = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); g.position.set(x, y, z); g.castShadow = true; g.receiveShadow = true; return g; }
+  const yawOf = dir => Math.atan2(-DX[dir], DY[dir]); // 모델의 +z를 dir로 (x 뒤집힘 반영)
+
+  function asphaltTexture() { // 바깥 야드: 어두운 아스팔트 + 미세 노이즈
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g = cv.getContext('2d');
+    g.fillStyle = '#4a4b4e'; g.fillRect(0, 0, 512, 512);
+    let seed = 3; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (let i = 0; i < 14000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(60,61,64,0.5)' : 'rgba(96,97,100,0.45)'; g.fillRect(rnd() * 512, rnd() * 512, 1 + rnd() * 2, 1 + rnd() * 2); }
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(16, 16); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return t;
+  }
+  function hazardTexture() { // 노랑/검정 사선 테이프
+    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 16; const g = cv.getContext('2d');
+    g.fillStyle = '#f2c230'; g.fillRect(0, 0, 64, 16); g.fillStyle = '#2a2a2a';
+    for (let i = -16; i < 64; i += 16) { g.beginPath(); g.moveTo(i, 16); g.lineTo(i + 8, 16); g.lineTo(i + 24, 0); g.lineTo(i + 16, 0); g.closePath(); g.fill(); }
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; return t;
+  }
+
+  function concreteTexture(n, base) { // n×n 칸 창고 바닥 — 웜 그레이 콘크리트 + 타일 이음새
+    const px = 64, cv = document.createElement('canvas'); cv.width = cv.height = n * px; const g = cv.getContext('2d');
+    g.fillStyle = base || '#c9c4bb'; g.fillRect(0, 0, cv.width, cv.height);
+    let seed = 5; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (let i = 0; i < n * n * 260; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(170,164,154,0.35)' : 'rgba(235,231,224,0.35)'; g.fillRect(rnd() * cv.width, rnd() * cv.height, 1 + rnd() * 2, 1 + rnd() * 2); }
+    g.strokeStyle = 'rgba(120,114,104,0.55)'; g.lineWidth = 2;
+    for (let i = 0; i <= n; i++) { g.beginPath(); g.moveTo(i * px, 0); g.lineTo(i * px, cv.height); g.stroke(); g.beginPath(); g.moveTo(0, i * px); g.lineTo(cv.width, i * px); g.stroke(); }
+    g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1;
+    for (let i = 0; i < n; i++) { g.beginPath(); g.moveTo(i * px + 2, 0); g.lineTo(i * px + 2, cv.height); g.stroke(); g.beginPath(); g.moveTo(0, i * px + 2); g.lineTo(cv.width, i * px + 2); g.stroke(); }
+    const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return t;
+  }
+  const concreteMat = lit(0xd6d1c8, { roughness: 0.85 });
+  const HALF = 7; // 건물 내부 14×14 (부지 12×12 + 여유 1칸)
+  const wallMat = lit(0xd9d3c8, { roughness: 0.9 }), wallDark = lit(0x5a5f66, { roughness: 0.8 }), laneMat = lit(0xe9c94a, { roughness: 0.7 });
+  function wallRun(x0, z0, x1, z1, h) { // 두께 0.3 벽 + 어두운 굽도리 + 윗면 캡
+    const len = Math.hypot(x1 - x0, z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, yaw = Math.atan2(x1 - x0, z1 - z0);
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = yaw;
+    g.add(box(0.3, h, len, wallMat, 0, h / 2, 0)); g.add(box(0.34, 0.22, len, wallDark, 0, 0.11, 0)); g.add(box(0.36, 0.08, len, wallDark, 0, h + 0.04, 0));
+    scene.add(g); return g;
+  }
+  function buildStatic() {
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.03; ground.receiveShadow = true; scene.add(ground);
+    // 건물 바닥: 어두운 콘크리트(아직 임대 전 구역 포함)
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, HALF * 2), new THREE.MeshStandardMaterial({ map: concreteTexture(HALF * 2, '#8f8c86'), roughness: 0.95 }));
+    inner.rotation.x = -Math.PI / 2; inner.position.y = -0.02; inner.receiveShadow = true; scene.add(inner);
+    // 벽: 북쪽 전체, 동·서쪽은 도크 줄에 출입구. 남쪽(카메라 쪽)은 트임.
+    const H = 1.7, doorRows = [Z(2), Z(4)];
+    wallRun(-HALF, HALF, HALF, HALF, H);
+    const sideWall = (x, rows) => { let z = -HALF; const gaps = rows.map(r => [r - 1.0, r + 1.0]).sort((a, b) => a[0] - b[0]); for (const [a, b] of gaps) { wallRun(x, z, x, a, H); const lintel = box(0.3, 0.5, b - a, wallMat, x, H - 0.25, (a + b) / 2); scene.add(lintel); scene.add(box(0.36, H - 0.5, 0.12, wallDark, x, (H - 0.5) / 2, a + 0.06)); scene.add(box(0.36, H - 0.5, 0.12, wallDark, x, (H - 0.5) / 2, b - 0.06)); scene.add(box(0.36, 0.12, b - a, laneMat, x, H - 0.56, (a + b) / 2)); z = b; } wallRun(x, z, x, HALF, H); };
+    sideWall(HALF, [Z(2)]); sideWall(-HALF, doorRows);
+    const corner = (x, z) => { const c = box(0.5, H + 0.3, 0.5, wallDark, x, (H + 0.3) / 2, z); scene.add(c); }; corner(HALF, HALF); corner(-HALF, HALF); corner(HALF, -HALF); corner(-HALF, -HALF);
+    // 북쪽 벽 앞 설비 (장식)
+    const prop = (key, sc, yaw, x, z) => { const g = make(key, sc, yaw); g.position.set(x, 0, z); scene.add(g); return g; };
+    prop('machine-window', 0.9, Math.PI, -4.6, HALF - 0.9); prop('machine', 0.9, Math.PI, -3.3, HALF - 0.9); prop('hopper-round', 0.9, 0, -1.6, HALF - 0.75);
+    prop('pipe-large-long', 0.8, 0, 0.6, HALF - 0.6); prop('pipe-large-long', 0.8, 0, 2.2, HALF - 0.6); prop('robot-arm-a', 0.6, Math.PI, 4.0, HALF - 0.8);
+    prop('screen-hanging-wide', 1.0, Math.PI, 5.6, HALF - 0.5).position.y = 1.0;
+    // 임대 전 구역에 쌓인 재고 (12×12 밖 여백·잠긴 영역 느낌)
+    let seed = 7; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (const [x, z] of [[-6.2, 5.6], [-5.2, 5.7], [-6.1, 4.6], [6.1, 5.5], [6.2, 4.4], [5.1, 5.6]]) { const k = ['box-large', 'box-wide', 'box-long'][Math.floor(rnd() * 3)]; prop(k, 0.9, rnd() * 0.6 - 0.3, x, z); if (rnd() < 0.5) prop('box-small', 0.9, rnd() * 1.5, x, z).position.y = 0.5; }
+    // 야드: 컨테이너, 급수탑, 굴뚝, 멀리 건물 실루엣
+    prop('shipping-container-a', 3.0, 0, -11.5, 4.0); prop('shipping-container-b', 3.0, 0, -11.5, 7.5); prop('shipping-container-c', 3.0, 0.08, -13.2, 1.2);
+    prop('water-tower', 2.6, 0, 10.5, 9.5); prop('detail-tank', 3.0, 0, 11.5, 6.0); prop('chimney-medium', 2.6, 0, -9.0, 10.5);
+    prop('building-a', 5.0, 0, -2.0, 13.5); prop('building-c', 5.0, 0, 8.0, 14.2); prop('building-h', 5.0, 0, -10.0, 14.0);
+    for (let i = 0; i < 6; i++) prop('cone-flat', 0.9, 0, HALF + 1.2 + i * 0.0, -HALF + 1 + i * 1.6).visible = i % 2 === 0;
+    // 도크: 슬래브 + 출입구 밖에 세워 둔 차량 + 도크→출입구 차선
+    dock(0, 2, 0x3fa35a, 'van', HALF + 1.5, Z(2), Math.PI / 2);
+    dock(5, 2, 0x3d7be0, 'delivery', -HALF - 1.6, Z(2), -Math.PI / 2);
+    dock(5, 4, 0xd95a4a, 'truck', -HALF - 1.6, Z(4), -Math.PI / 2);
+  }
+  function dock(gx, gy, color, vehicle, vx, vz, vyaw) {
+    const slab = box(1, 0.22, 1, lit(color, { roughness: 0.6 }), W(gx), 0.11, Z(gy)); scene.add(slab);
+    const mark = box(0.72, 0.02, 0.72, lit(0xf5f0e6, { roughness: 0.8 }), W(gx), 0.23, Z(gy)); scene.add(mark);
+    const v = make(vehicle, 0.64, vyaw); v.position.set(vx, 0, vz); scene.add(v);
+    const cone = make('warning-traffic', 0.6, 0); cone.position.set(W(gx), 0, Z(gy) + 0.62); scene.add(cone);
+    const doorX = vx > 0 ? HALF : -HALF, x0 = W(gx) + (vx > 0 ? 0.5 : -0.5); // 도크 칸 가장자리 → 출입구까지 바닥 차선
+    if (Math.abs(doorX - x0) > 0.2) { const len = Math.abs(doorX - x0), cx = (doorX + x0) / 2; scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) - 0.42)); scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) + 0.42)); }
+  }
+  let lotGroup = null;
+  function rebuildLot() {
+    if (lotGroup) scene.remove(lotGroup);
+    lotGroup = new THREE.Group(); scene.add(lotGroup);
+    const n = S.unlocked, cx = (W(0) + W(n - 1)) / 2, cz = (Z(0) + Z(n - 1)) / 2;
+    const slab = box(n, 0.08, n, new THREE.MeshStandardMaterial({ map: concreteTexture(n, '#cfcac1'), roughness: 0.85 }), cx, -0.04, cz); slab.castShadow = false; lotGroup.add(slab);
+    const tape = new THREE.MeshStandardMaterial({ map: hazardTexture(), roughness: 0.7 }); tape.map.repeat.set(n * 1.5, 1);
+    const edge = (x0, z0, x1, z1) => { const len = Math.hypot(x1 - x0, z1 - z0); const m = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.14), tape); m.rotation.x = -Math.PI / 2; m.rotation.z = -Math.atan2(z1 - z0, x1 - x0); m.position.set((x0 + x1) / 2, 0.012, (z0 + z1) / 2); m.receiveShadow = true; lotGroup.add(m); };
+    const xa = cx + n / 2, xb = cx - n / 2, za = cz - n / 2, zb = cz + n / 2; // xa = 서쪽(+x), xb = 동쪽(-x)
+    edge(xa, za, xb, za); edge(xa, zb, xb, zb); edge(xa, za, xa, zb); edge(xb, za, xb, zb);
+    for (const [x, z] of [[xa, za], [xb, za], [xa, zb], [xb, zb]]) { const c = make('cone', 1.0, 0); c.position.set(x, 0.01, z); lotGroup.add(c); }
+  }
+  const cellObjs = new Map(), objLayer = new THREE.Group(); scene.add(objLayer);
+  const arrows = [];
+  function cellMesh(c) {
+    if (!isBuilding(c)) return null;
+    const g = new THREE.Group(); const yaw = yawOf(c.dir);
+    if (c.type === 'conveyor' || c.type === 'fast' || c.type === 'scanner') {
+      g.add(make('conveyor-stripe', 1, yaw + BELT_YAW));
+      const pivot = new THREE.Group(); pivot.rotation.y = yaw; const ar = chevron(); pivot.add(ar); g.add(pivot);
+      arrows.push({ pivot, ar, speed: c.type === 'fast' ? 2 : 1, t: Math.random() });
+      if (c.type === 'fast') { const s = box(0.9, 0.02, 0.07, lit(0xff5a4a, { emissive: 0xff5a4a, emissiveIntensity: 1.6 }), 0, 0.41, 0); s.rotation.y = yaw; g.add(s); }
+      if (c.type === 'scanner') { const sc = make('scanner-low', 0.58, yaw + Math.PI / 2); sc.position.y = 0.02; g.add(sc); const laser = box(0.8, 0.5, 0.02, new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.35 }), 0, 0.6, 0); laser.rotation.y = yaw; laser.castShadow = false; g.add(laser); }
+    } else if (c.type === 'splitter') {
+      g.add(make('conveyor-junction-t', 1, yaw + JUNCTION_YAW));
+    } else if (c.type === 'table') {
+      g.add(box(0.96, 0.08, 0.96, concreteMat, 0, 0.08, 0)); const t = make('screen-panel-flat', 0.8, yaw); g.add(t);
+    }
+    return g;
+  }
+  function rebuildCell(x, y) {
+    const key = x + ',' + y; const old = cellObjs.get(key);
+    if (old) { objLayer.remove(old); cellObjs.delete(key); for (let i = arrows.length - 1; i >= 0; i--) if (old.children.includes(arrows[i].pivot)) arrows.splice(i, 1); }
+    const m = cellMesh(S.cells[y][x]); if (!m) return;
+    m.position.set(W(x), 0.0, Z(y)); objLayer.add(m); cellObjs.set(key, m);
+  }
+  function rebuildAll() { rebuildLot(); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rebuildCell(x, y); }
+  const parcelObjs = new Map(), parcelLayer = new THREE.Group(); scene.add(parcelLayer);
+  function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(0xc9472f, { emissive: 0xc9472f, emissiveIntensity: 0.8 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); return g; }
+  const surface = t => t === 'table' ? 0.6 : t === 'inlet' ? 0.22 : 0.4;
+  const worker = new THREE.Group(); scene.add(worker);
+  let carried, cursor, mixer = null, actions = {}, curAction = null;
+  function buildWorker() {
+    const src = models['character-male-a']; const m = src ? src : fallback(); m.scale.setScalar(1.45); m.rotation.y = WORKER_YAW; worker.add(m); // SkinnedMesh는 clone하면 본을 잃으므로 원본을 그대로 쓴다
+    if (src && clips['character-male-a'] && clips['character-male-a'].length) { // Kenney 캐릭터에 내장된 클립: idle / walk / holding-both
+      mixer = new THREE.AnimationMixer(m);
+      const byName = n => clips['character-male-a'].find(c => c.name === n);
+      for (const n of ['idle', 'walk', 'holding-both']) { const c = byName(n); if (c) actions[n] = mixer.clipAction(c); }
+      playAnim('idle');
+    }
+    const anchor = new THREE.Group(); anchor.position.y = 1.22; carried = parcelMesh(); carried.visible = false; anchor.add(carried); worker.add(anchor);
+    cursor = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.3, depthWrite: false })); cursor.rotation.x = -Math.PI / 2; scene.add(cursor);
+    worker.position.set(W(S.worker.x), 0, Z(S.worker.y));
+  }
+  function playAnim(name) { const a = actions[name] || actions.idle; if (!a || a === curAction) return; a.reset().setEffectiveTimeScale(name === 'walk' ? 1.6 : 1).fadeIn(0.12).play(); if (curAction) curAction.fadeOut(0.12); curAction = a; }
+  const demoBars = new Map();
+  const yawFacing = { S: Math.PI, E: -Math.PI / 2, N: 0, W: Math.PI / 2 }; // +z가 북쪽을 향하는 모델 기준
+
+  // ---------------- 로딩 ----------------
+  function loadAll(done) {
+    const Loader = THREE.GLTFLoader ? new THREE.GLTFLoader() : null;
+    if (!Loader) { $('loadText').textContent = '모델 로더를 불러오지 못해 간단한 도형으로 표시합니다'; setTimeout(done, 300); return; }
+    let n = 0; const failed = [];
+    const data = window.PF_MODELS || {};
+    MODEL_FILES.forEach(name => {
+      const b64 = data[name];
+      if (!b64) { step(); return; }
+      const bin = atob(b64), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      Loader.parse(buf.buffer, '', gltf => { models[name] = shadowify(gltf.scene); clips[name] = gltf.animations || []; step(); }, err => { console.warn('model failed', name, err); failed.push(name); step(); });
+    });
+    function step() { n++; $('loadBar').style.width = Math.round(n / MODEL_FILES.length * 100) + '%'; $('loadText').textContent = '모델 불러오는 중… ' + n + '/' + MODEL_FILES.length; if (n === MODEL_FILES.length) { if (failed.length) toast('모델 ' + failed.length + '개를 못 읽었습니다'); done(); } }
+  }
+
+  // ---------------- 루프 ----------------
+  function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); frameLot(false); } }
+  const tmpV = new THREE.Vector3();
+  let acc = 0, last = performance.now(), bob = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.25, (now - last) / 1000); last = now; acc += dt;
+    while (acc >= 0.05) { acc -= 0.05; tick(0.05); }
+    resize();
+    if (UI.rebuildAll) { rebuildAll(); frameLot(false); UI.rebuildAll = false; UI.dirty.clear(); }
+    { const k = 1 - Math.pow(0.02, dt); camera.position.lerp(camPos, k); camLook.lerp(camTarget, k); camera.lookAt(camLook); }
+    for (const k of UI.dirty) { const [x, y] = k.split(',').map(Number); rebuildCell(x, y); } UI.dirty.clear();
+    if (!S.paused) for (const a of arrows) { a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); }
+    const seen = new Set();
+    for (const p of S.packages) {
+      seen.add(p.id); let m = parcelObjs.get(p.id); if (!m) { m = parcelMesh(); parcelLayer.add(m); parcelObjs.set(p.id, m); }
+      const dir = p.progress < 0.5 ? p.entry : p.heading, off = p.progress - 0.5;
+      m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); m.getObjectByName('stamp').visible = p.inspected && p.rejected;
+    }
+    for (const [id, m] of parcelObjs) if (!seen.has(id)) { parcelLayer.remove(m); parcelObjs.delete(id); }
+    const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden;
+    const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt);
+    worker.position.set(W(w.x), 0, Z(w.y));
+    const ty = yawFacing[w.facing]; let dy = ty - worker.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); worker.rotation.y += dy * (1 - Math.pow(0.0005, dt));
+    if (mixer) { playAnim(moving ? 'walk' : (w.carrying ? 'holding-both' : 'idle')); mixer.update(dt); } else { bob = moving ? bob + dt * 14 : 0; if (worker.children[0]) worker.children[0].position.y = moving ? Math.abs(Math.sin(bob)) * 0.05 : 0; }
+    carried.visible = !!w.carrying; if (w.carrying) carried.getObjectByName('stamp').visible = w.carrying.inspected && w.carrying.rejected;
+    const f = facingTile(); const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
+    cursor.visible = !!fc && fc.type !== 'locked';
+    if (cursor.visible) { const h = (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.22 + 0.14 * Math.sin(now / 170); }
+    const r = preview(); let label = null;
+    if (r === 'pick') label = '집기'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = fc.type === 'outlet' ? '출고' : '반품'; else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
+    const pr = $('prompt'); pr.hidden = !label;
+    if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
+    $('money').textContent = S.money; $('delivered').textContent = S.delivered; $('lost').textContent = S.lost; $('waiting').textContent = S.packages.filter(p => !p.inspected && S.cells[p.y][p.x].type === 'table').length;
+    $('pauseBtn').classList.toggle('on', S.paused); $('speedLbl').textContent = S.speed + 'x'; $('speedBtn').classList.toggle('on', S.speed === 2);
+    $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일이나 도크를 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + ARROWS[UI.tool.dir] + ' · E로 설치 · R로 방향' : '빈손 · 1~5로 도구를 고르세요');
+    renderer.render(scene, camera);
+  }
+  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
+})();
+</script>
