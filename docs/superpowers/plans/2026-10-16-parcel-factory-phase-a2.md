@@ -462,6 +462,31 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
+        public void PlaceCarried_OnScanner_InspectsImmediately()
+        {
+            var sim = NewSim(1.0);
+            grid.Place(1, 1, CellType.Scanner, Direction.East);
+            var p = new PackageFactory(new Random(1), 1.0).Create(7, 0, 0, Direction.East);
+            Assert.IsFalse(p.Inspected);
+            sim.PlaceCarried(p, 1, 1);
+            Assert.IsTrue(p.Inspected);
+            Assert.IsTrue(p.Rejected);
+        }
+
+        [Test]
+        public void CarryPrimitives_RejectPackageStillOnLine()
+        {
+            var sim = NewSim(0.0);
+            grid.Place(1, 2, CellType.Conveyor, Direction.East);
+            grid.Place(1, 1, CellType.Conveyor, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
+            Assert.Throws<InvalidOperationException>(() => sim.PlaceCarried(p, 1, 1));
+            Assert.Throws<InvalidOperationException>(() => sim.DeliverCarried(p, CellType.Outlet));
+            Assert.AreEqual(1, sim.Packages.Count);
+            Assert.AreEqual(0, economy.Money);
+        }
+
+        [Test]
         public void DeliverCarried_AppliesScoring()
         {
             var sim = NewSim(0.0);
@@ -725,6 +750,7 @@ namespace ParcelFactory.Core
             var cell = grid.Get(x, y);
             if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing)
                 throw new InvalidOperationException($"cannot put package at ({x},{y})");
+            if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
             p.X = x;
             p.Y = y;
             p.Progress = 0f;
@@ -732,10 +758,15 @@ namespace ParcelFactory.Core
             p.EntryHeading = p.Heading;
             cell.OccupantId = p.Id;
             packages.Add(p);
+            if (cell.Type == CellType.Scanner && !p.Inspected) p.Inspect(p.Bad); // 스캐너는 놓는 순간에도 판정한다
         }
 
         /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다.</summary>
-        public int DeliverCarried(Package p, CellType dockType) => ApplyDelivery(p, dockType);
+        public int DeliverCarried(Package p, CellType dockType)
+        {
+            if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
+            return ApplyDelivery(p, dockType);
+        }
 
         /// <summary>분배기는 자기 방향 기준 좌·우로 번갈아 내보내되, 들어온 방향의 정반대로는 절대 내보내지 않는다.</summary>
         private static Direction HeadingFor(Cell cell, Direction incoming)
@@ -838,7 +869,7 @@ namespace ParcelFactory.Core
 - [ ] **Step 4: 통과 확인**
 
 Run: `~/.dotnet/dotnet test DotnetTests/Core.Tests`
-Expected: `Failed: 0`. `InspectionTests` 11개, `Adjust_AllowsNegativeBalance`, 수정된 `GameSessionTests` 2개 포함. `SaveSerializerTests`는 그대로 통과해야 한다(택배 필드가 늘었지만 아직 저장하지 않음).
+Expected: `Failed: 0`. `InspectionTests` 13개, `Adjust_AllowsNegativeBalance`, 수정된 `GameSessionTests` 2개 포함. `SaveSerializerTests`는 그대로 통과해야 한다(택배 필드가 늘었지만 아직 저장하지 않음).
 
 - [ ] **Step 5: 커밋**
 
