@@ -213,5 +213,46 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(10, economy.Money);
             Assert.Throws<ArgumentException>(() => sim.DeliverCarried(q, CellType.Conveyor));
         }
+    
+
+        [Test]
+        public void AwaitingInspection_CountsUninspectedOnTables()
+        {
+            var sim = NewSim(0.0);
+            grid.Place(1, 2, CellType.Table, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
+            Assert.IsFalse(sim.IsAwaitingInspection(p));
+            Assert.AreEqual(0, sim.AwaitingInspectionCount);
+            sim.Tick(1f);
+            Assert.IsTrue(sim.IsAwaitingInspection(p));
+            Assert.AreEqual(1, sim.AwaitingInspectionCount);
+            p.Inspect(false);
+            Assert.IsFalse(sim.IsAwaitingInspection(p));
+            Assert.AreEqual(0, sim.AwaitingInspectionCount);
+        }
+
+        [Test]
+        public void Table_WithNonTrackExit_HoldsWithoutLoss_UntilInspected()
+        {
+            var sim = NewSim(0.0);
+            grid.Place(1, 2, CellType.Table, Direction.East); // (2,2)는 빈 바닥
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
+            for (int i = 0; i < 5; i++) sim.Tick(1f);
+            Assert.AreEqual((1, 2), (p.X, p.Y));
+            Assert.AreEqual(0, sim.LostCount);
+            p.Inspect(false);
+            sim.Tick(0.05f);
+            Assert.AreEqual(1, sim.LostCount); // 검사 후에야 레일 끝에서 떨어진다
+        }
+
+        [Test]
+        public void BadChance_DefaultIsThirtyPercent()
+        {
+            Assert.AreEqual(0.3, PackageFactory.BadChance, 1e-9);
+            int bad = 0;
+            var f = new PackageFactory(new Random(5));
+            for (int i = 0; i < 1000; i++) if (f.Create(i, 0, 0, Direction.East).Bad) bad++;
+            Assert.IsTrue(bad >= 250 && bad <= 350, "bad=" + bad);
+        }
     }
 }

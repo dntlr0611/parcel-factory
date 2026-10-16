@@ -59,6 +59,15 @@ namespace ParcelFactory.Core
             return null;
         }
 
+        /// <summary>검사대 위에서 검사를 기다리는 택배인가.</summary>
+        public bool IsAwaitingInspection(Package p) =>
+            !p.Inspected && grid.Get(p.X, p.Y).Type == CellType.Table;
+
+        public int AwaitingInspectionCount
+        {
+            get { int n = 0; foreach (var p in packages) if (IsAwaitingInspection(p)) n++; return n; }
+        }
+
         /// <summary>작업자가 집는다. 소실로 세지 않는다.</summary>
         public void Take(Package p)
         {

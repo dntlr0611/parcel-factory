@@ -168,5 +168,93 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(grid.Get(2, 3).Demolishing);
             Assert.AreEqual(BuildResult.AlreadyDemolishing, ws.TryDemolishFacing());
         }
+    
+
+        private void AssertUnchanged(int money, int packages, Package carrying)
+        {
+            Assert.AreEqual(money, economy.Money);
+            Assert.AreEqual(packages, sim.Packages.Count);
+            Assert.AreSame(carrying, ws.Worker.Carrying);
+            Assert.IsNull(ws.PendingInspection);
+        }
+
+        [Test]
+        public void Preview_MatchesInteract_WithoutSideEffects()
+        {
+            // NoTool / Placed / NotOwned on empty floor
+            Assert.AreEqual(InteractResult.NoTool, ws.Preview(null)); AssertUnchanged(200, 0, null);
+            Assert.AreEqual(InteractResult.NotOwned, ws.Preview(new Tool(CellType.Conveyor, Direction.North))); AssertUnchanged(200, 0, null);
+            Assert.AreEqual(InteractResult.Placed, ws.Preview(new Tool(CellType.Conveyor, Direction.East))); AssertUnchanged(200, 0, null);
+            Assert.AreEqual(InteractResult.Placed, ws.Interact(new Tool(CellType.Conveyor, Direction.East)));
+            Assert.AreEqual(190, economy.Money);
+            Assert.AreEqual(InteractResult.Occupied, ws.Preview(new Tool(CellType.Conveyor, Direction.East)));
+
+            // PickedUp / InspectionRequired
+            grid.Clear(2, 3); grid.Place(2, 3, CellType.Table, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(2, 3, PackageKind.Normal, out var p));
+            Assert.AreEqual(InteractResult.InspectionRequired, ws.Preview(null)); AssertUnchanged(190, 1, null);
+            p.Inspect(false);
+            Assert.AreEqual(InteractResult.PickedUp, ws.Preview(null)); AssertUnchanged(190, 1, null);
+            Assert.AreEqual(InteractResult.PickedUp, ws.Interact(null));
+            Assert.AreSame(p, ws.Worker.Carrying);
+
+            // CannotPutHere / PutDown / Delivered while carrying
+            ws.Worker.Facing = Direction.North; // (2,5) 빈 바닥
+            Assert.AreEqual(InteractResult.CannotPutHere, ws.Preview(new Tool(CellType.Conveyor, Direction.East))); AssertUnchanged(190, 0, p);
+            ws.Worker.Facing = Direction.South; // (2,3) 검사대, 비어 있음
+            Assert.AreEqual(InteractResult.PutDown, ws.Preview(null)); AssertUnchanged(190, 0, p);
+            ws.Worker.X = 4; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East; // (5,4) 반품구
+            Assert.AreEqual(InteractResult.Delivered, ws.Preview(null)); AssertUnchanged(190, 0, p);
+            Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
+            Assert.AreEqual(185, economy.Money); // 승인된 정상 택배를 반품구에 → −5
+            Assert.IsNull(ws.Worker.Carrying);
+
+            // NoFloor
+            ws.Worker.X = 0; ws.Worker.Y = 0; ws.Worker.Facing = Direction.West;
+            Assert.AreEqual(InteractResult.NoFloor, ws.Preview(null));
+        }
+
+        [Test]
+        public void Inspect_FailsIfWorkerNoLongerFacesTable()
+        {
+            grid.Place(1, 2, CellType.Table, Direction.East);
+            Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
+            sim.Tick(1f);
+            ws.Worker.X = 1; ws.Worker.Y = 3; ws.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.InspectionRequired, ws.Interact(null));
+            ws.Worker.Facing = Direction.East;
+            Assert.IsFalse(ws.Inspect(false));
+            Assert.IsNull(ws.PendingInspection);
+            Assert.IsFalse(p.Inspected);
+        }
+
+        [Test]
+        public void Interact_DeliversRejectedBadToReturnDock()
+        {
+            var bad = new PackageFactory(new Random(1), 1.0).Create(50, 0, 0, Direction.East);
+            bad.Inspect(true);
+            ws.Worker.Carrying = bad;
+            ws.Worker.X = 4; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
+            Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
+            Assert.AreEqual(205, economy.Money);
+            Assert.AreEqual(1, sim.DeliveredCount);
+        }
+
+        [Test]
+        public void PutDown_OntoScannerInspects_OntoDemolishingFails_OntoInletWorks()
+        {
+            var p = new PackageFactory(new Random(1), 1.0).Create(60, 0, 0, Direction.East);
+            ws.Worker.Carrying = p;
+            grid.Place(2, 3, CellType.Scanner, Direction.East);
+            Assert.AreEqual(InteractResult.PutDown, ws.Interact(null));
+            Assert.IsTrue(p.Inspected);
+            Assert.IsTrue(p.Rejected);
+            Assert.AreEqual(InteractResult.PickedUp, ws.Interact(null));
+            grid.Get(2, 3).Demolishing = true;
+            Assert.AreEqual(InteractResult.CannotPutHere, ws.Interact(null));
+            ws.Worker.X = 0; ws.Worker.Y = 3; ws.Worker.Facing = Direction.South; // (0,2) 입고구
+            Assert.AreEqual(InteractResult.PutDown, ws.Interact(null));
+            Assert.AreSame(p, sim.PackageAt(0, 2));
+        }
     }
 }

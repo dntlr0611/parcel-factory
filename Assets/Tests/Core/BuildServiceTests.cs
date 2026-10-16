@@ -142,5 +142,19 @@ namespace ParcelFactory.Core.Tests
             Assert.AreSame(b, sim.Packages[0]);
             Assert.AreEqual(CellType.Empty, grid.Get(2, 2).Type);
         }
+    
+
+        [Test]
+        public void Check_ReportsWithoutSpendingOrPlacing()
+        {
+            Assert.AreEqual(BuildResult.Ok, build.Check(1, 2, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(100, economy.Money);
+            Assert.AreEqual(CellType.Empty, grid.Get(1, 2).Type);
+            Assert.AreEqual(BuildResult.Locked, build.Check(7, 7, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(BuildResult.Occupied, build.Check(0, 2, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(BuildResult.NotOwned, build.Check(1, 2, CellType.Conveyor, Direction.North));
+            var poor = new BuildService(grid, new Economy(5), toolbar, sim);
+            Assert.AreEqual(BuildResult.NotEnoughMoney, poor.Check(1, 2, CellType.Conveyor, Direction.East));
+        }
     }
 }

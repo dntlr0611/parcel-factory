@@ -81,5 +81,25 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(CellType.Empty, s.Grid.Get(1, 2).Type);
             Assert.AreEqual(98, s.Economy.Money);
         }
+    
+
+        [Test]
+        public void HandCarry_EndToEnd_WithoutRails()
+        {
+            var s = new GameSession(new Economy(100), new PackageFactory(new Random(1), 0.0));
+            Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 2, CellType.Table, Direction.East));
+            Assert.AreEqual(60, s.Economy.Money);
+            s.Tick(3f); // 생성 후 같은 틱에 검사대로 이동
+            s.Tick(1f); // 검사 대기
+            Assert.AreEqual(1, s.Sim.AwaitingInspectionCount);
+            s.Worker.Worker.X = 1; s.Worker.Worker.Y = 3; s.Worker.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.InspectionRequired, s.Worker.Interact(null));
+            Assert.IsTrue(s.Worker.Inspect(false));
+            Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
+            s.Worker.Worker.X = 4; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East;
+            Assert.AreEqual(InteractResult.Delivered, s.Worker.Interact(null));
+            Assert.AreEqual(75, s.Economy.Money);
+            Assert.AreEqual(1, s.Sim.DeliveredCount);
+        }
     }
 }

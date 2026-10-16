@@ -30,12 +30,21 @@ namespace ParcelFactory.Core
         public static int RefundFor(CellType type) =>
             (int)Math.Round(BuildingCosts.Cost(type) * RefundRate);
 
-        public BuildResult TryPlace(int x, int y, CellType type, Direction dir)
+        /// <summary>TryPlace와 같은 검사를 하되 아무것도 바꾸지 않는다. UI 미리보기용.</summary>
+        public BuildResult Check(int x, int y, CellType type, Direction dir)
         {
             if (!grid.IsUnlocked(x, y)) return BuildResult.Locked;
             if (grid.Get(x, y).Type != CellType.Empty) return BuildResult.Occupied;
             if (!toolbar.Owns(type, dir)) return BuildResult.NotOwned;
-            if (!economy.TrySpend(BuildingCosts.Cost(type))) return BuildResult.NotEnoughMoney;
+            if (!economy.CanAfford(BuildingCosts.Cost(type))) return BuildResult.NotEnoughMoney;
+            return BuildResult.Ok;
+        }
+
+        public BuildResult TryPlace(int x, int y, CellType type, Direction dir)
+        {
+            var result = Check(x, y, type, dir);
+            if (result != BuildResult.Ok) return result;
+            economy.TrySpend(BuildingCosts.Cost(type));
             grid.Place(x, y, type, dir);
             CellChanged?.Invoke(x, y);
             return BuildResult.Ok;
