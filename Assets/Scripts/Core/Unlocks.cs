@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace ParcelFactory.Core
 {
-    public enum UnlockId { Plot1, Plot2, RailSouth, RailWest, RailNorth, FastEast, FastSouth, FastWest, FastNorth, Splitter }
+    public enum UnlockId { Plot1, Plot2, RailSouth, RailWest, RailNorth, FastEast, FastSouth, FastWest, FastNorth, Splitter, Scanner }
 
     public sealed class UnlockDef
     {
@@ -27,6 +27,7 @@ namespace ParcelFactory.Core
             new UnlockDef { Id = UnlockId.FastWest, Name = "고속 레일 ←", Price = 100 },
             new UnlockDef { Id = UnlockId.FastNorth, Name = "고속 레일 ↑", Price = 100 },
             new UnlockDef { Id = UnlockId.Splitter, Name = "분배기", Price = 300 },
+            new UnlockDef { Id = UnlockId.Scanner, Name = "자동 검사기", Price = 250 },
         };
 
         public static UnlockDef Get(UnlockId id)
@@ -95,6 +96,7 @@ namespace ParcelFactory.Core
                 case UnlockId.FastWest: toolbar.Add(CellType.FastConveyor, Direction.West); break;
                 case UnlockId.FastNorth: toolbar.Add(CellType.FastConveyor, Direction.North); break;
                 case UnlockId.Splitter: toolbar.Add(CellType.Splitter, Direction.East); break;
+                case UnlockId.Scanner: toolbar.Add(CellType.Scanner, Direction.East); break;
             }
             Unlocked?.Invoke(id);
         }

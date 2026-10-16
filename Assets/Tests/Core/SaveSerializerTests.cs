@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using ParcelFactory.Core;
 
@@ -7,7 +8,7 @@ namespace ParcelFactory.Core.Tests
     {
         private static GameSession BuildSample()
         {
-            var s = new GameSession(new Economy(5000));
+            var s = new GameSession(new Economy(5000), new PackageFactory(new Random(11), 1.0));
             s.Unlocks.TryPurchase(UnlockId.Plot1);
             s.Unlocks.TryPurchase(UnlockId.RailNorth);
             s.Unlocks.TryPurchase(UnlockId.Splitter);
@@ -19,6 +20,7 @@ namespace ParcelFactory.Core.Tests
             s.Build.BeginDemolish(7, 7);
             s.Tick(0.5f);    // 택배 progress 0.5, DemolishRemaining 1.5, SpawnTimer 0.5
             s.Paused = true;
+            s.Worker.Worker.X = 1; s.Worker.Worker.Y = 4; s.Worker.Worker.Facing = Direction.West;
             s.Speed = 2f;
             return s;
         }
@@ -27,13 +29,18 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(1, st.Version);
+            Assert.AreEqual(2, st.Version);
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
             Assert.AreEqual(4, st.Cells.Count);
             Assert.AreEqual(1, st.Packages.Count);
             Assert.IsTrue(st.Paused);
             Assert.AreEqual(2f, st.Speed);
+            Assert.AreEqual(1, st.Worker.X);
+            Assert.AreEqual("West", st.Worker.Facing);
+            Assert.IsNull(st.Worker.Carrying);
+            Assert.IsTrue(st.Packages[0].Bad);
+            Assert.IsTrue(st.Packages[0].LabelScale > st.Packages[0].LabelWeight);
         }
 
         [Test]
@@ -64,6 +71,15 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(original.Spawner.Timer, restored.Spawner.Timer, 1e-4f);
             Assert.IsTrue(restored.Paused);
             Assert.AreEqual(2f, restored.Speed);
+            Assert.AreEqual((1, 4), (restored.Worker.Worker.X, restored.Worker.Worker.Y));
+            Assert.AreEqual(Direction.West, restored.Worker.Worker.Facing);
+            Assert.AreEqual(original.Sim.Packages[0].Bad, p.Bad);
+            Assert.AreEqual(original.Sim.Packages[0].Label.Destination, p.Label.Destination);
+            Assert.AreEqual(original.Sim.Packages[0].Label.Weight, p.Label.Weight);
+            Assert.AreEqual(original.Sim.Packages[0].Label.Method, p.Label.Method);
+            Assert.AreEqual(original.Sim.Packages[0].Label.Scale, p.Label.Scale);
+            Assert.AreEqual(original.Sim.DeliveredCount, restored.Sim.DeliveredCount);
+            Assert.AreEqual(original.Sim.LostCount, restored.Sim.LostCount);
         }
 
         [Test]
@@ -94,6 +110,49 @@ namespace ParcelFactory.Core.Tests
             var st = SaveSerializer.Capture(new GameSession());
             st.Version = 99;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+        }
+
+        [Test]
+        public void V1Save_IsRejected()
+        {
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(SaveSerializer.FromJson("{\"Version\":1}")));
+        }
+
+        [Test]
+        public void RoundTrip_PreservesCarriedAndInspectedPackage()
+        {
+            var s = new GameSession(new Economy(500), new PackageFactory(new Random(2), 1.0));
+            s.Build.TryPlace(1, 2, CellType.Table, Direction.East);
+            s.Tick(3f);
+            s.Tick(1f); // 택배가 검사대 (1,2)에 도착해 대기
+            s.Worker.Worker.X = 1; s.Worker.Worker.Y = 3; s.Worker.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.InspectionRequired, s.Worker.Interact(null));
+            Assert.IsTrue(s.Worker.Inspect(true));
+            Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
+            Assert.AreEqual(0, s.Sim.Packages.Count);
+
+            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(SaveSerializer.Capture(s))));
+            var c = restored.Worker.Worker.Carrying;
+            Assert.IsNotNull(c);
+            Assert.IsTrue(c.Inspected);
+            Assert.IsTrue(c.Rejected);
+            Assert.IsTrue(c.Bad);
+            Assert.AreEqual(0, restored.Sim.Packages.Count);
+            Assert.AreEqual(-1, restored.Grid.Get(1, 2).OccupantId);
+            Assert.AreEqual(s.Sim.NextId, restored.Sim.NextId);
+        }
+
+        [Test]
+        public void Restore_RejectsWorkerOnNonFloor()
+        {
+            var st = SaveSerializer.Capture(new GameSession());
+            st.Worker.X = 0; st.Worker.Y = 2; // 입고구
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st.Worker.X = 99;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            var st2 = SaveSerializer.Capture(new GameSession());
+            st2.Worker = null;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st2));
         }
 
         [Test]

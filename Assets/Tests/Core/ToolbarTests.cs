@@ -14,7 +14,9 @@ namespace ParcelFactory.Core.Tests
             Assert.IsFalse(t.Owns(CellType.Conveyor, Direction.North));
             Assert.IsFalse(t.Owns(CellType.FastConveyor, Direction.East));
             Assert.IsFalse(t.Owns(CellType.Splitter, Direction.East));
-            Assert.AreEqual(1, t.OwnedTools().Count());
+            Assert.IsTrue(t.Owns(CellType.Table, Direction.West));
+            Assert.IsFalse(t.Owns(CellType.Scanner, Direction.East));
+            Assert.AreEqual(5, t.OwnedTools().Count());
         }
 
         [Test]
@@ -33,7 +35,21 @@ namespace ParcelFactory.Core.Tests
             t.Add(CellType.Splitter, Direction.East);
             Assert.IsTrue(t.SplitterOwned);
             Assert.IsTrue(t.Owns(CellType.Splitter, Direction.West));
-            Assert.AreEqual(5, t.OwnedTools().Count());
+            Assert.AreEqual(9, t.OwnedTools().Count());
+        }
+
+        [Test]
+        public void AddScanner_GrantsAllDirections_AfterSplitterInOrder()
+        {
+            var t = new Toolbar();
+            t.Add(CellType.Scanner, Direction.North);
+            Assert.IsTrue(t.ScannerOwned);
+            Assert.IsTrue(t.Owns(CellType.Scanner, Direction.South));
+            var tools = t.OwnedTools().ToList();
+            Assert.AreEqual(9, tools.Count);
+            Assert.AreEqual(CellType.Conveyor, tools[0].Type);
+            Assert.AreEqual(CellType.Table, tools[1].Type);
+            Assert.AreEqual(CellType.Scanner, tools[5].Type);
         }
 
         [Test]

@@ -15,6 +15,9 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(s.Toolbar.Owns(CellType.Conveyor, Direction.East));
             Assert.IsFalse(s.Paused);
             Assert.AreEqual(1f, s.Speed);
+            Assert.IsNotNull(s.Worker);
+            Assert.AreEqual((2, 4), (s.Worker.Worker.X, s.Worker.Worker.Y));
+            Assert.IsTrue(s.Toolbar.TableOwned);
         }
 
         [Test]

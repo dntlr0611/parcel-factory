@@ -9,6 +9,7 @@ namespace ParcelFactory.Core
         public readonly Toolbar Toolbar;
         public readonly BuildService Build;
         public readonly UnlockService Unlocks;
+        public readonly WorkerService Worker;
 
         public bool Paused { get; set; }
         public float Speed { get; set; } = 1f;
@@ -26,6 +27,7 @@ namespace ParcelFactory.Core
             Toolbar = new Toolbar();
             Build = new BuildService(Grid, Economy, Toolbar, Sim);
             Unlocks = new UnlockService(Economy, Grid, Toolbar);
+            Worker = new WorkerService(Grid, Sim, Build);
         }
 
         public void Tick(float dt)

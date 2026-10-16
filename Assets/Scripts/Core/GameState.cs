@@ -13,8 +13,11 @@ namespace ParcelFactory.Core
         public List<PackageState> Packages = new List<PackageState>();
         public float SpawnTimer;
         public int NextPackageId;
+        public int DeliveredCount;
+        public int LostCount;
         public bool Paused;
         public float Speed;
+        public WorkerState Worker;
     }
 
     public sealed class CellState
@@ -37,5 +40,21 @@ namespace ParcelFactory.Core
         public float Progress;
         public string Heading;
         public string EntryHeading;
+        public bool Bad;
+        public bool Inspected;
+        public bool Rejected;
+        public string LabelDestination;
+        public int LabelWeight;
+        public string LabelMethod;
+        public int LabelScale;
+    }
+
+    public sealed class WorkerState
+    {
+        public int X;
+        public int Y;
+        public string Facing;
+        /// <summary>들고 있는 택배. 없으면 null. X/Y는 무시된다.</summary>
+        public PackageState Carrying;
     }
 }

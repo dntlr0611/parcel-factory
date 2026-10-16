@@ -21,9 +21,9 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Catalog_HasTenItemsWithSpecPrices()
+        public void Catalog_HasElevenItemsWithSpecPrices()
         {
-            Assert.AreEqual(10, UnlockCatalog.All.Count);
+            Assert.AreEqual(11, UnlockCatalog.All.Count);
             Assert.AreEqual(200, UnlockCatalog.Get(UnlockId.Plot1).Price);
             Assert.AreEqual(500, UnlockCatalog.Get(UnlockId.Plot2).Price);
             Assert.AreEqual(50, UnlockCatalog.Get(UnlockId.RailSouth).Price);
@@ -32,6 +32,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(100, UnlockCatalog.Get(UnlockId.FastEast).Price);
             Assert.AreEqual(100, UnlockCatalog.Get(UnlockId.FastNorth).Price);
             Assert.AreEqual(300, UnlockCatalog.Get(UnlockId.Splitter).Price);
+            Assert.AreEqual(250, UnlockCatalog.Get(UnlockId.Scanner).Price);
             Assert.AreEqual(UnlockId.Plot1, UnlockCatalog.Get(UnlockId.Plot2).Requires);
             Assert.IsNull(UnlockCatalog.Get(UnlockId.Plot1).Requires);
         }
@@ -67,6 +68,8 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(toolbar.Owns(CellType.FastConveyor, Direction.West));
             Assert.AreEqual(UnlockResult.Ok, unlocks.TryPurchase(UnlockId.Splitter));
             Assert.IsTrue(toolbar.SplitterOwned);
+            Assert.AreEqual(UnlockResult.Ok, unlocks.TryPurchase(UnlockId.Scanner));
+            Assert.IsTrue(toolbar.ScannerOwned);
         }
 
         [Test]
