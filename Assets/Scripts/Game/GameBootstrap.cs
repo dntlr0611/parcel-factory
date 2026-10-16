@@ -12,6 +12,7 @@ namespace ParcelFactory.Game
         public GameSession Session { get; private set; }
         public ModelCatalog Catalog { get; private set; }
         public Transform WorldRoot { get; private set; }
+        public GameLoop Loop { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
 
@@ -33,9 +34,9 @@ namespace ParcelFactory.Game
             if (Catalog == null) Debug.LogError("PF_Catalog not found. Run CatalogBuilder.BuildAll in the editor.");
             WorldRoot = new GameObject("World").transform;
             WorldRoot.SetParent(transform, false);
-            gameObject.AddComponent<GameLoop>();
+            Loop = gameObject.AddComponent<GameLoop>();
             Session = new GameSession();
-            // B2~B6에서 아래에 컴포넌트를 추가하고 Session에 묶는다. 생성 순서: 컴포넌트 추가 → World.Build → 뷰 Bind → HUD.
+            // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);
         }
 

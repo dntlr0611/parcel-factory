@@ -8,6 +8,8 @@ namespace ParcelFactory.Game
         private const float MaxFrameSeconds = 0.25f;
         private float accumulator;
 
+        public int Ticks { get; private set; }
+
         private void Update()
         {
             var session = GameBootstrap.Instance != null ? GameBootstrap.Instance.Session : null;
@@ -17,6 +19,7 @@ namespace ParcelFactory.Game
             {
                 accumulator -= TickSeconds;
                 session.Tick(TickSeconds);
+                Ticks++;
             }
         }
     }
