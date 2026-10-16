@@ -1612,7 +1612,9 @@ git commit -m "feat(game): UGUI hud — top bar, hotbar, prompt, status, toast, 
 
 **Files:**
 - Create: `Assets/Scripts/Game/Panels.cs`, `Assets/Scripts/Game/SaveFile.cs`
-- Modify: `Assets/Scripts/Game/GameBootstrap.cs`, `Assets/Scripts/Game/HudController.cs` (상단 바에 저장/불러오기/새 게임 버튼)
+- Modify: `Assets/Scripts/Game/GameBootstrap.cs`, `Assets/Scripts/Game/HudController.cs` (상단 바에 저장/불러오기/새 게임 버튼; 조작 서랍의 입력 차단을 `SetBlock("help", …)`로 전환), `Assets/Scripts/Game/InputController.cs` (`SetBlock`)
+
+**입력 차단 규칙(B5 리뷰 판정):** `InputController.UiBlocksInput`은 더 이상 대입하지 않는다. `public void SetBlock(string owner, bool on)`을 추가해 차단 주체 집합(HashSet<string>)을 관리하고, `UiBlocksInput => blockers.Count > 0`으로 바꾼다. 조작 서랍은 `SetBlock("help", open)`, 패널은 `SetBlock("panels", AnyOpen)`을 상태가 바뀔 때 호출한다. 패널이 열릴 때 `input.ClearPad()`도 호출한다. 핫바 슬롯·터치 E/X/R·상점 버튼이 `UiBlocksInput`을 우회하지 않도록, `HudController`의 그 핸들러들은 `if (input.UiBlocksInput) return;`으로 시작한다(Escape·패널 자체 버튼은 예외).
 
 **Interfaces:**
 - Consumes: `UnlockCatalog.All`, `UnlockService.TryPurchase/IsPurchased`, `WorkerService.PendingInspection/Inspect/CancelInspection`, `BuildService.BeginDemolish/RefundFor`, `SaveSerializer`, `InputController.Interacted/DemolishRequested/ToggleShop/Escape`, `HudController.Toast`.
@@ -1680,6 +1682,7 @@ namespace ParcelFactory.Game
         private HudController hud;
 
         public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf);
+        private bool lastAnyOpen;
 
         private void Start()
         {
@@ -1695,7 +1698,7 @@ namespace ParcelFactory.Game
 
         private void Update()
         {
-            input.UiBlocksInput = AnyOpen;
+            if (AnyOpen != lastAnyOpen) { lastAnyOpen = AnyOpen; input.SetBlock("panels", AnyOpen); if (AnyOpen) input.ClearPad(); }
             if (inspect.gameObject.activeSelf && GameBootstrap.Instance.Session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
         }
 
