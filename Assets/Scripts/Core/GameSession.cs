@@ -86,8 +86,9 @@ namespace ParcelFactory.Core
                 Clock.Advance(seg);
                 remaining -= seg;
             }
-            if (workSeconds > 0f) Worker.Rest(workSeconds, DayPhase.Working);
-            if (lunchSeconds > 0f) Worker.Rest(lunchSeconds, DayPhase.Lunch);
+            bool moved = Worker.ConsumeMoved(); // 한 프레임의 이동 여부를 두 구간에 같이 쓴다(스펙 11.11)
+            if (workSeconds > 0f) Worker.Rest(workSeconds, DayPhase.Working, moved);
+            if (lunchSeconds > 0f) Worker.Rest(lunchSeconds, DayPhase.Lunch, moved);
             if (!Clock.IsOpen) DayEnded?.Invoke(BuildSummary());
         }
 

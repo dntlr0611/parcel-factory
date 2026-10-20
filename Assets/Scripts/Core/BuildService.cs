@@ -68,9 +68,9 @@ namespace ParcelFactory.Core
 
         private static bool HasDirectionSetting(CellType t) =>
             t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Table ||
-            t == CellType.Scanner || t == CellType.Splitter;
+            t == CellType.Scanner || t == CellType.Splitter || t == CellType.Bridge;
 
-        /// <summary>설치된 레일·고속·검사대·자동 검사기·분배기(파랑)의 방향을 그 자리에서 바꾼다(스펙 11.8). 비용 없음.
+        /// <summary>설치된 레일·고속·검사대·자동 검사기·분배기(파랑)·브릿지(윗길)의 방향을 그 자리에서 바꾼다(스펙 11.8). 비용 없음.
         /// 그 칸 위 택배의 Heading도 새로 정한다. 실제로 바뀐 경우에만 CellChanged.</summary>
         public ReconfigureResult SetDirection(int x, int y, Direction dir)
         {

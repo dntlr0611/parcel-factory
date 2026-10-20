@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace ParcelFactory.Core
 {
-    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet, Table, Scanner, ReturnDock, Pallet }
+    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet, Table, Scanner, ReturnDock, Pallet, Bridge }
 
     /// <summary>팔레트 종류. 색은 안내용이며 판정과 무관하다(스펙 10.2).</summary>
     public enum PalletKind { None, Blue, Red }
@@ -18,6 +18,9 @@ namespace ParcelFactory.Core
         public float DemolishRemaining;
         /// <summary>셀 위에 있는 택배 id. 없으면 -1. 팔레트 더미는 여기에 기록하지 않는다.</summary>
         public int OccupantId = -1;
+        /// <summary>브릿지 아랫길(Direction과 수직인 축) 위 택배 id(스펙 11.12). 없으면 -1. 브릿지가 아니면 항상 -1.
+        /// 브릿지의 OccupantId는 윗길이다.</summary>
+        public int LowerOccupantId = -1;
         /// <summary>팔레트 종류. 팔레트가 아니면 None.</summary>
         public PalletKind PalletKind = PalletKind.None;
         /// <summary>팔레트 위 더미(아래 → 위 순서). 흐름(ConveyorSim.Packages)에는 없는 택배들이다.</summary>
@@ -27,19 +30,31 @@ namespace ParcelFactory.Core
 
         public bool IsOccupied => OccupantId >= 0;
 
+        /// <summary>손으로 택배를 놓을 차선이 남아 있는가. 브릿지는 윗길 또는 아랫길 중 하나라도 비면 true.</summary>
+        public bool HasFreeLane => !IsOccupied || (Type == CellType.Bridge && LowerOccupantId < 0);
+
+        /// <summary>차선별 점유 id(브릿지가 아니면 Upper만 의미 있다).</summary>
+        public int OccupantOf(Lane lane) => lane == Lane.Lower ? LowerOccupantId : OccupantId;
+
+        public void SetOccupant(Lane lane, int id)
+        {
+            if (lane == Lane.Lower) LowerOccupantId = id;
+            else OccupantId = id;
+        }
+
         public bool IsPalletFull => Pallet.Count >= PalletCapacity;
 
         /// <summary>택배가 올라가 이동할 수 있는 셀. 팔레트는 흐름이 아니라 더미이므로 포함하지 않는다.</summary>
         public bool IsTrack =>
             Type == CellType.Conveyor || Type == CellType.FastConveyor ||
             Type == CellType.Splitter || Type == CellType.Inlet ||
-            Type == CellType.Table || Type == CellType.Scanner;
+            Type == CellType.Table || Type == CellType.Scanner || Type == CellType.Bridge;
 
         /// <summary>플레이어가 설치·해체할 수 있는 셀.</summary>
         public bool IsBuilding =>
             Type == CellType.Conveyor || Type == CellType.FastConveyor ||
             Type == CellType.Splitter || Type == CellType.Table || Type == CellType.Scanner ||
-            Type == CellType.Pallet;
+            Type == CellType.Pallet || Type == CellType.Bridge;
 
         /// <summary>택배를 받아 판정하는 셀(트럭 도크: 출고구, 반품구).</summary>
         public bool IsDock => Type == CellType.Outlet || Type == CellType.ReturnDock;

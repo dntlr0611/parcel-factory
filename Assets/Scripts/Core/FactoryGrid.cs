@@ -61,7 +61,7 @@ namespace ParcelFactory.Core
 
         public static bool IsPlaceable(CellType type) =>
             type == CellType.Conveyor || type == CellType.FastConveyor || type == CellType.Splitter ||
-            type == CellType.Table || type == CellType.Scanner || type == CellType.Pallet;
+            type == CellType.Table || type == CellType.Scanner || type == CellType.Pallet || type == CellType.Bridge;
 
         public bool CanPlace(int x, int y) => IsUnlocked(x, y) && cells[x, y].Type == CellType.Empty;
 
@@ -79,6 +79,7 @@ namespace ParcelFactory.Core
             c.PalletKind = type == CellType.Pallet ? Tool.KindOf(dir) : PalletKind.None;
             c.Pallet.Clear();
             c.RedDirection = null;
+            c.LowerOccupantId = -1;
         }
 
         public void Clear(int x, int y)
@@ -90,6 +91,7 @@ namespace ParcelFactory.Core
             c.Demolishing = false;
             c.DemolishRemaining = 0f;
             c.OccupantId = -1;
+            c.LowerOccupantId = -1;
             c.PalletKind = PalletKind.None;
             c.Pallet.Clear();
             c.RedDirection = null;

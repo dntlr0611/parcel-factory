@@ -143,6 +143,7 @@ namespace ParcelFactory.Core
                     {
                         var pk = FromState(ps);
                         pk.X = c.X; pk.Y = c.Y;
+                        pk.Lane = Lane.Upper; // 더미에는 차선이 없다
                         cell.Pallet.Add(pk); // 더미는 흐름(Sim.Packages)에 넣지 않는다
                         if (pk.Id > maxId) maxId = pk.Id;
                     }
@@ -162,9 +163,12 @@ namespace ParcelFactory.Core
                 if (!s.Grid.InBounds(p.X, p.Y))
                     throw new SaveVersionException($"package {p.Id} out of bounds ({p.X},{p.Y})");
                 var target = s.Grid.Get(p.X, p.Y);
-                if (!target.IsTrack || target.IsOccupied)
+                var pk = FromState(p);
+                if (!target.IsTrack || target.OccupantOf(pk.Lane) >= 0)
                     throw new SaveVersionException($"package {p.Id} on invalid cell ({p.X},{p.Y})");
-                s.Sim.Restore(FromState(p));
+                if (pk.Lane == Lane.Lower && target.Type != CellType.Bridge)
+                    throw new SaveVersionException($"package {p.Id} on lower lane off a bridge ({p.X},{p.Y})");
+                s.Sim.Restore(pk); // 차선에 맞춰 OccupantId 또는 LowerOccupantId를 세운다
                 if (p.Id > maxId) maxId = p.Id;
             }
 
@@ -177,6 +181,7 @@ namespace ParcelFactory.Core
             if (st.Worker.Carrying != null)
             {
                 var carried = FromState(st.Worker.Carrying);
+                carried.Lane = Lane.Upper; // 손에 든 택배에는 차선이 없다
                 if (carried.Id > maxId) maxId = carried.Id;
                 s.Worker.Worker.Carrying = carried;
             }
@@ -212,6 +217,7 @@ namespace ParcelFactory.Core
         {
             Id = p.Id, Kind = p.Kind.ToString(), X = p.X, Y = p.Y,
             Progress = p.Progress, Heading = p.Heading.ToString(), EntryHeading = p.EntryHeading.ToString(),
+            Lane = p.Lane.ToString(),
             Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected,
             LabelDestination = p.Label?.Destination, LabelWeight = p.Label?.Weight ?? 0,
             LabelMethod = p.Label?.Method, LabelScale = p.Label?.Scale ?? 0,
@@ -231,6 +237,7 @@ namespace ParcelFactory.Core
                 Progress = p.Progress,
                 Heading = ParseDefined<Direction>(p.Heading),
                 EntryHeading = ParseDefined<Direction>(p.EntryHeading),
+                Lane = p.Lane == null ? Lane.Upper : ParseDefined<Lane>(p.Lane),
                 Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected,
                 Label = new PackageLabel { Destination = p.LabelDestination ?? "", Weight = p.LabelWeight, Method = p.LabelMethod ?? "", Scale = p.LabelScale },
             };

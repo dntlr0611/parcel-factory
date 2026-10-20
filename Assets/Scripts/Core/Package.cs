@@ -2,6 +2,9 @@ namespace ParcelFactory.Core
 {
     public enum PackageKind { Normal }
 
+    /// <summary>브릿지 위 차선(스펙 11.12). 브릿지가 아닌 칸·팔레트·손에 든 택배는 항상 Upper.</summary>
+    public enum Lane { Upper, Lower }
+
     /// <summary>택배 라벨. 불량이면 저울 실측(Scale)이 표기 무게(Weight)와 다르다.</summary>
     public sealed class PackageLabel
     {
@@ -25,6 +28,8 @@ namespace ParcelFactory.Core
         public Direction Heading;
         /// <summary>현재 셀에 들어올 때의 이동 방향. 렌더링에서 코너 보간에 쓴다.</summary>
         public Direction EntryHeading;
+        /// <summary>브릿지 위에서 타고 있는 차선. 브릿지를 벗어나면 Upper로 돌아간다.</summary>
+        public Lane Lane;
 
         /// <summary>실제 불량 여부. 겉으로는 알 수 없고 검사로만 드러난다.</summary>
         public bool Bad;

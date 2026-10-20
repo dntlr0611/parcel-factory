@@ -61,15 +61,43 @@ namespace ParcelFactory.Core
         public void Restore(Package package)
         {
             packages.Add(package);
-            grid.Get(package.X, package.Y).OccupantId = package.Id;
+            grid.Get(package.X, package.Y).SetOccupant(package.Lane, package.Id);
         }
 
+        /// <summary>칸 위의 택배. 브릿지는 윗길을 먼저, 없으면 아랫길(스펙 11.12).</summary>
         public Package PackageAt(int x, int y)
         {
+            Package lower = null;
             foreach (var p in packages)
-                if (p.X == x && p.Y == y) return p;
-            return null;
+            {
+                if (p.X != x || p.Y != y) continue;
+                if (p.Lane == Lane.Upper) return p;
+                lower = p;
+            }
+            return lower;
         }
+
+        /// <summary>칸 위의 택배 전부(0..2, 브릿지만 2). 윗길 → 아랫길 순서.</summary>
+        public IReadOnlyList<Package> PackagesAt(int x, int y)
+        {
+            var result = new List<Package>(2);
+            foreach (var p in packages)
+                if (p.X == x && p.Y == y && p.Lane == Lane.Upper) result.Add(p);
+            foreach (var p in packages)
+                if (p.X == x && p.Y == y && p.Lane == Lane.Lower) result.Add(p);
+            return result;
+        }
+
+        /// <summary>브릿지 진입 차선(스펙 11.12): 진행 방향이 브릿지 Direction과 평행(같거나 반대)이면 윗길, 수직이면 아랫길.
+        /// 브릿지가 아니면 항상 Upper.</summary>
+        public static Lane EntryLane(Cell cell, Direction travel)
+        {
+            if (cell.Type != CellType.Bridge) return Lane.Upper;
+            return travel == cell.Direction || travel == cell.Direction.Opposite() ? Lane.Upper : Lane.Lower;
+        }
+
+        /// <summary>택배가 있는 칸에서 자기 차선의 점유를 푼다.</summary>
+        private void Release(Package p) => grid.Get(p.X, p.Y).SetOccupant(p.Lane, -1);
 
         /// <summary>검사대 위에서 검사를 기다리는 택배인가.</summary>
         public bool IsAwaitingInspection(Package p) =>
@@ -85,7 +113,8 @@ namespace ParcelFactory.Core
         {
             int i = packages.IndexOf(p);
             if (i < 0) throw new InvalidOperationException($"package {p.Id} is not on the line");
-            grid.Get(p.X, p.Y).OccupantId = -1;
+            Release(p);
+            p.Lane = Lane.Upper;
             packages.RemoveAt(i);
         }
 
@@ -94,15 +123,25 @@ namespace ParcelFactory.Core
         {
             if (!grid.InBounds(x, y)) throw new InvalidOperationException($"({x},{y}) out of bounds");
             var cell = grid.Get(x, y);
-            if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing)
+            if (!cell.IsTrack || !cell.HasFreeLane || cell.Demolishing)
                 throw new InvalidOperationException($"cannot put package at ({x},{y})");
             if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
             p.X = x;
             p.Y = y;
             p.Progress = 0f;
-            p.Heading = HeadingFor(x, y, cell.Direction, p); // 분배기에 손으로 놓아도 같은 분류 규칙
+            if (cell.Type == CellType.Bridge)
+            {
+                // 빈 차선 중 윗길 우선. 아랫길에 놓으면 Direction 기준 오른쪽으로 직진한다(스펙 11.12).
+                p.Lane = cell.IsOccupied ? Lane.Lower : Lane.Upper;
+                p.Heading = p.Lane == Lane.Upper ? cell.Direction : cell.Direction.TurnRight();
+            }
+            else
+            {
+                p.Lane = Lane.Upper;
+                p.Heading = HeadingFor(x, y, cell.Direction, p); // 분배기에 손으로 놓아도 같은 분류 규칙
+            }
             p.EntryHeading = p.Heading;
-            cell.OccupantId = p.Id;
+            cell.SetOccupant(p.Lane, p.Id);
             packages.Add(p);
             if (cell.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); } // 스캐너는 놓는 순간에도 판정한다
         }
@@ -150,6 +189,7 @@ namespace ParcelFactory.Core
             p.Y = y;
             p.Progress = 0f;
             p.EntryHeading = p.Heading;
+            p.Lane = Lane.Upper;
             pallet.Pallet.Add(p);
         }
 
@@ -207,9 +247,21 @@ namespace ParcelFactory.Core
         public void RefreshHeadingsAt(int x, int y)
         {
             if (!grid.InBounds(x, y)) return;
+            var cell = grid.Get(x, y);
             foreach (var p in packages)
-                if (p.X == x && p.Y == y)
-                    p.Heading = HeadingFor(x, y, p.EntryHeading, p);
+            {
+                if (p.X != x || p.Y != y) continue;
+                if (cell.Type == CellType.Bridge) p.Heading = BridgeHeading(cell, p.Lane, p.EntryHeading);
+                else p.Heading = HeadingFor(x, y, p.EntryHeading, p);
+            }
+        }
+
+        /// <summary>브릿지 위 차선의 진행 방향. 윗길 = Direction. 아랫길 = 들어온 방향 그대로 직진하되,
+        /// 재설정으로 그 방향이 윗길 축과 평행해졌으면 아랫길 축의 Direction 기준 오른쪽.</summary>
+        private static Direction BridgeHeading(Cell bridge, Lane lane, Direction entry)
+        {
+            if (lane == Lane.Upper) return bridge.Direction;
+            return EntryLane(bridge, entry) == Lane.Lower ? entry : bridge.Direction.TurnRight();
         }
 
         /// <summary>분배기가 출구로 삼는 칸. 반입구(Inlet)는 트랙이지만 들어가면 소실되므로 제외한다.</summary>
@@ -222,6 +274,7 @@ namespace ParcelFactory.Core
         private Direction HeadingFor(int x, int y, Direction incoming, Package package)
         {
             var cell = grid.Get(x, y);
+            if (cell.Type == CellType.Bridge) return BridgeHeading(cell, EntryLane(cell, incoming), incoming);
             if (cell.Type != CellType.Splitter) return cell.Direction;
             SplitterRoutes(grid, x, y, incoming, out var blue, out var red, out var blueConnected);
             bool rejected = package != null && package.Inspected && package.Rejected;
@@ -250,17 +303,19 @@ namespace ParcelFactory.Core
                 if (next.Type == CellType.Pallet)
                 {
                     if (next.IsPalletFull || next.Demolishing) continue; // 대기
-                    cell.OccupantId = -1;
+                    Release(p);
                     packages.RemoveAt(i);
                     i--;
                     Stack(p, next, nx, ny); // 흐름에서 빠져 더미로. 팔레트에서 레일로 유출은 없다.
                     continue;
                 }
                 if (!next.IsTrack || next.Type == CellType.Inlet) { Lose(i, p); i--; continue; }
-                if (next.IsOccupied || next.Demolishing) continue; // 대기
+                var lane = EntryLane(next, p.Heading); // 브릿지면 평행 → 윗길, 수직 → 아랫길(스펙 11.12)
+                if (next.OccupantOf(lane) >= 0 || next.Demolishing) continue; // 대기(차선별)
 
-                cell.OccupantId = -1;
-                next.OccupantId = p.Id;
+                Release(p);
+                next.SetOccupant(lane, p.Id);
+                p.Lane = lane;
                 p.X = nx;
                 p.Y = ny;
                 p.Progress = 0f;
@@ -299,14 +354,14 @@ namespace ParcelFactory.Core
 
         private void Deliver(int index, Package p, CellType dockType)
         {
-            grid.Get(p.X, p.Y).OccupantId = -1;
+            Release(p);
             packages.RemoveAt(index);
             ApplyDelivery(p, dockType);
         }
 
         private void Lose(int index, Package p)
         {
-            grid.Get(p.X, p.Y).OccupantId = -1;
+            Release(p);
             packages.RemoveAt(index);
             LostCount++;
             PackageLost?.Invoke(p);

@@ -69,6 +69,9 @@ namespace ParcelFactory.Core
         public float Progress;
         public string Heading;
         public string EntryHeading;
+        /// <summary>브릿지 차선 "Upper"/"Lower"(스펙 11.12). 없으면(null) Upper. 선택 필드라 버전은 v6 그대로.
+        /// Cell.LowerOccupantId는 저장하지 않고 복원 시 이 값으로 다시 세운다.</summary>
+        public string Lane;
         public bool Bad;
         public bool Inspected;
         public bool Rejected;

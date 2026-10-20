@@ -78,12 +78,113 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Lunch_Regens20PerSecond_EvenWhileWalking()
+        public void LunchIdle_Regens20PerSecond_To100()
+        {
+            ws.Worker.Stamina = 50f;
+            ws.Rest(0.5f, DayPhase.Lunch);
+            Assert.AreEqual(60f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.Stamina = 85f;
+            ws.Rest(0.5f, DayPhase.Lunch);
+            Assert.AreEqual(95f, ws.Worker.Stamina, 1e-4f, "lunch rest goes past the 80% cap");
+            ws.Rest(1f, DayPhase.Lunch);
+            Assert.AreEqual(100f, ws.Worker.Stamina, 1e-4f);
+        }
+
+        [Test]
+        public void LunchMoving_UsesWorkingRule_CappedAt80()
         {
             ws.Worker.Stamina = 50f;
             Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
             ws.Rest(0.5f, DayPhase.Lunch);
-            Assert.AreEqual(60f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(50.4f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.Stamina = 79.9f;
+            Assert.IsTrue(ws.Move(0f, -1f, 0.5f));
+            ws.Rest(1f, DayPhase.Lunch);
+            Assert.AreEqual(80f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.Stamina = 90f;
+            Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
+            ws.Rest(1f, DayPhase.Lunch);
+            Assert.AreEqual(90f, ws.Worker.Stamina, 1e-4f, "above the cap: no regen while moving");
+        }
+
+        [Test]
+        public void LunchMoveFlag_IsConsumedByRest()
+        {
+            ws.Worker.Stamina = 50f;
+            Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
+            ws.Rest(0.5f, DayPhase.Lunch); // 이동한 프레임: 0.4
+            ws.Rest(0.5f, DayPhase.Lunch); // 다음 프레임은 정지: +10
+            Assert.AreEqual(60.4f, ws.Worker.Stamina, 1e-4f);
+        }
+
+        [Test]
+        public void BlockedMove_AtLunch_CountsAsStanding()
+        {
+            ws.Worker.X = -0.5f + WorkerService.Radius; ws.Worker.Y = -0.5f + WorkerService.Radius;
+            ws.Worker.Stamina = 50f;
+            Assert.IsFalse(ws.Move(-1f, -1f, 1f));
+            ws.Rest(1f, DayPhase.Lunch);
+            Assert.AreEqual(70f, ws.Worker.Stamina, 1e-4f);
+        }
+
+        [Test]
+        public void WorkingRegen_CapsAt80_StandingAndWalking()
+        {
+            Assert.AreEqual(0.8f, WorkerService.RegenCap);
+            ws.Worker.Stamina = 79.9f;
+            ws.Rest(1f, DayPhase.Working);
+            Assert.AreEqual(80f, ws.Worker.Stamina, 1e-4f);
+            ws.Rest(5f, DayPhase.Working);
+            Assert.AreEqual(80f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.Stamina = 79.9f;
+            Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
+            ws.Rest(1f, DayPhase.Working);
+            Assert.AreEqual(80f, ws.Worker.Stamina, 1e-4f);
+        }
+
+        [Test]
+        public void WorkingRegen_AboveCap_DoesNotRegen_DrainStillApplies()
+        {
+            ws.Worker.Stamina = 95f;
+            ws.Rest(10f, DayPhase.Working);
+            Assert.AreEqual(95f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.X = 2f; ws.Worker.Y = 0f;
+            Assert.IsTrue(ws.Move(0f, 1f, 1f, run: true));
+            Assert.AreEqual(95f - WorkerService.RunDrain, ws.Worker.Stamina, 1e-4f);
+            ws.Rest(1f, DayPhase.Working);
+            Assert.AreEqual(92.0f, ws.Worker.Stamina, 1e-4f, "still above 80: no regen");
+        }
+
+        [Test]
+        public void StaminaUpgrade_ScalesCap_120MaxCapsAt96()
+        {
+            var s = new GameSession();
+            s.Progression.Restore(0, 1, 0, 0);
+            Assert.AreEqual(120f, s.Worker.EffectiveMaxStamina);
+            var w = s.Worker.Worker;
+            w.Stamina = 95.5f;
+            s.Worker.Rest(1f, DayPhase.Working);
+            Assert.AreEqual(96f, w.Stamina, 1e-4f);
+            s.Worker.Rest(1f, DayPhase.Working);
+            Assert.AreEqual(96f, w.Stamina, 1e-4f);
+            s.Worker.Rest(10f, DayPhase.Lunch);
+            Assert.AreEqual(120f, w.Stamina, 1e-4f);
+            s.Worker.Refill();
+            Assert.AreEqual(120f, w.Stamina);
+        }
+
+        [Test]
+        public void Session_LunchTick_AfterMove_IsCapped_IdleIsNot()
+        {
+            var s = new GameSession();
+            s.Clock.Set(1, 12 * 60 + 5);
+            var w = s.Worker.Worker;
+            w.Stamina = 79.9f;
+            Assert.IsTrue(s.Worker.Move(0f, 1f, 0.1f));
+            s.Tick(1f);
+            Assert.AreEqual(80f, w.Stamina, 1e-4f);
+            s.Tick(1f);
+            Assert.AreEqual(100f, w.Stamina, 1e-4f);
         }
 
         [Test]

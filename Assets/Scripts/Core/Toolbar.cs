@@ -32,6 +32,8 @@ namespace ParcelFactory.Core
         /// <summary>검사대는 시작부터 4방향 모두 보유.</summary>
         public bool TableOwned { get; private set; } = true;
         public bool ScannerOwned { get; private set; }
+        /// <summary>브릿지(스펙 11.12): 해금하면 4방향 모두 보유.</summary>
+        public bool BridgeOwned { get; private set; }
         /// <summary>팔레트는 시작부터 Blue(East)·Red(West) 모두 보유.</summary>
         public bool PalletOwned { get; private set; } = true;
 
@@ -47,6 +49,7 @@ namespace ParcelFactory.Core
                 case CellType.Splitter: return SplitterOwned;
                 case CellType.Table: return TableOwned;
                 case CellType.Scanner: return ScannerOwned;
+                case CellType.Bridge: return BridgeOwned;
                 case CellType.Pallet: return PalletOwned;
                 default: return owned.Contains(new Tool(type, direction));
             }
@@ -59,16 +62,18 @@ namespace ParcelFactory.Core
                 case CellType.Splitter: SplitterOwned = true; break;
                 case CellType.Table: TableOwned = true; break;
                 case CellType.Scanner: ScannerOwned = true; break;
+                case CellType.Bridge: BridgeOwned = true; break;
                 case CellType.Pallet: PalletOwned = true; break;
                 default: owned.Add(new Tool(type, direction)); break;
             }
         }
 
-        /// <summary>순서: 레일·고속 → 팔레트(Blue, Red) → 검사대 → 분배기 → 자동 검사기.</summary>
+        /// <summary>순서: 레일·고속 → 브릿지(4방향) → 팔레트(Blue, Red) → 검사대 → 분배기 → 자동 검사기(스펙 11.12).</summary>
         public IEnumerable<Tool> OwnedTools()
         {
             foreach (var t in owned.OrderBy(t => t.Type).ThenBy(t => t.Direction))
                 yield return t;
+            if (BridgeOwned) foreach (Direction d in Enum.GetValues(typeof(Direction))) yield return new Tool(CellType.Bridge, d);
             if (PalletOwned)
             {
                 yield return new Tool(CellType.Pallet, Direction.East);

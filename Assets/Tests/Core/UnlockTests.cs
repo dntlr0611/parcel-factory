@@ -21,9 +21,9 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Catalog_HasElevenItemsWithSpecPrices()
+        public void Catalog_HasTwelveItemsWithSpecPrices()
         {
-            Assert.AreEqual(11, UnlockCatalog.All.Count);
+            Assert.AreEqual(12, UnlockCatalog.All.Count);
             Assert.AreEqual(200, UnlockCatalog.Get(UnlockId.Plot1).Price);
             Assert.AreEqual(500, UnlockCatalog.Get(UnlockId.Plot2).Price);
             Assert.AreEqual(50, UnlockCatalog.Get(UnlockId.RailSouth).Price);
@@ -33,6 +33,8 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(100, UnlockCatalog.Get(UnlockId.FastNorth).Price);
             Assert.AreEqual(300, UnlockCatalog.Get(UnlockId.Splitter).Price);
             Assert.AreEqual(600, UnlockCatalog.Get(UnlockId.Scanner).Price);
+            Assert.AreEqual(200, UnlockCatalog.Get(UnlockId.Bridge).Price);
+            Assert.AreEqual(UnlockId.Plot1, UnlockCatalog.Get(UnlockId.Bridge).Requires);
             Assert.AreEqual(UnlockId.Plot2, UnlockCatalog.Get(UnlockId.Scanner).Requires);
             Assert.AreEqual(UnlockId.Plot1, UnlockCatalog.Get(UnlockId.Plot2).Requires);
             Assert.IsNull(UnlockCatalog.Get(UnlockId.Plot1).Requires);

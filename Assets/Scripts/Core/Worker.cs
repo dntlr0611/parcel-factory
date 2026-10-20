@@ -34,9 +34,13 @@ namespace ParcelFactory.Core
         public const float MaxStamina = 100f, WalkDrain = 0f, CarryDrain = 0f, StandRegen = 0.8f, LunchRegen = 20f, SlowBelow = 30f;
         /// <summary>달리기(스페이스 유지): 속도 ×1.6, 초당 소모 RunDrain(들고 달리면 RunCarryDrain). 스태미나가 RunMinStamina 미만이면 달릴 수 없다(걷기로 처리).</summary>
         public const float RunSpeedMultiplier = 1.6f, RunDrain = 3f, RunCarryDrain = 5.5f, RunMinStamina = 10f;
+        /// <summary>근무 중 회복 상한(스펙 11.11): 최대 체력의 80%까지만 회복한다. 점심에 가만히 서 있을 때만 100%까지.</summary>
+        public const float RegenCap = 0.8f;
         /// <summary>직전 Move가 실제로 달리기로 처리됐는지(뷰 애니메이션용).</summary>
         public bool IsRunning { get; private set; }
         public bool CanRun => Worker.Stamina >= RunMinStamina;
+        /// <summary>마지막 Rest 이후 Move가 실제로 움직였는가(스펙 11.11 점심 휴식 판정). Rest가 소비한다.</summary>
+        private bool movedSinceRest;
 
         private readonly FactoryGrid grid;
         private readonly ConveyorSim sim;
@@ -80,7 +84,7 @@ namespace ParcelFactory.Core
         public (int x, int y) FacingTile() =>
             (Round(Worker.X + Worker.Facing.Dx() * Reach), Round(Worker.Y + Worker.Facing.Dy() * Reach));
 
-        /// <summary>막는 부품(검사대·자동 검사기·분배기·팔레트)만 false. 잠긴 칸은 바닥일 뿐이므로 걸을 수 있다(스펙 10.3).</summary>
+        /// <summary>막는 부품(검사대·자동 검사기·분배기·팔레트)만 false. 브릿지는 레일처럼 지나갈 수 있다(스펙 11.12). 잠긴 칸은 바닥일 뿐이므로 걸을 수 있다(스펙 10.3).</summary>
         public static bool IsWalkable(CellType t)
         {
             switch (t)
@@ -139,6 +143,7 @@ namespace ParcelFactory.Core
             }
             if (moved)
             {
+                movedSinceRest = true;
                 CancelInspection();
                 // 달려서 움직인 프레임만 소모한다(걷기는 소모 없음, 양 축 모두 막히면 소모 없음).
                 if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * dt);
@@ -147,12 +152,31 @@ namespace ParcelFactory.Core
             return moved;
         }
 
-        /// <summary>스태미나 회복(GameSession.Tick이 호출). 점심이면 +LunchRegen/초, 근무 중이면 걷든 서든 +StandRegen × 회복 배율/초.</summary>
-        public void Rest(float dt, DayPhase phase)
+        /// <summary>마지막 Rest 이후 움직였는지 돌려주고 플래그를 지운다. GameSession.Tick이 한 프레임의 여러 Rest 구간에 같은 값을 쓰려고 호출한다.</summary>
+        public bool ConsumeMoved()
+        {
+            bool m = movedSinceRest;
+            movedSinceRest = false;
+            return m;
+        }
+
+        /// <summary>스태미나 회복(스펙 11.11). 마지막 Rest 이후의 이동 여부를 소비한다.</summary>
+        public void Rest(float dt, DayPhase phase) => Rest(dt, phase, ConsumeMoved());
+
+        /// <summary>점심에 이동하지 않았으면 +LunchRegen/초로 최대 체력까지. 그 외(근무 중, 또는 점심에 이동함)는
+        /// +StandRegen × 회복 배율/초로 최대 체력의 RegenCap까지만(이미 넘으면 회복 없음). 퇴근 중에는 회복 없음.</summary>
+        public void Rest(float dt, DayPhase phase, bool moved)
         {
             if (!(dt > 0f) || float.IsInfinity(dt)) return;
-            if (phase == DayPhase.Lunch) Worker.Stamina = Clamp(Worker.Stamina + LunchRegen * dt);
-            else if (phase == DayPhase.Working) Worker.Stamina = Clamp(Worker.Stamina + StandRegen * Progression.RegenMultiplier * dt);
+            if (phase == DayPhase.Lunch && !moved)
+            {
+                Worker.Stamina = Clamp(Worker.Stamina + LunchRegen * dt);
+                return;
+            }
+            if (phase != DayPhase.Working && phase != DayPhase.Lunch) return;
+            float cap = EffectiveMaxStamina * RegenCap;
+            if (Worker.Stamina >= cap) return;
+            Worker.Stamina = Math.Min(cap, Worker.Stamina + StandRegen * Progression.RegenMultiplier * dt);
         }
 
         /// <summary>다음 날 시작: 스태미나를 EffectiveMaxStamina로 가득.</summary>
@@ -187,7 +211,7 @@ namespace ParcelFactory.Core
                 if (fc.IsDock) return InteractResult.Delivered;
                 if (fc.Type == CellType.Pallet)
                     return !fc.IsPalletFull && !fc.Demolishing ? InteractResult.PutDown : InteractResult.CannotPutHere;
-                if (fc.IsTrack && !fc.IsOccupied && !fc.Demolishing) return InteractResult.PutDown;
+                if (fc.IsTrack && fc.HasFreeLane && !fc.Demolishing) return InteractResult.PutDown; // 브릿지는 빈 차선이 하나라도 있으면
                 return InteractResult.CannotPutHere;
             }
 

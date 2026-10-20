@@ -55,6 +55,32 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
+        public void AddBridge_GrantsAllDirections_AfterRailsBeforePallet()
+        {
+            var t = new Toolbar();
+            Assert.IsFalse(t.BridgeOwned);
+            Assert.IsFalse(t.Owns(CellType.Bridge, Direction.East));
+            t.Add(CellType.Conveyor, Direction.North);
+            t.Add(CellType.FastConveyor, Direction.East);
+            t.Add(CellType.Splitter, Direction.East);
+            t.Add(CellType.Scanner, Direction.East);
+            t.Add(CellType.Bridge, Direction.South);
+            Assert.IsTrue(t.BridgeOwned);
+            Assert.IsTrue(t.Owns(CellType.Bridge, Direction.West));
+            var types = t.OwnedTools().Select(x => x.Type).Distinct().ToList();
+            CollectionAssert.AreEqual(new[]
+            {
+                CellType.Conveyor, CellType.FastConveyor, CellType.Bridge, CellType.Pallet,
+                CellType.Table, CellType.Splitter, CellType.Scanner,
+            }, types);
+            var tools = t.OwnedTools().ToList();
+            Assert.AreEqual(3 + 4 + 2 + 4 + 4 + 4, tools.Count);
+            CollectionAssert.AreEqual(
+                new[] { Direction.North, Direction.East, Direction.South, Direction.West },
+                tools.Where(x => x.Type == CellType.Bridge).Select(x => x.Direction).ToList());
+        }
+
+        [Test]
         public void OwnedTools_IsSortedByTypeThenDirection()
         {
             var t = new Toolbar();

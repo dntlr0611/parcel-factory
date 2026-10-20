@@ -14,6 +14,7 @@ namespace ParcelFactory.Core
                 case CellType.Table: return 40;
                 case CellType.Scanner: return 120;
                 case CellType.Pallet: return 20;
+                case CellType.Bridge: return 40;
                 default: throw new ArgumentException($"{type} is not buildable", nameof(type));
             }
         }
