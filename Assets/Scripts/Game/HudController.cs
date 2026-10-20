@@ -20,6 +20,10 @@ namespace ParcelFactory.Game
         private readonly List<Text> slotPrices = new List<Text>();
         private readonly List<Text> slotKeys = new List<Text>();
         private float toastUntil;
+        private ConveyorSim boundSim;
+        /// <summary>마지막으로 띄운 토스트 문구(테스트용).</summary>
+        public string LastToast { get; private set; }
+        public enum ToastKind { Info, Good, Bad }
         private Text touchRotateLabel;
         private InputController input;
 
@@ -54,9 +58,41 @@ namespace ParcelFactory.Game
             input.ToggleSpeed += () => { boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f; };
             input.ToggleHelp += () => SetHelp(!help.gameObject.activeSelf);
             input.Escape += () => { if (help.gameObject.activeSelf) SetHelp(false); };
-            boot.SessionReplaced += s => { s.Unlocks.Unlocked += _ => RefreshHotbar(); RefreshHotbar(); };
+            boot.SessionReplaced += s => { s.Unlocks.Unlocked += _ => RefreshHotbar(); BindSim(s.Sim); RefreshHotbar(); };
             boot.Session.Unlocks.Unlocked += _ => RefreshHotbar();
+            BindSim(boot.Session.Sim);
             RefreshHotbar();
+        }
+
+        /// <summary>배송 결과 토스트를 받을 시뮬레이션을 바꾼다. 이전 세션 구독은 끊는다.</summary>
+        private void BindSim(ConveyorSim sim)
+        {
+            if (boundSim == sim) return;
+            if (boundSim != null) boundSim.PackageDelivered -= OnPackageDelivered;
+            boundSim = sim;
+            if (boundSim != null) boundSim.PackageDelivered += OnPackageDelivered;
+        }
+
+        private void OnDestroy() => BindSim(null);
+
+        private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta) =>
+            Toast(DeliveryMessage(outcome), DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
+
+        /// <summary>배송 결과 문구: 이유와 잔액 변화. 벌점이면 왜 깎였는지 알려 준다.</summary>
+        public static string DeliveryMessage(DeliveryOutcome o)
+        {
+            switch (o)
+            {
+                case DeliveryOutcome.Delivered: return "정상 출고 +15";
+                case DeliveryOutcome.ReturnedBad: return "불량 반품 +5";
+                case DeliveryOutcome.UninspectedToOutlet: return "검사대를 거치지 않은 택배 · 출고 −10";
+                case DeliveryOutcome.UninspectedToReturn: return "검사대를 거치지 않은 택배 · 반품 −5";
+                case DeliveryOutcome.RejectedToOutlet: return "거부한 택배를 출고 −10";
+                case DeliveryOutcome.BadToOutlet: return "불량을 승인해 출고 −20";
+                case DeliveryOutcome.GoodToReturn: return "정상 택배를 반품 −5";
+                case DeliveryOutcome.ApprovedToReturn: return "승인한 택배를 반품 −5";
+                default: return o.ToString();
+            }
         }
 
         private void BuildTopLeft()
@@ -141,8 +177,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 196f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 3초마다 1개 · 배송 +15 · 해체 2초 후 80% 환불", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 228f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 3초마다 1개 · 배송 +15 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -185,9 +221,14 @@ namespace ParcelFactory.Game
         public static string DemolishMessage(BuildResult r) =>
             r == BuildResult.AlreadyDemolishing ? "이미 해체 중입니다" : r == BuildResult.Occupied ? "팔레트를 먼저 비우세요" : "해체할 수 있는 부품이 아닙니다";
 
-        public void Toast(string message)
+        public void Toast(string message) => Toast(message, ToastKind.Info);
+
+        /// <summary>잠시 뜨는 알림. Good은 초록, Bad는 빨강 글자.</summary>
+        public void Toast(string message, ToastKind kind)
         {
+            LastToast = message;
             toastText.text = message;
+            toastText.color = kind == ToastKind.Good ? UiKit.Good : kind == ToastKind.Bad ? UiKit.Bad : UiKit.Fg;
             toastUntil = Time.unscaledTime + 1.8f;
             toast.gameObject.SetActive(true);
         }
@@ -206,6 +247,10 @@ namespace ParcelFactory.Game
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
             }
         }
+
+        /// <summary>트럭 도크 앞 프롬프트. 미검사 택배면 벌점을 미리 보여 준다.</summary>
+        public static string DeliverLabel(bool outlet, bool inspected) =>
+            outlet ? (inspected ? "출고" : "출고 (미검사 −10)") : (inspected ? "반품" : "반품 (미검사 −5)");
 
         private string CannotPutMessage()
         {
@@ -287,7 +332,7 @@ namespace ParcelFactory.Game
             {
                 case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
                 case InteractResult.PutDown: label = "놓기"; break;
-                case InteractResult.Delivered: label = s.Grid.Get(fx, fy).Type == CellType.Outlet ? "출고" : "반품"; break;
+                case InteractResult.Delivered: label = DeliverLabel(s.Grid.Get(fx, fy).Type == CellType.Outlet, w.Carrying != null && w.Carrying.Inspected); break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
                 case InteractResult.Placed: label = (tool.Value.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Value.Direction)) + " " : "") + Name(tool.Value.Type) + " 설치"; break;
             }

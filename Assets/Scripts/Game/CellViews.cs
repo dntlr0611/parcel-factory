@@ -99,7 +99,7 @@ namespace ParcelFactory.Game
                 boxes[i].transform.localPosition = new Vector3(slot == 0 ? -0.22f : 0.22f, PackageViews.SurfaceHeight(CellType.Pallet) + PackageViews.PalletLayerHeight * layer, 0f);
                 boxes[i].transform.localRotation = Quaternion.identity;
                 var p = Cell.Pallet[i];
-                PackageViews.SetStamp(boxes[i], p.Inspected && p.Rejected);
+                PackageViews.SetMarks(boxes[i], p);
             }
         }
     }

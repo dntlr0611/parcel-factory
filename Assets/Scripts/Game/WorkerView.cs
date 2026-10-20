@@ -101,7 +101,7 @@ namespace ParcelFactory.Game
             }
 
             carried.SetActive(w.Carrying != null);
-            if (w.Carrying != null) PackageViews.SetStamp(carried, w.Carrying.Inspected && w.Carrying.Rejected);
+            if (w.Carrying != null) PackageViews.SetMarks(carried, w.Carrying);
 
             // 잠긴 칸도 걸을 수 있는 바닥이므로 커서를 보인다. 설치 불가는 Preview(Locked)로 커서 색을 바꿔 알린다.
             var (fx, fy) = ws.FacingTile();

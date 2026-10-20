@@ -62,11 +62,25 @@ namespace ParcelFactory.Game
         private void OnEnable()
         {
             foreach (var a in All()) a.Enable();
+            // macOS 한글 입력기 등 IME가 켜져 있으면 조합 중인 키가 Input System에 닿지 않는다. 게임 중에는 IME를 끈다.
+            // 바인딩은 모두 물리 키 경로(<Keyboard>/w, <Keyboard>/1 …)라 입력 소스와 상관없이 같은 키 자리로 동작한다.
+            DisableIme(Keyboard.current);
+            InputSystem.onDeviceChange += OnDeviceChange;
         }
 
         private void OnDisable()
         {
+            InputSystem.onDeviceChange -= OnDeviceChange;
             foreach (var a in All()) a.Disable();
+        }
+
+        private static void DisableIme(Keyboard kb) => kb?.SetIMEEnabled(false);
+
+        /// <summary>키보드가 새로 붙거나 다시 연결되면 IME 끄기를 다시 적용한다.</summary>
+        private static void OnDeviceChange(InputDevice device, InputDeviceChange change)
+        {
+            if (device is Keyboard kb && (change == InputDeviceChange.Added || change == InputDeviceChange.Reconnected || change == InputDeviceChange.Enabled))
+                DisableIme(kb);
         }
 
         private void OnDestroy()

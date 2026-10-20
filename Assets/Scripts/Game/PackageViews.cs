@@ -37,27 +37,47 @@ namespace ParcelFactory.Game
             return c.IsBuilding || c.IsDock || c.Type == CellType.Inlet ? SurfaceHeight(c.Type) : 0f;
         }
 
+        /// <summary>검사 통과 표시(초록) 색. 거부 도장(빨강)과 같은 자리에 놓이고 둘 중 하나만 보인다.</summary>
+        public static readonly Color CheckColor = new Color(0x3F / 255f, 0xA3 / 255f, 0x5A / 255f);
+        public static readonly Color StampColor = new Color(0.85f, 0.2f, 0.15f);
+
         public static GameObject MakeBox(ModelCatalog cat, Transform parent)
         {
             var go = new GameObject("Package");
             go.transform.SetParent(parent, false);
             var m = Object.Instantiate(cat.Get("box-small"), go.transform);
             m.transform.localScale = Vector3.one * 0.8f;
-            var stamp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Object.Destroy(stamp.GetComponent<Collider>());
-            stamp.name = "Stamp";
-            stamp.transform.SetParent(go.transform, false);
-            stamp.transform.localPosition = new Vector3(0.1f, 0.46f, 0.08f);
-            stamp.transform.localScale = new Vector3(0.14f, 0.02f, 0.14f);
-            stamp.GetComponent<Renderer>().material = MaterialLibrary.Emissive(new Color(0.85f, 0.2f, 0.15f), 1.2f);
-            stamp.SetActive(false);
+            Mark(go.transform, "Stamp", StampColor);
+            Mark(go.transform, "Check", CheckColor);
             return go;
         }
 
-        public static void SetStamp(GameObject box, bool on)
+        /// <summary>상자 윗면의 납작한 표시. 꺼진 채로 만든다.</summary>
+        private static void Mark(Transform box, string name, Color color)
         {
-            var s = box.transform.Find("Stamp");
-            if (s != null) s.gameObject.SetActive(on);
+            var mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.Destroy(mark.GetComponent<Collider>());
+            mark.name = name;
+            mark.transform.SetParent(box, false);
+            mark.transform.localPosition = new Vector3(0.1f, 0.46f, 0.08f);
+            mark.transform.localScale = new Vector3(0.14f, 0.02f, 0.14f);
+            mark.GetComponent<Renderer>().material = MaterialLibrary.Emissive(color, 1.2f);
+            mark.SetActive(false);
+        }
+
+        /// <summary>검사 상태 표시: 거부되면 빨간 도장, 검사를 통과하면 초록 체크, 미검사면 둘 다 없음.</summary>
+        public static void SetMarks(GameObject box, bool inspected, bool rejected)
+        {
+            Toggle(box, "Stamp", inspected && rejected);
+            Toggle(box, "Check", inspected && !rejected);
+        }
+
+        public static void SetMarks(GameObject box, Package p) => SetMarks(box, p.Inspected, p.Rejected);
+
+        private static void Toggle(GameObject box, string name, bool on)
+        {
+            var t = box.transform.Find(name);
+            if (t != null && t.gameObject.activeSelf != on) t.gameObject.SetActive(on);
         }
 
         private void LateUpdate()
@@ -81,7 +101,7 @@ namespace ParcelFactory.Game
                 pos.y = SurfaceHeight(boot.Session.Grid.Get(p.X, p.Y).Type);
                 go.transform.position = pos;
                 go.transform.rotation = Grid3D.Facing(dir);
-                SetStamp(go, p.Inspected && p.Rejected);
+                SetMarks(go, p);
             }
             var gone = new List<int>();
             foreach (var kv in active) if (!seen.Contains(kv.Key)) gone.Add(kv.Key);

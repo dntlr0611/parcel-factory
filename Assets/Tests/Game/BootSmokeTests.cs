@@ -198,6 +198,52 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
+        public IEnumerator HandDelivery_Uninspected_ShowsPenaltyPromptAndToast()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true;
+                // 입고구에서 택배 하나를 집어 든다(이미 입고된 택배가 있으면 그것을 쓴다).
+                if (!s.Sim.TrySpawn(ParcelFactory.Core.FactoryGrid.InletX, ParcelFactory.Core.FactoryGrid.InletY, ParcelFactory.Core.PackageKind.Normal, out var p))
+                    p = s.Sim.PackageAt(ParcelFactory.Core.FactoryGrid.InletX, ParcelFactory.Core.FactoryGrid.InletY);
+                Assert.IsNotNull(p);
+                Assert.IsFalse(p.Inspected);
+                s.Sim.Take(p);
+                s.Worker.Worker.Carrying = p;
+                s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.East;
+                Assert.AreEqual((11, 2), s.Worker.FacingTile());
+                yield return null;
+                var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
+                StringAssert.Contains("출고 (미검사 −10)", promptText.text);
+                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(false, false));
+                Assert.AreEqual("출고", HudController.DeliverLabel(true, true));
+                int money0 = s.Economy.Money;
+                boot.Input.Interact();
+                Assert.IsNull(s.Worker.Worker.Carrying);
+                Assert.AreEqual(money0 - 10, s.Economy.Money);
+                StringAssert.Contains("검사대를 거치지 않은", boot.Hud.LastToast);
+                // 세션을 바꾸면 새 세션의 배송도 토스트가 뜬다(이전 구독은 끊김).
+                boot.StartNewGame();
+                yield return null;
+                var s2 = boot.Session;
+                s2.Paused = true;
+                var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s2.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
+                q.Bad = false; q.Inspect(false);
+                s2.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
+                Assert.AreEqual("정상 출고 +15", boot.Hud.LastToast);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator InspectionCard_BlocksInputInSameFrame_AndSurvivesHeldPad()
         {
             var boot = GameBootstrap.Ensure();
