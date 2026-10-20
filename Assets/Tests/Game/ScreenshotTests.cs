@@ -61,25 +61,31 @@ namespace ParcelFactory.Game.Tests
                 // (a) 시작 상태
                 yield return Capture(boot, "unity-start.png", Width, Height);
 
-                // (b) 샘플 배치
+                // (b) 샘플 배치: 입고 → 레일 → 검사대 → 레일 → 파랑 팔레트(5,2)에 상자 3개, 작업자는 상자를 들고 트럭 도크(11,2)로 가는 중.
                 var s = boot.Session;
                 s.Economy.Earn(500);
-                s.Toolbar.Add(CellType.Conveyor, Direction.North);
                 Place(s, 1, 2, CellType.Conveyor, Direction.East);
                 Place(s, 2, 2, CellType.Conveyor, Direction.East);
                 Place(s, 3, 2, CellType.Table, Direction.East);
                 Place(s, 4, 2, CellType.Conveyor, Direction.East);
-                Place(s, 3, 3, CellType.Conveyor, Direction.North);
-                Place(s, 3, 4, CellType.Conveyor, Direction.East);
-                Place(s, 4, 4, CellType.Conveyor, Direction.East);
-                s.Worker.Worker.X = 2.6f; s.Worker.Worker.Y = 1.2f; s.Worker.Worker.Facing = Direction.North;
+                var factory = new PackageFactory(new System.Random(5), 0.0);
+                for (int i = 0; i < 3; i++)
+                {
+                    var pp = factory.Create(s.Sim.NextId++, FactoryGrid.StartBluePalletX, FactoryGrid.StartBluePalletY, Direction.East);
+                    pp.Inspect(false);
+                    Assert.IsTrue(s.Sim.PutOnPallet(pp, FactoryGrid.StartBluePalletX, FactoryGrid.StartBluePalletY), "pile " + i);
+                }
+                var carried = factory.Create(s.Sim.NextId++, 8, 2, Direction.East);
+                carried.Inspect(false);
+                s.Worker.Worker.Carrying = carried;
+                s.Worker.Worker.X = 8.0f; s.Worker.Worker.Y = 2.0f; s.Worker.Worker.Facing = Direction.East;
                 boot.Input.SelectSlot(0);
                 yield return new WaitForSeconds(1.0f);
                 // 1초 동안 흘러간 택배와 상관없이 입구 하나, 벨트 위 하나를 확실히 둔다.
                 s.Sim.TrySpawn(FactoryGrid.InletX, FactoryGrid.InletY, PackageKind.Normal, out _);
                 s.Sim.TrySpawn(2, 2, PackageKind.Normal, out _);
                 yield return new WaitForSeconds(0.2f);
-                Debug.Log($"[Screenshot] packages on line: {s.Sim.Packages.Count}, selected slot {boot.Input.SelectedSlot}");
+                Debug.Log($"[Screenshot] packages on line: {s.Sim.Packages.Count}, pallet pile {s.Sim.PalletCount(5, 2)}, selected slot {boot.Input.SelectedSlot}");
                 yield return Capture(boot, "unity-demo.png", Width, Height);
 
                 // (c) 터치 모드

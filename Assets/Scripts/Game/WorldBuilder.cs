@@ -240,10 +240,10 @@ namespace ParcelFactory.Game
             Spawn("robot-arm-a", new Vector3(-4.0f, 0f, h - 0.8f), back, 0.6f, props);
             Spawn("screen-hanging-wide", new Vector3(-5.6f, 1.0f, h - 0.5f), back, 1.0f, props);
 
-            // 미해금 구역에 쌓인 재고 상자
+            // 격자 밖 북동·북서 구석(격자 가장자리 ±6과 벽 ±7 사이)에 쌓인 재고 상자. 격자 안은 걸을 수 있는 바닥이라 비워 둔다.
             var rng = new System.Random(7);
             string[] kinds = { "box-large", "box-wide", "box-long" };
-            var spots = new[] { (6.2f, 5.6f), (5.2f, 5.7f), (6.1f, 4.6f), (-6.1f, 5.5f), (-6.2f, 4.4f), (-5.1f, 5.6f) };
+            var spots = new[] { (6.45f, 6.45f), (6.45f, 5.5f), (5.5f, 6.45f), (-6.45f, 6.45f), (-6.45f, 5.5f), (-5.5f, 6.45f) };
             foreach (var (x, z) in spots)
             {
                 string k = kinds[rng.Next(kinds.Length)];
@@ -279,31 +279,41 @@ namespace ParcelFactory.Game
         {
             var docks = Group("Docks");
             // 차량은 벽 밖 출입구 앞에 후진 주차한다(모델 앞 = +z 가정: 뒤가 출입구를 향하도록 yaw).
-            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", -8.5f, -90f);
-            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f);
-            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f);
+            // 트럭 도크(스펙 10.1)는 동쪽 벽 출입구 바로 안쪽 칸 (11,2)·(11,4). 좌표는 FactoryGrid에서만 읽는다.
+            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", -8.5f, -90f, truck: false);
+            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true);
+            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true);
         }
 
-        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw)
+        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw, bool truck)
         {
             var tile = Grid3D.Tile(gx, gy);
             var d = new GameObject("Dock_" + vehicle).transform;
             d.SetParent(parent, false);
             Box("DockSlab", d, tile + new Vector3(0f, 0.11f, 0f), new Vector3(1f, 0.22f, 1f), MaterialLibrary.Lit(color, 0.25f));
             Box("DockMark", d, tile + new Vector3(0f, 0.23f, 0f), new Vector3(0.72f, 0.02f, 0.72f), MaterialLibrary.Lit(Hex(0xF5F0E6), 0.2f), castShadow: false);
-            Spawn("warning-traffic", tile + new Vector3(0f, 0f, 0.62f), Quaternion.identity, 0.6f, d);
+            // 신호등은 격자 밖(격자 가장자리와 벽 사이 여백)에 둔다. 격자 안은 전부 걸을 수 있는 바닥이다(스펙 10.3).
+            float side = Mathf.Sign(vehicleX);
+            Spawn("warning-traffic", tile + new Vector3(side * 0.85f, 0f, 0.62f), Quaternion.identity, 0.6f, d);
             Spawn(vehicle, new Vector3(vehicleX, 0f, tile.z), Quaternion.Euler(0f, vehicleYaw, 0f), 0.64f, d);
 
-            // 도크 칸 가장자리 → 출입구까지 바닥 차선 2줄
-            float side = Mathf.Sign(vehicleX);
-            float doorX = side * HalfBuilding, x0 = tile.x + side * 0.5f;
-            float len = Mathf.Abs(doorX - x0);
-            if (len > 0.2f)
+            if (truck)
             {
-                float cx = (doorX + x0) / 2f;
-                var laneMat = MaterialLibrary.Lit(LaneColor, 0.3f);
-                Box("Lane", d, new Vector3(cx, 0f, tile.z - 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
-                Box("Lane", d, new Vector3(cx, 0f, tile.z + 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
+                // 트럭 도크 앞 흰 정지선 1줄: 칸 서쪽 변 바로 바깥(슬래브에 가리지 않게).
+                Box("StopLine", d, tile + new Vector3(-0.5f - 0.05f, 0.006f, 0f), new Vector3(0.06f, 0.012f, 1f), MaterialLibrary.Lit(Hex(0xF5F0E6), 0.2f), castShadow: false);
+            }
+            else
+            {
+                // 입고구 칸 가장자리 → 서쪽 출입구까지 바닥 차선 2줄
+                float doorX = side * HalfBuilding, x0 = tile.x + side * 0.5f;
+                float len = Mathf.Abs(doorX - x0);
+                if (len > 0.2f)
+                {
+                    float cx = (doorX + x0) / 2f;
+                    var laneMat = MaterialLibrary.Lit(LaneColor, 0.3f);
+                    Box("Lane", d, new Vector3(cx, 0f, tile.z - 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
+                    Box("Lane", d, new Vector3(cx, 0f, tile.z + 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
+                }
             }
         }
 

@@ -71,6 +71,67 @@ namespace ParcelFactory.Game
         }
     }
 
+    /// <summary>팔레트 칸의 더미를 매 프레임 Cell.Pallet에서 그린다(풀링). 더미 택배는 Sim.Packages에 없다.</summary>
+    public sealed class PalletView : MonoBehaviour
+    {
+        public static readonly Color Wood = new Color(0xB9 / 255f, 0x8A / 255f, 0x5C / 255f);
+        public static readonly Color BlueBand = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f);
+        public static readonly Color RedBand = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+
+        public Cell Cell;
+        public ModelCatalog Catalog;
+        private Transform pile;
+        private readonly List<GameObject> boxes = new List<GameObject>();
+
+        public int ShownCount { get; private set; }
+
+        private static float pileScale = -1f;
+
+        /// <summary>box-small(0.8배)은 폭이 약 0.38이라 0.26 간격 3개가 한 덩어리로 붙어 보인다.
+        /// 실제 렌더 크기를 한 번 재서 폭 ≤ 0.24, 높이 ≤ 0.38(층 0.4 안)이 되게 줄인다.</summary>
+        private static float PileScale(GameObject box)
+        {
+            if (pileScale > 0f) return pileScale;
+            var rs = box.GetComponentsInChildren<Renderer>(true);
+            var b = new Bounds();
+            bool any = false;
+            foreach (var r in rs)
+            {
+                if (r.gameObject.name == "Stamp") continue;
+                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+            }
+            if (!any || b.size.x <= 0f) return 1f;
+            float w = Mathf.Max(b.size.x, b.size.z), h = b.size.y;
+            pileScale = Mathf.Min(1f, 0.24f / w, h > 0f ? 0.38f / h : 1f);
+            return pileScale;
+        }
+
+        private void LateUpdate()
+        {
+            if (Cell == null) return;
+            if (pile == null) { pile = new GameObject("Pile").transform; pile.SetParent(transform, false); }
+            int n = Cell.Pallet.Count;
+            while (boxes.Count < n)
+            {
+                var b = PackageViews.MakeBox(Catalog, pile);
+                b.transform.localScale = Vector3.one * PileScale(b);
+                boxes.Add(b);
+            }
+            for (int i = 0; i < boxes.Count; i++)
+            {
+                bool on = i < n;
+                if (boxes[i].activeSelf != on) boxes[i].SetActive(on);
+                if (!on) continue;
+                int layer = i / PackageViews.PalletPerLayer, slot = i % PackageViews.PalletPerLayer;
+                boxes[i].transform.localPosition = new Vector3((slot - 1) * 0.26f, PackageViews.SurfaceHeight(CellType.Pallet) + PackageViews.PalletLayerHeight * layer, 0f);
+                boxes[i].transform.localRotation = Quaternion.identity;
+                var p = Cell.Pallet[i];
+                PackageViews.SetStamp(boxes[i], p.Inspected && p.Rejected);
+            }
+            ShownCount = n;
+        }
+    }
+
     public sealed class CellViews : MonoBehaviour
     {
         private readonly Dictionary<(int, int), GameObject> objs = new Dictionary<(int, int), GameObject>();
@@ -174,6 +235,27 @@ namespace ParcelFactory.Game
                 case CellType.Splitter:
                     Model("conveyor-junction-t", go.transform, Vector3.zero, facing, 1f);
                     break;
+                case CellType.Pallet:
+                {
+                    // 나무 팔레트 0.9×0.12×0.9 + 종류 색 테두리 띠(0.04). 색은 PalletKind에서만 읽는다(Direction 아님).
+                    float top = PackageViews.SurfaceHeight(CellType.Pallet);
+                    Box("PalletBase", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(PalletView.Wood, 0.1f));
+                    var gapColor = PalletView.Wood * 0.7f; gapColor.a = 1f;
+                    var slat = MaterialLibrary.Lit(gapColor, 0.05f);
+                    foreach (var z in new[] { -0.15f, 0.15f })
+                        Box("PalletGap", go.transform, new Vector3(0f, top + 0.002f, z), new Vector3(0.84f, 0.004f, 0.025f), slat);
+                    var band = MaterialLibrary.Lit(c.PalletKind == PalletKind.Blue ? PalletView.BlueBand : PalletView.RedBand, 0.3f);
+                    const float bh = 0.04f, bw = 0.05f, outer = 0.94f;
+                    float by = top - bh / 2f + 0.005f;
+                    Box("Band", go.transform, new Vector3(0f, by, (outer - bw) / 2f), new Vector3(outer, bh, bw), band);
+                    Box("Band", go.transform, new Vector3(0f, by, -(outer - bw) / 2f), new Vector3(outer, bh, bw), band);
+                    Box("Band", go.transform, new Vector3((outer - bw) / 2f, by, 0f), new Vector3(bw, bh, outer - 2f * bw), band);
+                    Box("Band", go.transform, new Vector3(-(outer - bw) / 2f, by, 0f), new Vector3(bw, bh, outer - 2f * bw), band);
+                    var pv = go.AddComponent<PalletView>();
+                    pv.Cell = c;
+                    pv.Catalog = cat;
+                    break;
+                }
                 case CellType.Table:
                 {
                     // 강철 작업대: 몸체 0.9×0.56×0.9 + 밝은 상판 0.96×0.04×0.96, 윗면 = 택배 표면 높이(0.6).

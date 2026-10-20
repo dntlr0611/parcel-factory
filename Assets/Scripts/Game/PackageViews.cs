@@ -17,9 +17,24 @@ namespace ParcelFactory.Game
             switch (t)
             {
                 case CellType.Table: return 0.6f;
-                case CellType.Inlet: return 0.22f;
+                case CellType.Inlet:
+                case CellType.Outlet:
+                case CellType.ReturnDock: return 0.22f; // 도크 슬래브 윗면
+                case CellType.Pallet: return 0.12f;     // 나무 팔레트 윗면(더미 1층 바닥)
                 default: return 0.4f;
             }
+        }
+
+        /// <summary>팔레트 더미 한 층의 높이. 상자는 층당 3개(x −0.26/0/+0.26).</summary>
+        public const float PalletLayerHeight = 0.4f;
+        public const int PalletPerLayer = 3;
+
+        /// <summary>칸 위 표시물(커서 등)이 놓일 높이. 팔레트는 더미 꼭대기, 바닥 칸은 0.</summary>
+        public static float TopHeight(Cell c)
+        {
+            if (c.Type == CellType.Pallet)
+                return SurfaceHeight(CellType.Pallet) + PalletLayerHeight * ((c.Pallet.Count + PalletPerLayer - 1) / PalletPerLayer);
+            return c.IsBuilding || c.IsDock || c.Type == CellType.Inlet ? SurfaceHeight(c.Type) : 0f;
         }
 
         public static GameObject MakeBox(ModelCatalog cat, Transform parent)

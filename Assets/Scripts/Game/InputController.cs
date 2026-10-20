@@ -7,10 +7,12 @@ using UnityEngine.InputSystem;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸, 방향은 R로 순환.</summary>
+    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~6), 방향은 R로 순환.
+    /// 팔레트는 방향 대신 종류: East = 파랑, West = 빨강(Tool.KindOf)이므로 같은 순환이 파랑↔빨강이 된다.</summary>
     public sealed class InputController : MonoBehaviour
     {
-        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Table, CellType.Splitter, CellType.Scanner };
+        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Pallet, CellType.Table, CellType.Splitter, CellType.Scanner };
+        public static int SlotCount => SlotOrder.Length;
 
         public Tool? SelectedTool { get; private set; }
         public int SelectedSlot => SelectedTool.HasValue ? AvailableSlots().IndexOf(SelectedTool.Value.Type) : -1;
@@ -23,7 +25,7 @@ namespace ParcelFactory.Game
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleHelp, Escape, ToolChanged;
 
         private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, help, escape;
-        private readonly InputAction[] slots = new InputAction[5];
+        private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
         private const float MoveSubStep = 0.05f;
@@ -47,7 +49,7 @@ namespace ParcelFactory.Game
             shop = Button("Shop", "<Keyboard>/b", "<Gamepad>/select");
             help = Button("Help", "<Keyboard>/o", null);
             escape = Button("Escape", "<Keyboard>/escape", null);
-            for (int i = 0; i < 5; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
+            for (int i = 0; i < slots.Length; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
         }
 
         private static InputAction Button(string name, string key, string pad)
@@ -92,7 +94,7 @@ namespace ParcelFactory.Game
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
-            for (int i = 0; i < 5; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
+            for (int i = 0; i < slots.Length; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
             if (rotate.WasPressedThisFrame()) RotateTool();
             if (clear.WasPressedThisFrame()) ClearTool();
             if (interact.WasPressedThisFrame()) Interact();
@@ -148,14 +150,21 @@ namespace ParcelFactory.Game
         public List<Direction> OwnedDirections(CellType t) =>
             S.Toolbar.OwnedTools().Where(o => o.Type == t).Select(o => o.Direction).ToList();
 
+        /// <summary>그 종류를 고를 때 쓸 방향(마지막으로 고른 방향, 없으면 첫 보유 방향). 팔레트면 종류(East=파랑).</summary>
+        public Direction PreferredDirection(CellType type)
+        {
+            var dirs = OwnedDirections(type);
+            if (dirs.Count == 0) return Direction.East;
+            return lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
+        }
+
         public void SelectSlot(int i)
         {
             var available = AvailableSlots();
             if (i < 0 || i >= available.Count) return;
             var type = available[i];
             if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { RotateTool(); return; }
-            var dirs = OwnedDirections(type);
-            var dir = lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
+            var dir = PreferredDirection(type);
             SelectedTool = new Tool(type, dir);
             ToolChanged?.Invoke();
         }

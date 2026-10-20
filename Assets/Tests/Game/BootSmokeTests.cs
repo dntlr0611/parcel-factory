@@ -8,6 +8,16 @@ namespace ParcelFactory.Game.Tests
 {
     public class BootSmokeTests
     {
+        private static GameObject FindCellView(string name, int x, int y)
+        {
+            var cells = GameObject.Find("World/Cells");
+            if (cells == null) return null;
+            var at = Grid3D.Tile(x, y);
+            foreach (Transform t in cells.transform)
+                if (t.name == name && Mathf.Abs(t.position.x - at.x) < 1e-3f && Mathf.Abs(t.position.z - at.z) < 1e-3f) return t.gameObject;
+            return null;
+        }
+
         [UnityTest]
         public IEnumerator Boot_CreatesSessionAndTicks()
         {
@@ -33,7 +43,38 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNotNull(workerAnim.GetClip("walk"), "walk clip missing");
                 Assert.IsNotNull(workerAnim.GetClip("holding-both"), "holding-both clip missing");
                 Assert.IsNotNull(boot.Input);
-                Assert.AreEqual(2, boot.Input.AvailableSlots().Count); // Conveyor + Table (Table is owned by default)
+                // 팔레트 뷰: 시작 파랑 팔레트 (5,2)에 "Pallet" 오브젝트, 더미 3개를 올리면 3개를 그린다.
+                var pallet = FindCellView("Pallet", 5, 2);
+                Assert.IsNotNull(pallet, "pallet view at (5,2) not created");
+                var pv = pallet.GetComponent<PalletView>();
+                Assert.IsNotNull(pv, "pallet view has no PalletView");
+                Assert.AreEqual(ParcelFactory.Core.PalletKind.Blue, pv.Cell.PalletKind);
+                var factory = new ParcelFactory.Core.PackageFactory(new System.Random(1));
+                for (int i = 0; i < 3; i++)
+                    Assert.IsTrue(boot.Session.Sim.PutOnPallet(factory.Create(9000 + i, 5, 2, ParcelFactory.Core.Direction.East), 5, 2));
+                yield return null;
+                Assert.AreEqual(3, pv.ShownCount, "pallet pile not drawn");
+                Assert.IsNotNull(FindCellView("Pallet", 5, 4), "pallet view at (5,4) not created");
+                // 트럭 도크 슬래브는 (11,2)·(11,4) 칸 위.
+                var outletSlab = GameObject.Find("World/Docks/Dock_delivery/DockSlab");
+                Assert.IsNotNull(outletSlab, "outlet dock slab missing");
+                var tile = Grid3D.Tile(ParcelFactory.Core.FactoryGrid.OutletX, ParcelFactory.Core.FactoryGrid.OutletY);
+                Assert.AreEqual(Grid3D.Tile(11, 2).x, tile.x, 1e-4f);
+                Assert.AreEqual(tile.x, outletSlab.transform.position.x, 1e-3f);
+                Assert.AreEqual(tile.z, outletSlab.transform.position.z, 1e-3f);
+                var returnSlab = GameObject.Find("World/Docks/Dock_truck/DockSlab");
+                Assert.IsNotNull(returnSlab, "return dock slab missing");
+                Assert.AreEqual(Grid3D.Tile(11, 4).x, returnSlab.transform.position.x, 1e-3f);
+                Assert.AreEqual(Grid3D.Tile(11, 4).z, returnSlab.transform.position.z, 1e-3f);
+                Assert.IsNull(GameObject.Find("World/Docks/Dock_delivery/Lane"), "pallet→door lanes should be gone");
+                Assert.IsNotNull(GameObject.Find("World/Docks/Dock_delivery/StopLine"), "truck dock stop line missing");
+
+                Assert.AreEqual(3, boot.Input.AvailableSlots().Count); // Conveyor + Pallet + Table (Pallet, Table owned by default)
+                Assert.AreEqual(ParcelFactory.Core.CellType.Pallet, boot.Input.AvailableSlots()[1]);
+                boot.Input.SelectSlot(1);
+                Assert.AreEqual(ParcelFactory.Core.Direction.East, boot.Input.SelectedTool.Value.Direction); // 파랑
+                boot.Input.SelectSlot(1); // 재탭 → 빨강
+                Assert.AreEqual(ParcelFactory.Core.PalletKind.Red, ParcelFactory.Core.Tool.KindOf(boot.Input.SelectedTool.Value.Direction));
                 boot.Input.SelectSlot(0);
                 Assert.AreEqual(ParcelFactory.Core.CellType.Conveyor, boot.Input.SelectedTool.Value.Type);
                 Assert.AreEqual(0, boot.Input.SelectedSlot);

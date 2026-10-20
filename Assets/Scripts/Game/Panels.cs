@@ -158,7 +158,7 @@ namespace ParcelFactory.Game
             dRefund = UiKit.Label("Refund", card, "", 13, UiKit.Muted, TextAnchor.UpperLeft); dRefund.rectTransform.offsetMin = new Vector2(18f, 0f); dRefund.rectTransform.offsetMax = new Vector2(-18f, -74f);
             var cancel = UiKit.Button("Cancel", card, "취소", new Vector2(100f, 36f), () => { pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); });
             cancel.GetComponent<RectTransform>().anchoredPosition = new Vector2(-60f, -62f);
-            var ok = UiKit.Button("Confirm", card, "해체", new Vector2(100f, 36f), () => { if (pendingDemolish.HasValue) GameBootstrap.Instance.Session.Build.BeginDemolish(pendingDemolish.Value.x, pendingDemolish.Value.y); pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, new Color(0.79f, 0.28f, 0.18f, 1f));
+            var ok = UiKit.Button("Confirm", card, "해체", new Vector2(100f, 36f), () => { if (pendingDemolish.HasValue) { var r = GameBootstrap.Instance.Session.Build.BeginDemolish(pendingDemolish.Value.x, pendingDemolish.Value.y); if (r != BuildResult.Ok) hud.Toast(HudController.DemolishMessage(r)); } pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, new Color(0.79f, 0.28f, 0.18f, 1f));
             ok.GetComponent<RectTransform>().anchoredPosition = new Vector2(60f, -62f);
         }
 
@@ -171,8 +171,9 @@ namespace ParcelFactory.Game
             var c = s.Grid.Get(fx, fy);
             if (!c.IsBuilding) { hud.Toast("해체할 수 있는 부품이 아닙니다"); return; }
             if (c.Demolishing) { hud.Toast("이미 해체 중입니다"); return; }
+            if (c.Type == CellType.Pallet && c.Pallet.Count > 0) { hud.Toast(HudController.DemolishMessage(BuildResult.Occupied)); return; }
             pendingDemolish = (fx, fy);
-            dText.text = HudController.Name(c.Type) + " " + HudController.Arrow(c.Direction) + " 를 해체합니다.";
+            dText.text = HudController.Name(c.Type) + " " + HudController.DirLabel(c) + " 를 해체합니다.";
             dRefund.text = "환불 " + BuildService.RefundFor(c.Type) + " · 소요 " + BuildService.DemolishSeconds + "초";
             demolish.gameObject.SetActive(true);
             Sync();

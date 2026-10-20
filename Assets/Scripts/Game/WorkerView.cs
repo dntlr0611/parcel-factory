@@ -21,6 +21,9 @@ namespace ParcelFactory.Game
         private string currentClip;
         private bool hasHolding;
 
+        private static readonly Color CursorTint = new Color(1f, 0.83f, 0.4f, 0.35f);
+        private static readonly Color RefusedTint = new Color(0.95f, 0.32f, 0.26f, 0.35f);
+
         private const string IdleClip = "idle", WalkClip = "walk", HoldingClip = "holding-both";
 
         private void Start()
@@ -43,7 +46,7 @@ namespace ParcelFactory.Game
             q.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             q.transform.localScale = Vector3.one * 0.96f;
             cursorRenderer = q.GetComponent<Renderer>();
-            cursorRenderer.material = MaterialLibrary.Transparent(new Color(1f, 0.83f, 0.4f, 0.35f));
+            cursorRenderer.material = MaterialLibrary.Transparent(CursorTint);
             cursorRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             cursor = q.transform;
 
@@ -100,13 +103,16 @@ namespace ParcelFactory.Game
             carried.SetActive(w.Carrying != null);
             if (w.Carrying != null) PackageViews.SetStamp(carried, w.Carrying.Inspected && w.Carrying.Rejected);
 
+            // 잠긴 칸도 걸을 수 있는 바닥이므로 커서를 보인다. 설치 불가는 Preview(Locked)로 커서 색을 바꿔 알린다.
             var (fx, fy) = ws.FacingTile();
-            bool show = boot.Session.Grid.InBounds(fx, fy) && boot.Session.Grid.Get(fx, fy).Type != CellType.Locked;
+            bool show = boot.Session.Grid.InBounds(fx, fy);
             cursor.gameObject.SetActive(show);
             if (show)
             {
-                cursor.position = Grid3D.Tile(fx, fy) + new Vector3(0f, 0.03f + PackageViews.SurfaceHeight(boot.Session.Grid.Get(fx, fy).Type) * (boot.Session.Grid.Get(fx, fy).IsBuilding || boot.Session.Grid.Get(fx, fy).IsDock || boot.Session.Grid.Get(fx, fy).Type == CellType.Inlet ? 1f : 0f), 0f);
-                var c = cursorRenderer.material.GetColor("_BaseColor");
+                var cell = boot.Session.Grid.Get(fx, fy);
+                cursor.position = Grid3D.Tile(fx, fy) + new Vector3(0f, 0.03f + PackageViews.TopHeight(cell), 0f);
+                bool refused = boot.Input != null && ws.Preview(boot.Input.SelectedTool) == InteractResult.Locked;
+                var c = refused ? RefusedTint : CursorTint;
                 c.a = 0.22f + 0.16f * Mathf.Sin(Time.time * 6f);
                 cursorRenderer.material.SetColor("_BaseColor", c);
             }

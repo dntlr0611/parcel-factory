@@ -24,11 +24,16 @@ namespace ParcelFactory.Game
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
-            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Table, "검사대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
+            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Pallet, "팔레트" }, { CellType.Table, "검사대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
             { CellType.Inlet, "입고구" }, { CellType.Outlet, "출고구" }, { CellType.ReturnDock, "반품구" }, { CellType.Empty, "빈 칸" }, { CellType.Locked, "잠긴 칸" },
         };
         public static string Name(CellType t) => Names.TryGetValue(t, out var n) ? n : t.ToString();
         public static string Arrow(Direction d) => d == Direction.North ? "↑" : d == Direction.East ? "→" : d == Direction.South ? "↓" : "←";
+        public static string KindName(PalletKind k) => k == PalletKind.Blue ? "파랑" : "빨강";
+        /// <summary>도구의 방향 표기. 팔레트는 화살표 대신 종류(파랑/빨강).</summary>
+        public static string DirLabel(CellType t, Direction d) => t == CellType.Pallet ? KindName(Tool.KindOf(d)) : Arrow(d);
+        /// <summary>놓여 있는 칸의 방향 표기. 팔레트는 Cell.PalletKind에서 읽는다.</summary>
+        public static string DirLabel(Cell c) => c.Type == CellType.Pallet ? KindName(c.PalletKind) : Arrow(c.Direction);
 
         private void Start()
         {
@@ -42,7 +47,7 @@ namespace ParcelFactory.Game
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
             input.Interacted += OnInteracted;
-            input.DemolishRequested += r => { if (r != BuildResult.Ok) Toast(r == BuildResult.AlreadyDemolishing ? "이미 해체 중입니다" : "해체할 수 있는 부품이 아닙니다"); };
+            input.DemolishRequested += r => { if (r != BuildResult.Ok) Toast(DemolishMessage(r)); };
             input.TogglePause += () => { boot.Session.Paused = !boot.Session.Paused; };
             input.ToggleSpeed += () => { boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f; };
             input.ToggleHelp += () => SetHelp(!help.gameObject.activeSelf);
@@ -90,9 +95,9 @@ namespace ParcelFactory.Game
 
         private void BuildHotbar()
         {
-            hotbar = UiKit.PanelBox("Hotbar", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(5 * (SlotW + 6f) - 6f + 16f, SlotH + 16f)).rectTransform;
+            hotbar = UiKit.PanelBox("Hotbar", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(InputController.SlotCount * (SlotW + 6f) - 6f + 16f, SlotH + 16f)).rectTransform;
             UiKit.Row(hotbar, 6f, new RectOffset(8, 8, 8, 8)).childAlignment = TextAnchor.MiddleCenter;
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < InputController.SlotCount; i++)
             {
                 int idx = i;
                 var b = UiKit.Button("Slot" + (i + 1), hotbar, "", new Vector2(SlotW, SlotH), () => { if (input.UiBlocksInput) return; input.SelectSlot(idx); }, new Color(0f, 0f, 0f, 0.35f), fontSize: 15);
@@ -135,7 +140,7 @@ namespace ParcelFactory.Game
         private void BuildHelp()
         {
             help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 196f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~5 도구 선택, 같은 키 다시 누르면 빈손 · R 방향 · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n정상은 출고구, 불량은 반품구로 보내세요.\n입고 3초마다 1개 · 배송 +15 · 해체 2초 후 80% 환불", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 3초마다 1개 · 배송 +15 · 해체 2초 후 80% 환불", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -172,6 +177,10 @@ namespace ParcelFactory.Game
             if (touchButtons != null) touchButtons.gameObject.SetActive(on);
         }
 
+        /// <summary>BeginDemolish 실패 문구. 더미가 있는 팔레트는 Occupied.</summary>
+        public static string DemolishMessage(BuildResult r) =>
+            r == BuildResult.AlreadyDemolishing ? "이미 해체 중입니다" : r == BuildResult.Occupied ? "팔레트를 먼저 비우세요" : "해체할 수 있는 부품이 아닙니다";
+
         public void Toast(string message)
         {
             toastText.text = message;
@@ -184,14 +193,21 @@ namespace ParcelFactory.Game
             switch (r)
             {
                 case InteractResult.NoFloor: Toast("바닥이 없는 곳입니다"); break;
-                case InteractResult.CannotPutHere: Toast("여기에는 내려놓을 수 없습니다"); break;
-                case InteractResult.NoTool: Toast("도구를 고르세요 (1~5)"); break;
+                case InteractResult.CannotPutHere: Toast(FacingPallet() ? "팔레트가 가득 찼습니다" : "여기에는 내려놓을 수 없습니다"); break;
+                case InteractResult.NoTool: Toast("도구를 고르세요 (1~6)"); break;
                 case InteractResult.Locked: Toast("아직 사지 않은 부지입니다"); break;
                 case InteractResult.Occupied: Toast("이미 무언가 있습니다"); break;
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다"); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
             }
+        }
+
+        private bool FacingPallet()
+        {
+            var s = GameBootstrap.Instance.Session;
+            var (fx, fy) = s.Worker.FacingTile();
+            return s.Grid.InBounds(fx, fy) && s.Grid.Get(fx, fy).Type == CellType.Pallet;
         }
 
         public void RefreshHotbar()
@@ -211,7 +227,11 @@ namespace ParcelFactory.Game
                 UiKit.SetButtonLook(slotButtons[i], on);
                 slotPrices[i].color = on ? UiKit.AccentFg : UiKit.Accent;
                 slotKeys[i].color = on ? UiKit.AccentFg : UiKit.Muted;
-                slotArrows[i].text = on ? Arrow(input.SelectedTool.Value.Direction) : (input.OwnedDirections(type).Count > 1 ? "R" : Arrow(input.OwnedDirections(type)[0]));
+                slotArrows[i].color = on ? UiKit.AccentFg : UiKit.Accent;
+                if (type == CellType.Pallet) // 화살표 대신 종류: 고른 상태면 현재 종류, 아니면 고르면 놓일 종류
+                    slotArrows[i].text = DirLabel(type, on ? input.SelectedTool.Value.Direction : input.PreferredDirection(type));
+                else
+                    slotArrows[i].text = on ? Arrow(input.SelectedTool.Value.Direction) : (input.OwnedDirections(type).Count > 1 ? "R" : Arrow(input.OwnedDirections(type)[0]));
             }
         }
 
@@ -229,21 +249,22 @@ namespace ParcelFactory.Game
             UiKit.SetButtonLook(speedBtn, s.Speed >= 2f);
 
             var w = s.Worker.Worker;
-            workerText.text = w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일이나 도크를 보고 E")
-                : input.SelectedTool.HasValue ? (Name(input.SelectedTool.Value.Type) + " " + Arrow(input.SelectedTool.Value.Direction) + " 들고 있음 · E로 설치, R로 방향")
-                : "빈손 · 1~5로 도구 선택";
+            var tool = input.SelectedTool;
+            workerText.text = w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
+                : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R로 " + (tool.Value.Type == CellType.Pallet ? "색" : "방향"))
+                : "빈손 · 1~6으로 도구 선택";
 
             // 프롬프트: Preview 결과로 문구를 만들고 바라보는 칸 위에 띄운다.
-            var r = s.Worker.Preview(input.SelectedTool);
+            var r = s.Worker.Preview(tool);
             var (fx, fy) = s.Worker.FacingTile();
             string label = null;
             switch (r)
             {
-                case InteractResult.PickedUp: label = "집기"; break;
+                case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
                 case InteractResult.PutDown: label = "놓기"; break;
                 case InteractResult.Delivered: label = s.Grid.Get(fx, fy).Type == CellType.Outlet ? "출고" : "반품"; break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
-                case InteractResult.Placed: label = Name(input.SelectedTool.Value.Type) + " 설치"; break;
+                case InteractResult.Placed: label = (tool.Value.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Value.Direction)) + " " : "") + Name(tool.Value.Type) + " 설치"; break;
             }
             if (label != null && boot.World != null && boot.World.MainCamera != null)
             {
