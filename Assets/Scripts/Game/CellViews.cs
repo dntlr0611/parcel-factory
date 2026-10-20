@@ -58,13 +58,13 @@ namespace ParcelFactory.Game
             return mesh;
         }
 
-        public static GameObject Create(Transform parent)
+        public static GameObject Create(Transform parent, Material material = null, string name = "Chevron")
         {
-            var go = new GameObject("Chevron");
+            var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.AddComponent<MeshFilter>().sharedMesh = Get();
             var r = go.AddComponent<MeshRenderer>();
-            r.sharedMaterial = MaterialLibrary.Emissive(new Color(1f, 0xD3 / 255f, 0x6A / 255f), 0.5f);
+            r.sharedMaterial = material != null ? material : MaterialLibrary.Emissive(new Color(1f, 0xD3 / 255f, 0x6A / 255f), 0.5f);
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
             return go;
@@ -125,7 +125,7 @@ namespace ParcelFactory.Game
 
         private void OnUnlocked(UnlockId _) => RebuildAll();
 
-        /// <summary>칸이 바뀌면 그 칸과, 출구 화살표가 달라질 수 있는 이웃 분배기를 다시 그린다(스펙 11.6).</summary>
+        /// <summary>칸이 바뀌면 그 칸과, 출구 화살표가 달라질 수 있는 이웃 분배기를 다시 그린다(스펙 11.6·11.7).</summary>
         private void OnCellChanged(int x, int y)
         {
             Rebuild(x, y);
@@ -175,6 +175,16 @@ namespace ParcelFactory.Game
         }
 
         public static readonly Color SplitterHub = new Color(0x7A / 255f, 0x5C / 255f, 0xC9 / 255f);
+        public static readonly Color SplitterBlue = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f);
+        public static readonly Color SplitterRed = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+
+        /// <summary>분배기 출구 화살표: 허브 중심에서 출구 쪽으로 0.3, 상판 위 0.03.</summary>
+        private static void SplitterArrow(Transform parent, string name, Direction d, float top, Material mat)
+        {
+            var chevron = ChevronMesh.Create(parent, mat, name);
+            chevron.transform.localRotation = Grid3D.Facing(d);
+            chevron.transform.localPosition = Grid3D.Forward(d) * 0.3f + new Vector3(0f, top + 0.03f, 0f);
+        }
 
         private GameObject Make(Cell c, int x, int y)
         {
@@ -220,16 +230,15 @@ namespace ParcelFactory.Game
                 }
                 case CellType.Splitter:
                 {
-                    // 보라 허브 0.9×0.4×0.9(윗면 = 택배 표면 0.4) + 얇은 어두운 상판 + 연결된 출구마다 노란 화살표(스펙 11.6).
+                    // 보라 허브 0.9×0.4×0.9(윗면 = 택배 표면 0.4) + 얇은 어두운 상판 + 파란 화살표(승인 출구) + 빨간 화살표(거부 출구)(스펙 11.7).
+                    // 파란 출구가 연결돼 있지 않아도 설정을 보이도록 40% 알파로 흐리게 그린다. 빨간 출구는 있을 때만.
                     float top = PackageViews.SurfaceHeight(CellType.Splitter);
                     Box("SplitterHub", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(SplitterHub, 0.3f));
                     Box("SplitterPlate", go.transform, new Vector3(0f, top + 0.005f, 0f), new Vector3(0.72f, 0.01f, 0.72f), MaterialLibrary.Lit(new Color(0.16f, 0.14f, 0.2f), 0.2f));
-                    foreach (var d in ConveyorSim.SplitterOutputs(bound.Grid, x, y, null))
-                    {
-                        var chevron = ChevronMesh.Create(go.transform);
-                        chevron.transform.localRotation = Grid3D.Facing(d);
-                        chevron.transform.localPosition = Grid3D.Forward(d) * 0.3f + new Vector3(0f, top + 0.03f, 0f);
-                    }
+                    ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out var blue, out var red, out var blueConnected);
+                    var dimBlue = SplitterBlue; dimBlue.a = 0.4f;
+                    SplitterArrow(go.transform, "BlueArrow", blue, top, blueConnected ? MaterialLibrary.Emissive(SplitterBlue, 0.5f) : MaterialLibrary.Transparent(dimBlue));
+                    if (red.HasValue) SplitterArrow(go.transform, "RedArrow", red.Value, top, MaterialLibrary.Emissive(SplitterRed, 0.5f));
                     break;
                 }
                 case CellType.Pallet:

@@ -369,8 +369,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 262f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 292f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배 (R로 파란 출구 방향)", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -474,9 +474,12 @@ namespace ParcelFactory.Game
             return DeliveryScoring.Delta(o);
         }
 
-        /// <summary>설치 프롬프트: "레일 설치 · ₩10", 팔레트는 "파랑 팔레트 설치 · ₩20". 잔액이 모자라면 " (잔액 부족)".</summary>
+        /// <summary>설치 프롬프트: "레일 설치 · ₩10", 팔레트는 "파랑 팔레트 설치 · ₩20", 분배기는 파란 출구 방향을 붙여
+        /// "분배기 설치 (파랑 →) · ₩60"(스펙 11.7). 잔액이 모자라면 " (잔액 부족)".</summary>
         public static string PlaceLabel(Tool tool, bool affordable) =>
-            (tool.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Direction)) + " " : "") + Name(tool.Type) + " 설치 · ₩" + BuildingCosts.Cost(tool.Type) + (affordable ? "" : " (잔액 부족)");
+            (tool.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Direction)) + " " : "") + Name(tool.Type) + " 설치"
+            + (tool.Type == CellType.Splitter ? " (파랑 " + Arrow(tool.Direction) + ")" : "")
+            + " · ₩" + BuildingCosts.Cost(tool.Type) + (affordable ? "" : " (잔액 부족)");
 
         private string CannotPutMessage()
         {

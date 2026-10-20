@@ -13,7 +13,7 @@ namespace ParcelFactory.Core.Tests
             s.Unlocks.TryPurchase(UnlockId.RailNorth);
             s.Unlocks.TryPurchase(UnlockId.Splitter);
             s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
-            s.Build.TryPlace(2, 2, CellType.Splitter, Direction.East);
+            s.Build.TryPlace(2, 2, CellType.Splitter, Direction.North); // 파란 출구(북) = (2,3) 레일 (스펙 11.7)
             s.Build.TryPlace(2, 3, CellType.Conveyor, Direction.North);
             s.Build.TryPlace(7, 7, CellType.Conveyor, Direction.North);
             s.Tick(Spawner.StartInterval); // 택배 1개 생성, 같은 틱에 (1,2)로 이동 (progress 0)
@@ -95,34 +95,37 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void SplitterIndex_SurvivesRoundTrip()
+        public void Splitter_SurvivesRoundTrip_AndSortsTheSame()
         {
             var s = new GameSession(new Economy(5000));
             s.Unlocks.TryPurchase(UnlockId.Splitter);
-            s.Build.TryPlace(1, 2, CellType.Splitter, Direction.East);
-            s.Grid.Get(1, 2).SplitterIndex = 2;
+            s.Build.TryPlace(1, 2, CellType.Splitter, Direction.South);
+            s.Build.TryPlace(1, 1, CellType.Conveyor, Direction.East);
             var json = SaveSerializer.ToJson(SaveSerializer.Capture(s));
+            StringAssert.DoesNotContain("SplitterIndex", json); // 스펙 11.7: 분배기는 상태가 없다
             var restored = SaveSerializer.Restore(SaveSerializer.FromJson(json));
-            Assert.AreEqual(2, restored.Grid.Get(1, 2).SplitterIndex);
-            Assert.AreEqual(6, SaveSerializer.CurrentVersion); // 기본값 0인 필드 추가라 버전은 그대로
+            Assert.AreEqual(6, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(CellType.Splitter, restored.Grid.Get(1, 2).Type);
+            Assert.AreEqual(Direction.South, restored.Grid.Get(1, 2).Direction);
+            ConveyorSim.SplitterRoutes(restored.Grid, 1, 2, null, out var blue, out var red, out var blueConnected);
+            Assert.AreEqual(Direction.South, blue);
+            Assert.IsTrue(blueConnected);
+            Assert.IsNull(red); // 오른쪽(서) = 반입구라 출구 아님, 왼쪽(동)·뒤(북)는 빈 칸
         }
 
         [Test]
-        public void SplitterIndex_MissingInOldV6Save_DefaultsToZero_AndNegativeIsRejected()
+        public void OldSplitterStateKeys_AreIgnored()
         {
             var s = new GameSession(new Economy(5000));
             s.Unlocks.TryPurchase(UnlockId.Splitter);
             s.Build.TryPlace(1, 2, CellType.Splitter, Direction.East);
-            s.Grid.Get(1, 2).SplitterIndex = 3;
             var json = SaveSerializer.ToJson(SaveSerializer.Capture(s));
-            // 옛 v6 저장: SplitterIndex 대신 SplitterToggle만 있다.
-            var old = json.Replace("\"SplitterIndex\": 3", "\"SplitterToggle\": true");
+            // 11.6의 SplitterIndex(음수 포함)와 그 이전 SplitterToggle 키가 남은 옛 v6 저장도 그대로 읽힌다.
+            var old = json.Replace("\"Type\": \"Splitter\",", "\"Type\": \"Splitter\", \"SplitterIndex\": -1, \"SplitterToggle\": true,");
             Assert.AreNotEqual(json, old);
-            Assert.AreEqual(0, SaveSerializer.Restore(SaveSerializer.FromJson(old)).Grid.Get(1, 2).SplitterIndex);
-
-            var st = SaveSerializer.Capture(s);
-            st.Cells.Find(c => c.Type == "Splitter").SplitterIndex = -1;
-            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(old));
+            Assert.AreEqual(CellType.Splitter, restored.Grid.Get(1, 2).Type);
+            Assert.AreEqual(Direction.East, restored.Grid.Get(1, 2).Direction);
         }
 
         [Test]

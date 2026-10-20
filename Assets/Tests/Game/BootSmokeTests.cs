@@ -103,15 +103,18 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
-        private static int ChevronCount(GameObject view)
+        private static int ChildCount(GameObject view, string name)
         {
             int n = 0;
-            foreach (Transform t in view.transform) if (t.name == "Chevron") n++;
+            foreach (Transform t in view.transform) if (t.name == name) n++;
             return n;
         }
 
+        /// <summary>화살표가 분배기 뷰 안에서 가리키는 방향(xz).</summary>
+        private static Vector3 Pointing(Transform arrow) => arrow.localRotation * Vector3.forward;
+
         [UnityTest]
-        public IEnumerator SplitterView_ShowsArrowPerConnectedOutput_AndUpdatesWithNeighbours()
+        public IEnumerator SplitterView_ShowsBlueAndRedArrows_AndUpdatesWithNeighbours()
         {
             var boot = GameBootstrap.Ensure();
             try
@@ -126,27 +129,37 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNotNull(view, "splitter view not created");
                 Assert.IsNotNull(view.transform.Find("SplitterHub"), "splitter hub missing");
                 Assert.IsNotNull(view.transform.Find("SplitterPlate"), "splitter top plate missing");
-                Assert.AreEqual(0, ChevronCount(view), "no connected outputs → no arrows");
+                // 연결된 출구가 없어도 파란 화살표(설정)는 흐리게 보이고, 빨간 화살표는 없다.
+                Assert.AreEqual(1, ChildCount(view, "BlueArrow"));
+                Assert.AreEqual(0, ChildCount(view, "RedArrow"));
+                Assert.Less(view.transform.Find("BlueArrow").GetComponent<Renderer>().sharedMaterial.GetColor("_BaseColor").a, 0.5f, "unconnected blue arrow should be dimmed");
 
-                // 북(3,5)·남(3,3)에 레일을 놓으면 이웃 변경으로 분배기 뷰가 다시 그려져 화살표 2개.
-                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 5, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
+                // 동(4,4)·남(3,3)에 레일 → 이웃 변경으로 다시 그려져 파랑 +x, 빨강 −z.
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(4, 4, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
                 Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 3, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
                 yield return null;
                 view = FindCellView("Splitter", 3, 4);
-                Assert.AreEqual(2, ChevronCount(view));
-                // 남쪽 화살표는 허브 중심에서 남쪽으로 0.3.
-                bool south = false;
-                foreach (Transform t in view.transform)
-                    if (t.name == "Chevron" && Mathf.Abs(t.localPosition.z + 0.3f) < 1e-3f) south = true;
-                Assert.IsTrue(south, "south arrow missing");
+                var blue = view.transform.Find("BlueArrow");
+                var red = view.transform.Find("RedArrow");
+                Assert.IsNotNull(blue, "blue arrow missing");
+                Assert.IsNotNull(red, "red arrow missing");
+                Assert.AreEqual(1, ChildCount(view, "BlueArrow"));
+                Assert.AreEqual(1, ChildCount(view, "RedArrow"));
+                Assert.Greater(Vector3.Dot(Pointing(blue), Vector3.right), 0.99f, "blue arrow should point +x");
+                Assert.Greater(blue.localPosition.x, 0.29f);
+                Assert.Greater(Vector3.Dot(Pointing(red), Vector3.back), 0.99f, "red arrow should point -z");
+                Assert.Less(red.localPosition.z, -0.29f);
+                Assert.AreEqual(1f, blue.GetComponent<Renderer>().sharedMaterial.GetColor("_BaseColor").a, 1e-3f, "connected blue arrow is opaque");
 
-                // 남쪽 레일 해체 완료(2초) → 화살표 1개.
+                // 남쪽 레일 해체 완료(2초) → 빨간 화살표 사라짐, 파란 화살표는 남는다.
                 Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.BeginDemolish(3, 3));
                 s.Build.Tick(ParcelFactory.Core.BuildService.DemolishSeconds + 0.1f);
                 Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(3, 3).Type);
                 yield return null;
                 view = FindCellView("Splitter", 3, 4);
-                Assert.AreEqual(1, ChevronCount(view));
+                Assert.AreEqual(0, ChildCount(view, "RedArrow"));
+                Assert.AreEqual(1, ChildCount(view, "BlueArrow"));
+                Assert.AreEqual(0, ChildCount(view, "Chevron"), "no leftover yellow chevrons");
                 LogAssert.NoUnexpectedReceived();
             }
             finally
@@ -340,6 +353,8 @@ namespace ParcelFactory.Game.Tests
                 StringAssert.Contains("₩10", promptText.text);
                 StringAssert.Contains("레일 설치 · ₩10", promptText.text);
                 Assert.AreEqual("파랑 팔레트 설치 · ₩20", HudController.PlaceLabel(new ParcelFactory.Core.Tool(ParcelFactory.Core.CellType.Pallet, ParcelFactory.Core.Direction.East), true));
+                Assert.AreEqual("분배기 설치 (파랑 →) · ₩60", HudController.PlaceLabel(new ParcelFactory.Core.Tool(ParcelFactory.Core.CellType.Splitter, ParcelFactory.Core.Direction.East), true));
+                Assert.AreEqual("분배기 설치 (파랑 ↓) · ₩60 (잔액 부족)", HudController.PlaceLabel(new ParcelFactory.Core.Tool(ParcelFactory.Core.CellType.Splitter, ParcelFactory.Core.Direction.South), false));
 
                 // 잔액이 모자라도 프롬프트는 뜨고 빨갛게 "(잔액 부족)".
                 int keep = s.Economy.Money;

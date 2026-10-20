@@ -67,7 +67,6 @@ namespace ParcelFactory.Core
                         Direction = c.Direction.ToString(),
                         Demolishing = c.Demolishing,
                         DemolishRemaining = c.DemolishRemaining,
-                        SplitterIndex = c.SplitterIndex,
                         PalletKind = c.PalletKind.ToString(),
                         Pallet = pile,
                     });
@@ -131,8 +130,6 @@ namespace ParcelFactory.Core
                 var cell = s.Grid.Get(c.X, c.Y);
                 cell.Demolishing = c.Demolishing;
                 cell.DemolishRemaining = c.DemolishRemaining;
-                if (c.SplitterIndex < 0) throw new SaveVersionException($"invalid SplitterIndex {c.SplitterIndex} at ({c.X},{c.Y})");
-                cell.SplitterIndex = c.SplitterIndex;
                 if (type == CellType.Pallet)
                 {
                     var kind = ParseDefined<PalletKind>(c.PalletKind);

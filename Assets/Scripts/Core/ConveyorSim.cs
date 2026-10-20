@@ -49,7 +49,7 @@ namespace ParcelFactory.Core
             var cell = grid.Get(x, y);
             if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing) return false;
 
-            var heading = HeadingFor(x, y, cell.Direction);
+            var heading = HeadingFor(x, y, cell.Direction, null); // 새 택배는 미검사 → 분배기면 파란 출구
             package = factory.Create(NextId++, x, y, heading);
             package.Kind = kind;
             cell.OccupantId = package.Id;
@@ -57,7 +57,7 @@ namespace ParcelFactory.Core
             return true;
         }
 
-        /// <summary>저장 파일에서 택배를 그대로 되살린다. Heading과 토글은 변경하지 않는다.</summary>
+        /// <summary>저장 파일에서 택배를 그대로 되살린다. Heading은 변경하지 않는다.</summary>
         public void Restore(Package package)
         {
             packages.Add(package);
@@ -100,7 +100,7 @@ namespace ParcelFactory.Core
             p.X = x;
             p.Y = y;
             p.Progress = 0f;
-            p.Heading = HeadingFor(x, y, cell.Direction);
+            p.Heading = HeadingFor(x, y, cell.Direction, p); // 분배기에 손으로 놓아도 같은 분류 규칙
             p.EntryHeading = p.Heading;
             cell.OccupantId = p.Id;
             packages.Add(p);
@@ -153,10 +153,9 @@ namespace ParcelFactory.Core
             pallet.Pallet.Add(p);
         }
 
-        /// <summary>분배기 출구 후보(스펙 11.6). 분배기 방향 기준 왼쪽 → 앞 → 오른쪽 → 뒤 순서로,
+        /// <summary>분배기의 연결된 출구(스펙 11.6 판정, 11.7에서도 그대로). 분배기 방향 기준 왼쪽 → 앞 → 오른쪽 → 뒤 순서로,
         /// (a) 택배가 들어온 방향의 정반대가 아니고(incoming이 null이면 제외 없음) (b) 격자 안이며
-        /// (c) 택배를 받는 칸(레일·고속·검사대·자동 검사기·분배기, 팔레트, 트럭 도크)인 이웃 방향만 남긴다.
-        /// 뒤쪽은 옆에서 들어온 택배를 T자 줄기로 내보낼 때만 쓰인다(정면 진입이면 뒤 = 되돌아감이라 제외).</summary>
+        /// (c) 택배를 받는 칸(레일·고속·검사대·자동 검사기·분배기, 팔레트, 트럭 도크)인 이웃 방향만 남긴다.</summary>
         public static List<Direction> SplitterOutputs(FactoryGrid grid, int x, int y, Direction? incoming)
         {
             var result = new List<Direction>(4);
@@ -171,20 +170,35 @@ namespace ParcelFactory.Core
             return result;
         }
 
+        /// <summary>분배기 = 분류기(스펙 11.7). 파란 출구 = 분배기 Direction(연결 여부는 blueConnected),
+        /// 빨간 출구 = 파란 기준 오른쪽 → 왼쪽 → 뒤 중 처음으로 연결된 출구(없으면 null).
+        /// 연결 판정은 SplitterOutputs와 같다(incoming이 null이면 들어온 방향 제외 없음 — 뷰·프롬프트용).</summary>
+        public static void SplitterRoutes(FactoryGrid grid, int x, int y, Direction? incoming,
+            out Direction blue, out Direction? red, out bool blueConnected)
+        {
+            blue = grid.Get(x, y).Direction;
+            var connected = SplitterOutputs(grid, x, y, incoming);
+            blueConnected = connected.Contains(blue);
+            red = null;
+            foreach (var cand in new[] { blue.TurnRight(), blue.TurnLeft(), blue.Opposite() })
+                if (connected.Contains(cand)) { red = cand; break; }
+        }
+
         /// <summary>분배기가 출구로 삼는 칸. 반입구(Inlet)는 트랙이지만 들어가면 소실되므로 제외한다.</summary>
         private static bool AcceptsFromSplitter(Cell c) =>
             (c.IsTrack && c.Type != CellType.Inlet) || c.Type == CellType.Pallet || c.IsDock;
 
-        /// <summary>분배기는 연결된 출구로 라운드로빈 분배한다(스펙 11.6). 후보가 없으면 분배기 방향(그 앞이 비면 소실).</summary>
-        private Direction HeadingFor(int x, int y, Direction incoming)
+        /// <summary>칸에서 나갈 방향. 분배기는 검사 결과로 분류한다(스펙 11.7): 거부 판정 → 빨간 출구(없으면 파란 출구),
+        /// 승인·미검사 → 파란 출구. 파란 출구가 연결돼 있지 않으면 분배기 Direction으로 직진(그 앞이 비면 소실).
+        /// package가 null이면(아직 만들기 전) 미검사로 본다.</summary>
+        private Direction HeadingFor(int x, int y, Direction incoming, Package package)
         {
             var cell = grid.Get(x, y);
             if (cell.Type != CellType.Splitter) return cell.Direction;
-            var outs = SplitterOutputs(grid, x, y, incoming);
-            if (outs.Count == 0) return cell.Direction;
-            int i = cell.SplitterIndex % outs.Count;
-            cell.SplitterIndex = i + 1; // 나머지로 줄여 저장해 오버플로를 막는다(순서는 동일)
-            return outs[i];
+            SplitterRoutes(grid, x, y, incoming, out var blue, out var red, out var blueConnected);
+            bool rejected = package != null && package.Inspected && package.Rejected;
+            if (rejected && red.HasValue) return red.Value;
+            return blueConnected ? blue : cell.Direction;
         }
 
         public void Tick(float dt)
@@ -223,7 +237,7 @@ namespace ParcelFactory.Core
                 p.Y = ny;
                 p.Progress = 0f;
                 p.EntryHeading = p.Heading;
-                p.Heading = HeadingFor(nx, ny, p.Heading);
+                p.Heading = HeadingFor(nx, ny, p.Heading, p);
                 if (next.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
             }
         }
