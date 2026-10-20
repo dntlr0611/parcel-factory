@@ -31,6 +31,11 @@ namespace ParcelFactory.Core
         public const float StartX = 2f, StartY = 4f, Speed = 3.4f, Radius = 0.28f, Reach = 0.8f;
         /// <summary>스태미나(스펙 11.3): 초당 소모·회복량과 속도 저하 시작점.</summary>
         public const float MaxStamina = 100f, WalkDrain = 1.2f, CarryDrain = 2.2f, StandRegen = 0.8f, LunchRegen = 20f, SlowBelow = 30f;
+        /// <summary>달리기(스페이스 유지): 속도 ×1.6, 소모 ×2.5. 스태미나가 RunMinStamina 미만이면 달릴 수 없다(걷기로 처리).</summary>
+        public const float RunSpeedMultiplier = 1.6f, RunDrainMultiplier = 2.5f, RunMinStamina = 10f;
+        /// <summary>직전 Move가 실제로 달리기로 처리됐는지(뷰 애니메이션용).</summary>
+        public bool IsRunning { get; private set; }
+        public bool CanRun => Worker.Stamina >= RunMinStamina;
 
         private readonly FactoryGrid grid;
         private readonly ConveyorSim sim;
@@ -98,8 +103,12 @@ namespace ParcelFactory.Core
 
         /// <summary>입력 벡터 방향으로 Speed×dt만큼 걷는다(정규화). x축, y축을 따로 시도해 막힌 축만 취소한다(벽 따라 미끄러짐).
         /// 영벡터가 아니면 지배 축으로 Facing을 바꾼다. 실제로 움직였으면 true이고 대기 중인 검사를 취소한다.</summary>
-        public bool Move(float vx, float vy, float dt)
+        public bool Move(float vx, float vy, float dt) => Move(vx, vy, dt, false);
+
+        /// <summary>run=true면 달리기 요청. 스태미나가 모자라면 걷기로 떨어진다.</summary>
+        public bool Move(float vx, float vy, float dt, bool run)
         {
+            IsRunning = false;
             float len = (float)Math.Sqrt(vx * vx + vy * vy);
             if (!(len >= 1e-6f) || float.IsInfinity(len)) return false;
             Worker.Facing = Math.Abs(vx) >= Math.Abs(vy)
@@ -107,7 +116,8 @@ namespace ParcelFactory.Core
                 : (vy > 0f ? Direction.North : Direction.South);
             if (!(dt > 0f) || float.IsInfinity(dt)) return false;
 
-            float step = Speed * SpeedFactor * dt / len;
+            IsRunning = run && CanRun;
+            float step = Speed * SpeedFactor * (IsRunning ? RunSpeedMultiplier : 1f) * dt / len;
             bool moved = false;
             if (vx != 0f)
             {
@@ -124,8 +134,9 @@ namespace ParcelFactory.Core
                 CancelInspection();
                 movedSinceRest = true;
                 // 움직인 프레임만 소모한다(양 축 모두 막히면 소모 없음).
-                Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? CarryDrain : WalkDrain) * dt);
+                Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? CarryDrain : WalkDrain) * (IsRunning ? RunDrainMultiplier : 1f) * dt);
             }
+            if (!moved) IsRunning = false;
             return moved;
         }
 

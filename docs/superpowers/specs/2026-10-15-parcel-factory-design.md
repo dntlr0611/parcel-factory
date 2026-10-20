@@ -264,3 +264,8 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 - HUD: 상태줄 왼쪽에 스태미나 바(초록→노랑→빨강). 20 아래면 깜빡임.
 - 코어 API: `Clock { Day, MinuteOfDay, Phase, IsOpen, Advance(dt), NextDay() }`, `GameSession.Clock`, `GameSession.DayStartMoney`, 이벤트 `DayEnded(DaySummary)`; `Worker.Stamina`, `WorkerService.Move`가 소모·속도 적용, `WorkerService.Rest(dt, phase)`가 회복(GameSession.Tick에서 호출); `InteractResult.Exhausted`.
 - 2차: 자판기/커피로 회복, 야근 옵션, 직원 추가.
+
+### 11.4 달리기 (2026-10-20 추가)
+- 스페이스바(게임패드: 왼쪽 트리거/숄더, 터치: 우하단 "달리기" 버튼)를 **누르고 있는 동안** 달린다. 속도 ×1.6, 스태미나 소모 ×2.5(걷기 3.0/초, 들고 달리기 5.5/초).
+- 스태미나가 10 미만이면 달리기 입력을 눌러도 걷는다. 달리는 중에는 `sprint` 애니메이션, 멈추면 즉시 해제.
+- 코어: `WorkerService.Move(vx, vy, dt, run)`, `IsRunning`, `CanRun`, 상수 `RunSpeedMultiplier = 1.6`, `RunDrainMultiplier = 2.5`, `RunMinStamina = 10`.
