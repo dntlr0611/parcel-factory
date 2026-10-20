@@ -309,3 +309,7 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 
 - 코어: `Cell.RedDirection`(Direction?, 분배기만), `BuildService.SetDirection(x, y, dir)`(레일·고속·검사대·자동 검사기·분배기 파랑; `CellChanged` 발생; 그 칸 택배 Heading 갱신), `SetSplitterRed(x, y, Direction?)`, `SetPalletKind(x, y, kind)`; 결과 `ReconfigureResult { Ok, NotConfigurable, Invalid, NotOwned }` (`NotOwned` = 레일·고속 레일을 보유하지 않은 방향으로 바꾸려 할 때). `ConveyorSim.SplitterRoutes`가 `RedDirection`을 우선한다. 저장: `CellState.RedDirection`(선택 필드, 버전 유지 6).
 - `Toolbar`: 방향별 보유는 유지(해금 체계 그대로). 도구 방향 입력 시 보유하지 않은 방향이면 토스트 "해금되지 않은 방향입니다"(분배기·검사대·자동 검사기는 4방향 모두 보유).
+
+### 11.9 Esc 우선순위와 설치 미리보기 (2026-10-20)
+- **Esc 우선순위**: ① 설정 모드 취소 → ② 열린 패널 닫기(하루 요약 제외) → ③ 손에 든 도구 내려놓기(빈손, Q와 같음). 즉 아무것도 열려 있지 않을 때 Esc는 핫바 선택을 해제한다. 설정 모드를 취소해도 도구 선택은 유지된다(다시 Esc를 누르면 해제).
+- **설치 미리보기(고스트)**: 도구를 들고 있으면 바라보는 칸에 그 부품의 반투명 미리보기를 그린다. 방향·종류(파랑/빨강)·분배기 출구 화살표까지 실제 모양 그대로. 설치 가능(`Preview == Placed`)이면 초록 틴트, 불가(잠김·점유·잔액 부족·서 있는 자리)면 빨간 틴트. 바라보는 칸이 바뀌거나 도구가 바뀌면 즉시 갱신. 설정 모드에서 방향을 입력하는 동안에도 보인다.
