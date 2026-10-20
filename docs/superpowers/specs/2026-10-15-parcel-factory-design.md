@@ -259,7 +259,7 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 
 ### 11.3 스태미나
 - 작업자 스태미나 0~100, 하루 시작 100.
-- 소모: 걷는 동안 초당 1.2, 택배를 들고 걸으면 초당 2.2. 서 있으면 초당 +0.8 회복. 점심시간에는 초당 +20 회복(걷든 서든).
+- ~~소모: 걷는 동안 초당 1.2, 택배를 들고 걸으면 초당 2.2.~~ → **11.5로 대체(2026-10-20)**: 걷기·집기·놓기는 체력을 쓰지 않는다. 체력은 **달리기**에만 쓴다(11.4). 서 있으면 초당 +0.8 회복(걷는 중에도 같은 속도로 회복), 점심시간에는 초당 +20.
 - 효과: 스태미나가 30 아래로 내려가면 걷는 속도가 비례해 줄어 0에서 0.5배(`speed = 3.4 × lerp(0.5, 1, stamina/30)`). 스태미나 0이면 택배를 **집을 수 없다**(`InteractResult.Exhausted`, 토스트 "지쳤습니다. 잠시 쉬세요"). 들고 있던 택배는 내려놓을 수 있다.
 - HUD: 상태줄 왼쪽에 스태미나 바(초록→노랑→빨강). 20 아래면 깜빡임.
 - 코어 API: `Clock { Day, MinuteOfDay, Phase, IsOpen, Advance(dt), NextDay() }`, `GameSession.Clock`, `GameSession.DayStartMoney`, 이벤트 `DayEnded(DaySummary)`; `Worker.Stamina`, `WorkerService.Move`가 소모·속도 적용, `WorkerService.Rest(dt, phase)`가 회복(GameSession.Tick에서 호출); `InteractResult.Exhausted`.
@@ -269,3 +269,18 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 - 스페이스바(게임패드: 왼쪽 트리거/숄더, 터치: 우하단 "달리기" 버튼)를 **누르고 있는 동안** 달린다. 속도 ×1.6, 스태미나 소모 ×2.5(걷기 3.0/초, 들고 달리기 5.5/초).
 - 스태미나가 10 미만이면 달리기 입력을 눌러도 걷는다. 달리는 중에는 `sprint` 애니메이션, 멈추면 즉시 해제.
 - 코어: `WorkerService.Move(vx, vy, dt, run)`, `IsRunning`, `CanRun`, 상수 `RunSpeedMultiplier = 1.6`, `RunDrainMultiplier = 2.5`, `RunMinStamina = 10`.
+
+### 11.5 체력 규칙 개정과 EXP 상태창 (2026-10-20)
+- 체력 소모는 달리기에만 있다: 달리기 초당 3.0, 들고 달리기 초당 5.5(`RunDrain`, `RunCarryDrain`). 걷기·집기·놓기·설치는 소모 없음. 회복은 걷든 서든 초당 0.8, 점심 초당 20. 체력 0이면 집을 수 없고(`Exhausted`), 10 미만이면 달릴 수 없다.
+- **EXP**: 정상 출고 +10, 불량 반품 +8, 검사 수행(검사대 승인/거부, 자동 검사기 판정) +2. 잔액과 별개의 누적치이며 강화에 쓴다. HUD 좌상단 패널에 "EXP n" 표시.
+- **상태창**(상점과 별개, 상단 바 "상태 C" 버튼 / C 키 / 터치 버튼): 작업자 능력치와 강화.
+
+| 능력치 | 효과(레벨당) | 최대 레벨 | 비용(EXP, 레벨 n으로 올릴 때) |
+|---|---|---|---|
+| 체력 | 최대 체력 +20 (기본 100) | 5 | 40 × n |
+| 이동 속도 | 걷기·달리기 속도 +8% | 5 | 50 × n |
+| 회복력 | 체력 회복 +50% (서 있을 때·걸을 때) | 3 | 40 × n |
+
+- 강화는 즉시 적용되고 되돌릴 수 없다. 체력 강화 시 현재 체력도 같은 양만큼 오른다.
+- 코어: `Progression { Exp, Level(Stat), MaxLevel(Stat), Cost(Stat), TryUpgrade(Stat) → UpgradeResult { Ok, MaxLevel, NotEnoughExp }, MaxStamina, SpeedMultiplier, RegenMultiplier; event ExpChanged, Upgraded }`, `GameSession.Progression`; `WorkerService`가 `MaxStamina/SpeedMultiplier/RegenMultiplier`를 Progression에서 읽는다. EXP 적립은 `ConveyorSim.PackageDelivered`(성공 판정)와 `NoteInspected`에서. 저장 v6(Exp, 레벨 3개).
+- 하루 요약에 "획득 EXP"를 추가한다.
