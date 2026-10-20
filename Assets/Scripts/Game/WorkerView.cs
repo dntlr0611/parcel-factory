@@ -21,8 +21,8 @@ namespace ParcelFactory.Game
         private string currentClip;
         private bool hasHolding;
 
-        private static readonly Color CursorTint = new Color(1f, 0.83f, 0.4f, 0.35f);
-        private static readonly Color RefusedTint = new Color(0.95f, 0.32f, 0.26f, 0.35f);
+        private static readonly Color CursorTint = new Color(1f, 0.83f, 0.4f, 0.45f);
+        private static readonly Color RefusedTint = new Color(0.95f, 0.32f, 0.26f, 0.45f);
 
         private const string IdleClip = "idle", WalkClip = "walk", HoldingClip = "holding-both";
 
@@ -113,7 +113,7 @@ namespace ParcelFactory.Game
                 cursor.position = Grid3D.Tile(fx, fy) + new Vector3(0f, 0.03f + PackageViews.TopHeight(cell), 0f);
                 bool refused = boot.Input != null && ws.Preview(boot.Input.SelectedTool) == InteractResult.Locked;
                 var c = refused ? RefusedTint : CursorTint;
-                c.a = 0.22f + 0.16f * Mathf.Sin(Time.time * 6f);
+                c.a = 0.45f + 0.10f * Mathf.Sin(Time.time * 6f); // 0.35~0.55: 어두운 잠긴 바닥 위에서도 보이게
                 cursorRenderer.material.SetColor("_BaseColor", c);
             }
         }

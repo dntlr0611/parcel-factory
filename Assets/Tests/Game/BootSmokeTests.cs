@@ -53,7 +53,14 @@ namespace ParcelFactory.Game.Tests
                 for (int i = 0; i < 3; i++)
                     Assert.IsTrue(boot.Session.Sim.PutOnPallet(factory.Create(9000 + i, 5, 2, ParcelFactory.Core.Direction.East), 5, 2));
                 yield return null;
-                Assert.AreEqual(3, pv.ShownCount, "pallet pile not drawn");
+                var pileRoot = pallet.transform.Find("Pile");
+                Assert.IsNotNull(pileRoot, "pallet pile root missing");
+                int activeBoxes = 0;
+                foreach (Transform b in pileRoot) if (b.gameObject.activeSelf) activeBoxes++;
+                Assert.AreEqual(3, activeBoxes, "pallet pile not drawn");
+                // 층당 2개: 세 번째 상자는 2층(y 0.52)
+                Assert.AreEqual(0.52f, pileRoot.GetChild(2).localPosition.y, 1e-3f);
+                Assert.AreEqual(-0.22f, pileRoot.GetChild(2).localPosition.x, 1e-3f);
                 Assert.IsNotNull(FindCellView("Pallet", 5, 4), "pallet view at (5,4) not created");
                 // 트럭 도크 슬래브는 (11,2)·(11,4) 칸 위.
                 var outletSlab = GameObject.Find("World/Docks/Dock_delivery/DockSlab");

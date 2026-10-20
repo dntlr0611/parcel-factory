@@ -25,9 +25,9 @@ namespace ParcelFactory.Game
             }
         }
 
-        /// <summary>팔레트 더미 한 층의 높이. 상자는 층당 3개(x −0.26/0/+0.26).</summary>
+        /// <summary>팔레트 더미 한 층의 높이. 상자는 층당 2개(x ±0.22), 용량 6 = 3층.</summary>
         public const float PalletLayerHeight = 0.4f;
-        public const int PalletPerLayer = 3;
+        public const int PalletPerLayer = 2;
 
         /// <summary>칸 위 표시물(커서 등)이 놓일 높이. 팔레트는 더미 꼭대기, 바닥 칸은 0.</summary>
         public static float TopHeight(Cell c)

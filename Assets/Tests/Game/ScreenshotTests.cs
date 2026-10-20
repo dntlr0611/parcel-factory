@@ -216,7 +216,7 @@ namespace ParcelFactory.Game.Tests
             var prompt = boot.Hud.Root.Find("Prompt") as RectTransform;
             if (prompt == null || !prompt.gameObject.activeSelf) return;
             var (fx, fy) = boot.Session.Worker.FacingTile();
-            var sp = cam.WorldToScreenPoint(Grid3D.Tile(fx, fy) + new Vector3(0f, 0.9f, 0f));
+            var sp = cam.WorldToScreenPoint(HudController.PromptAnchor(boot.Session, fx, fy));
             RectTransformUtility.ScreenPointToLocalPointInRectangle(boot.Hud.Root, sp, cam, out var lp);
             prompt.anchoredPosition = lp + boot.Hud.Root.rect.size * 0.5f;
         }

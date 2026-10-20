@@ -20,6 +20,7 @@ namespace ParcelFactory.Game
         private readonly List<Text> slotPrices = new List<Text>();
         private readonly List<Text> slotKeys = new List<Text>();
         private float toastUntil;
+        private Text touchRotateLabel;
         private InputController input;
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
@@ -46,6 +47,7 @@ namespace ParcelFactory.Game
             BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildStatus(); BuildToast(); BuildHelp();
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
+            input.ToolChanged += RefreshTouchLabels;
             input.Interacted += OnInteracted;
             input.DemolishRequested += r => { if (r != BuildResult.Ok) Toast(DemolishMessage(r)); };
             input.TogglePause += () => { boot.Session.Paused = !boot.Session.Paused; };
@@ -157,6 +159,8 @@ namespace ParcelFactory.Game
             var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => { if (input.UiBlocksInput) return; input.Interact(); }, UiKit.Accent, UiKit.AccentFg, 20, new Vector2(1f, 0f)); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(-50f, 50f);
             var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.Demolish(); }, new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
             var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.RotateTool(); }, null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
+            touchRotateLabel = r.GetComponentInChildren<Text>();
+            RefreshTouchLabels();
             hotbar.anchoredPosition = new Vector2(0f, 14f);
         }
 
@@ -193,7 +197,7 @@ namespace ParcelFactory.Game
             switch (r)
             {
                 case InteractResult.NoFloor: Toast("바닥이 없는 곳입니다"); break;
-                case InteractResult.CannotPutHere: Toast(FacingPallet() ? "팔레트가 가득 찼습니다" : "여기에는 내려놓을 수 없습니다"); break;
+                case InteractResult.CannotPutHere: Toast(CannotPutMessage()); break;
                 case InteractResult.NoTool: Toast("도구를 고르세요 (1~6)"); break;
                 case InteractResult.Locked: Toast("아직 사지 않은 부지입니다"); break;
                 case InteractResult.Occupied: Toast("이미 무언가 있습니다"); break;
@@ -203,11 +207,32 @@ namespace ParcelFactory.Game
             }
         }
 
-        private bool FacingPallet()
+        private string CannotPutMessage()
         {
             var s = GameBootstrap.Instance.Session;
             var (fx, fy) = s.Worker.FacingTile();
-            return s.Grid.InBounds(fx, fy) && s.Grid.Get(fx, fy).Type == CellType.Pallet;
+            var c = s.Grid.InBounds(fx, fy) ? s.Grid.Get(fx, fy) : null;
+            if (c != null && c.Type == CellType.Pallet)
+            {
+                if (c.IsPalletFull) return "팔레트가 가득 찼습니다";
+                if (c.Demolishing) return "해체 중인 팔레트입니다";
+            }
+            return "여기에는 내려놓을 수 없습니다";
+        }
+
+        /// <summary>프롬프트를 띄울 월드 위치. 팔레트는 더미 꼭대기 + 0.3(3층 더미도 가리지 않게), 그 외는 칸 위 0.9.</summary>
+        public static Vector3 PromptAnchor(GameSession s, int x, int y)
+        {
+            var c = s.Grid.Get(x, y);
+            float h = c.Type == CellType.Pallet ? PackageViews.TopHeight(c) + 0.3f : 0.9f;
+            return Grid3D.Tile(x, y) + new Vector3(0f, h, 0f);
+        }
+
+        private void RefreshTouchLabels()
+        {
+            if (touchRotateLabel == null) return;
+            var t = input.SelectedTool;
+            touchRotateLabel.text = t.HasValue && t.Value.Type == CellType.Pallet ? "색" : "방향";
         }
 
         public void RefreshHotbar()
@@ -268,7 +293,7 @@ namespace ParcelFactory.Game
             }
             if (label != null && boot.World != null && boot.World.MainCamera != null)
             {
-                var sp = boot.World.MainCamera.WorldToScreenPoint(Grid3D.Tile(fx, fy) + new Vector3(0f, 0.9f, 0f));
+                var sp = boot.World.MainCamera.WorldToScreenPoint(PromptAnchor(s, fx, fy));
                 var canvasRt = Root;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, sp, null, out var lp);
                 prompt.anchoredPosition = lp + canvasRt.rect.size * 0.5f;

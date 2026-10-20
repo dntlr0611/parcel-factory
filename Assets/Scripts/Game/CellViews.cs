@@ -71,7 +71,8 @@ namespace ParcelFactory.Game
         }
     }
 
-    /// <summary>팔레트 칸의 더미를 매 프레임 Cell.Pallet에서 그린다(풀링). 더미 택배는 Sim.Packages에 없다.</summary>
+    /// <summary>팔레트 칸의 더미를 매 프레임 Cell.Pallet에서 그린다(풀링). 층당 2개(x ±0.22), 최대 3층(y 0.12/0.52/0.92).
+    /// 더미 택배는 Sim.Packages에 없다.</summary>
     public sealed class PalletView : MonoBehaviour
     {
         public static readonly Color Wood = new Color(0xB9 / 255f, 0x8A / 255f, 0x5C / 255f);
@@ -83,52 +84,23 @@ namespace ParcelFactory.Game
         private Transform pile;
         private readonly List<GameObject> boxes = new List<GameObject>();
 
-        public int ShownCount { get; private set; }
-
-        private static float pileScale = -1f;
-
-        /// <summary>box-small(0.8배)은 폭이 약 0.38이라 0.26 간격 3개가 한 덩어리로 붙어 보인다.
-        /// 실제 렌더 크기를 한 번 재서 폭 ≤ 0.24, 높이 ≤ 0.38(층 0.4 안)이 되게 줄인다.</summary>
-        private static float PileScale(GameObject box)
-        {
-            if (pileScale > 0f) return pileScale;
-            var rs = box.GetComponentsInChildren<Renderer>(true);
-            var b = new Bounds();
-            bool any = false;
-            foreach (var r in rs)
-            {
-                if (r.gameObject.name == "Stamp") continue;
-                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
-            }
-            if (!any || b.size.x <= 0f) return 1f;
-            float w = Mathf.Max(b.size.x, b.size.z), h = b.size.y;
-            pileScale = Mathf.Min(1f, 0.24f / w, h > 0f ? 0.38f / h : 1f);
-            return pileScale;
-        }
-
         private void LateUpdate()
         {
             if (Cell == null) return;
             if (pile == null) { pile = new GameObject("Pile").transform; pile.SetParent(transform, false); }
             int n = Cell.Pallet.Count;
-            while (boxes.Count < n)
-            {
-                var b = PackageViews.MakeBox(Catalog, pile);
-                b.transform.localScale = Vector3.one * PileScale(b);
-                boxes.Add(b);
-            }
+            while (boxes.Count < n) boxes.Add(PackageViews.MakeBox(Catalog, pile)); // 레일·운반 상자와 같은 크기(box-small 0.8배)
             for (int i = 0; i < boxes.Count; i++)
             {
                 bool on = i < n;
                 if (boxes[i].activeSelf != on) boxes[i].SetActive(on);
                 if (!on) continue;
                 int layer = i / PackageViews.PalletPerLayer, slot = i % PackageViews.PalletPerLayer;
-                boxes[i].transform.localPosition = new Vector3((slot - 1) * 0.26f, PackageViews.SurfaceHeight(CellType.Pallet) + PackageViews.PalletLayerHeight * layer, 0f);
+                boxes[i].transform.localPosition = new Vector3(slot == 0 ? -0.22f : 0.22f, PackageViews.SurfaceHeight(CellType.Pallet) + PackageViews.PalletLayerHeight * layer, 0f);
                 boxes[i].transform.localRotation = Quaternion.identity;
                 var p = Cell.Pallet[i];
                 PackageViews.SetStamp(boxes[i], p.Inspected && p.Rejected);
             }
-            ShownCount = n;
         }
     }
 

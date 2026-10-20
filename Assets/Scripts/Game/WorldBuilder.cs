@@ -280,12 +280,12 @@ namespace ParcelFactory.Game
             var docks = Group("Docks");
             // 차량은 벽 밖 출입구 앞에 후진 주차한다(모델 앞 = +z 가정: 뒤가 출입구를 향하도록 yaw).
             // 트럭 도크(스펙 10.1)는 동쪽 벽 출입구 바로 안쪽 칸 (11,2)·(11,4). 좌표는 FactoryGrid에서만 읽는다.
-            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", -8.5f, -90f, truck: false);
-            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true);
-            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true);
+            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", -8.5f, -90f, truck: false, Hex(0x3FA35A));
+            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true, Hex(0x3D7BE0));
+            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true, Hex(0xD95A4A));
         }
 
-        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw, bool truck)
+        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw, bool truck, Color bodyColor)
         {
             var tile = Grid3D.Tile(gx, gy);
             var d = new GameObject("Dock_" + vehicle).transform;
@@ -295,7 +295,8 @@ namespace ParcelFactory.Game
             // 신호등은 격자 밖(격자 가장자리와 벽 사이 여백)에 둔다. 격자 안은 전부 걸을 수 있는 바닥이다(스펙 10.3).
             float side = Mathf.Sign(vehicleX);
             Spawn("warning-traffic", tile + new Vector3(side * 0.85f, 0f, 0.62f), Quaternion.identity, 0.6f, d);
-            Spawn(vehicle, new Vector3(vehicleX, 0f, tile.z), Quaternion.Euler(0f, vehicleYaw, 0f), 0.64f, d);
+            var car = Spawn(vehicle, new Vector3(vehicleX, 0f, tile.z), Quaternion.Euler(0f, vehicleYaw, 0f), 0.64f, d);
+            TintVehicle(car, vehicle, bodyColor);
 
             if (truck)
             {
@@ -315,6 +316,68 @@ namespace ParcelFactory.Game
                     Box("Lane", d, new Vector3(cx, 0f, tile.z + 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
                 }
             }
+        }
+
+        // ---------------- 차량 도색 ----------------
+
+        /// <summary>Kenney car-kit 차체의 원래 도장 색(팔레트 텍스처에서 차체 면적이 가장 큰 유채색). 이 색상(hue) 띠만 다시 칠한다.</summary>
+        private static readonly Dictionary<string, Color32> BodyPaint = new Dictionary<string, Color32>
+        {
+            { "van", new Color32(101, 142, 214, 255) },      // 파랑
+            { "delivery", new Color32(90, 196, 135, 255) },  // 초록
+            { "truck", new Color32(61, 166, 121, 255) },     // 초록
+        };
+
+        private static readonly Dictionary<string, Texture2D> paintCache = new Dictionary<string, Texture2D>();
+
+        /// <summary>
+        /// 차량을 도크 색으로 칠한다. car-kit은 모든 부품(차체·바퀴·문)이 colormap 머티리얼 하나를 공유하고
+        /// 창문·등·범퍼도 차체 메시 안의 팔레트 칸이라 _BaseColor 곱셈으로는 창문까지 물든다.
+        /// 그래서 colormap을 복사해 차체 도장색과 같은 색상 띠(채도 0.3 이상)의 픽셀만 목표 색으로 바꾸고(명암 비율 유지),
+        /// 그 텍스처를 쓰는 머티리얼 인스턴스를 가장 큰 렌더러(차체) 하나에만 준다. 바퀴·문·창문(무채색)은 그대로다.
+        /// </summary>
+        private static void TintVehicle(GameObject car, string key, Color target)
+        {
+            if (!BodyPaint.TryGetValue(key, out var paint)) return;
+            Renderer body = null;
+            float best = -1f;
+            foreach (var r in car.GetComponentsInChildren<Renderer>())
+            {
+                float v = r.bounds.size.x * r.bounds.size.y * r.bounds.size.z;
+                if (v > best) { best = v; body = r; }
+            }
+            if (body == null || body.sharedMaterial == null) return;
+            var src = body.sharedMaterial.GetTexture("_BaseMap") as Texture2D;
+            if (src == null || !src.isReadable) return;
+            string cacheKey = key + ":" + ColorUtility.ToHtmlStringRGB(target);
+            if (!paintCache.TryGetValue(cacheKey, out var tex) || tex == null)
+            {
+                tex = Repaint(src, paint, target);
+                tex.name = "colormap-" + cacheKey;
+                paintCache[cacheKey] = tex;
+            }
+            var mat = new Material(body.sharedMaterial) { name = "VehicleBody-" + key };
+            mat.SetTexture("_BaseMap", tex);
+            body.sharedMaterial = mat;
+        }
+
+        private static Texture2D Repaint(Texture2D src, Color32 paint, Color target)
+        {
+            Color.RGBToHSV(paint, out float ph, out _, out float pv);
+            Color.RGBToHSV(target, out float th, out float ts, out float tv);
+            var px = src.GetPixels32();
+            for (int i = 0; i < px.Length; i++)
+            {
+                Color.RGBToHSV(px[i], out float h, out float sat, out float v);
+                float dh = Mathf.Abs(h - ph); dh = Mathf.Min(dh, 1f - dh);
+                if (sat < 0.3f || dh > 0.06f) continue;
+                var c = Color.HSVToRGB(th, ts, Mathf.Clamp01(v * tv / Mathf.Max(0.01f, pv)));
+                px[i] = new Color32((byte)(c.r * 255f), (byte)(c.g * 255f), (byte)(c.b * 255f), px[i].a);
+            }
+            var tex = new Texture2D(src.width, src.height, TextureFormat.RGBA32, true) { filterMode = src.filterMode, wrapMode = src.wrapMode };
+            tex.SetPixels32(px);
+            tex.Apply(true, true);
+            return tex;
         }
 
         // ---------------- 해금 부지 ----------------
