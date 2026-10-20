@@ -18,6 +18,18 @@ namespace ParcelFactory.Core
         public bool Paused;
         public float Speed;
         public WorkerState Worker;
+        /// <summary>근무 시계(v5, 스펙 11.1).</summary>
+        public int Day;
+        public float MinuteOfDay;
+        /// <summary>그날 시작 잔액·누적 카운터(v5). 하루 요약은 이 값 대비 증가분.</summary>
+        public int DayStartMoney;
+        public int DayStartDelivered;
+        public int DayStartLost;
+        public int DayStartInspected;
+        /// <summary>누적 검사 수(v5).</summary>
+        public int InspectedCount;
+        /// <summary>작업자 스태미나 0..100(v5).</summary>
+        public float Stamina;
     }
 
     public sealed class CellState

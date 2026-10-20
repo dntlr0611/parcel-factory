@@ -17,6 +17,11 @@ namespace ParcelFactory.Core
         /// <summary>성공 판정(+15, +5) 횟수.</summary>
         public int DeliveredCount { get; set; }
         public int LostCount { get; set; }
+        /// <summary>검사 판정 횟수(검사대에서 작업자 검사 + 자동 검사기). 하루 요약용(스펙 11.1).</summary>
+        public int InspectedCount { get; set; }
+
+        /// <summary>검사 한 건을 센다. 검사대 검사(WorkerService.Inspect)와 자동 검사기가 호출한다.</summary>
+        public void NoteInspected() => InspectedCount++;
 
         /// <summary>Tick 루프 중간에 발생한다. 핸들러는 시뮬레이션을 변경(생성·제거)하면 안 되며 읽기만 해야 한다.</summary>
         public event Action<Package, DeliveryOutcome, int> PackageDelivered;
@@ -92,7 +97,7 @@ namespace ParcelFactory.Core
             p.EntryHeading = p.Heading;
             cell.OccupantId = p.Id;
             packages.Add(p);
-            if (cell.Type == CellType.Scanner && !p.Inspected) p.Inspect(p.Bad); // 스캐너는 놓는 순간에도 판정한다
+            if (cell.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); } // 스캐너는 놓는 순간에도 판정한다
         }
 
         /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다.</summary>
@@ -191,7 +196,7 @@ namespace ParcelFactory.Core
                 p.Progress = 0f;
                 p.EntryHeading = p.Heading;
                 p.Heading = HeadingFor(next, p.Heading);
-                if (next.Type == CellType.Scanner && !p.Inspected) p.Inspect(p.Bad);
+                if (next.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
             }
         }
 

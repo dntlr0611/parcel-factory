@@ -10,6 +10,8 @@ namespace ParcelFactory.Core
         public Direction Facing;
         /// <summary>들고 있는 택배. 없으면 null. 라인(ConveyorSim)에는 없는 상태다.</summary>
         public Package Carrying;
+        /// <summary>0..100, 하루 시작 100(스펙 11.3).</summary>
+        public float Stamina = WorkerService.MaxStamina;
     }
 
     public enum InteractResult
@@ -18,6 +20,8 @@ namespace ParcelFactory.Core
         NoFloor, CannotPutHere, NoTool, Locked, Occupied, NotOwned, NotEnoughMoney,
         /// <summary>막는 부품을 작업자의 충돌원과 겹치는 칸에 놓으려 함.</summary>
         Standing,
+        /// <summary>스태미나 0이라 택배를 집을 수 없음(스펙 11.3). 내려놓기·출고는 막지 않는다.</summary>
+        Exhausted,
     }
 
     /// <summary>작업자 규칙: 건물 안 12×12 전체를 연속 좌표로 걷고(레일·도크·잠긴 칸 위 통과, 스펙 10.3),
@@ -25,6 +29,8 @@ namespace ParcelFactory.Core
     public sealed class WorkerService
     {
         public const float StartX = 2f, StartY = 4f, Speed = 3.4f, Radius = 0.28f, Reach = 0.8f;
+        /// <summary>스태미나(스펙 11.3): 초당 소모·회복량과 속도 저하 시작점.</summary>
+        public const float MaxStamina = 100f, WalkDrain = 1.2f, CarryDrain = 2.2f, StandRegen = 0.8f, LunchRegen = 20f, SlowBelow = 30f;
 
         private readonly FactoryGrid grid;
         private readonly ConveyorSim sim;
@@ -33,6 +39,19 @@ namespace ParcelFactory.Core
         public Worker Worker { get; } = new Worker { X = StartX, Y = StartY, Facing = Direction.South };
         /// <summary>검사대에서 검사를 기다리는 택배. 검사 카드 UI가 이를 보고 Inspect를 호출한다.</summary>
         public Package PendingInspection { get; private set; }
+
+        /// <summary>마지막 Rest 이후 Move로 실제로 움직였는가. Rest가 소비한다.</summary>
+        private bool movedSinceRest;
+
+        /// <summary>걷는 속도 배율: 스태미나가 SlowBelow 아래면 lerp(0.5, 1, stamina/SlowBelow), 아니면 1.</summary>
+        public float SpeedFactor
+        {
+            get
+            {
+                float st = Math.Max(0f, Worker.Stamina);
+                return st < SlowBelow ? 0.5f + 0.5f * (st / SlowBelow) : 1f;
+            }
+        }
 
         public WorkerService(FactoryGrid grid, ConveyorSim sim, BuildService build)
         {
@@ -88,7 +107,7 @@ namespace ParcelFactory.Core
                 : (vy > 0f ? Direction.North : Direction.South);
             if (!(dt > 0f) || float.IsInfinity(dt)) return false;
 
-            float step = Speed * dt / len;
+            float step = Speed * SpeedFactor * dt / len;
             bool moved = false;
             if (vx != 0f)
             {
@@ -100,9 +119,35 @@ namespace ParcelFactory.Core
                 float ny = Worker.Y + vy * step;
                 if (CanStand(Worker.X, ny)) { Worker.Y = ny; moved = true; }
             }
-            if (moved) CancelInspection();
+            if (moved)
+            {
+                CancelInspection();
+                movedSinceRest = true;
+                // 움직인 프레임만 소모한다(양 축 모두 막히면 소모 없음).
+                Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? CarryDrain : WalkDrain) * dt);
+            }
             return moved;
         }
+
+        /// <summary>스태미나 회복(GameSession.Tick이 호출). 점심이면 항상 +LunchRegen/초, 아니면 지난 Rest 이후 움직이지 않았을 때만 +StandRegen/초.
+        /// 이동 플래그는 여기서 소비된다.</summary>
+        public void Rest(float dt, DayPhase phase)
+        {
+            bool moved = movedSinceRest;
+            movedSinceRest = false;
+            if (!(dt > 0f) || float.IsInfinity(dt)) return;
+            if (phase == DayPhase.Lunch) Worker.Stamina = Clamp(Worker.Stamina + LunchRegen * dt);
+            else if (phase == DayPhase.Working && !moved) Worker.Stamina = Clamp(Worker.Stamina + StandRegen * dt);
+        }
+
+        /// <summary>다음 날 시작: 스태미나 가득.</summary>
+        public void Refill()
+        {
+            Worker.Stamina = MaxStamina;
+            movedSinceRest = false;
+        }
+
+        private static float Clamp(float v) => v < 0f ? 0f : v > MaxStamina ? MaxStamina : v;
 
         /// <summary>작업자의 충돌원이 칸 (gx, gy)와 겹치는가.</summary>
         public bool Overlaps(int gx, int gy) =>
@@ -124,16 +169,18 @@ namespace ParcelFactory.Core
                 return InteractResult.CannotPutHere;
             }
 
-            if (fc.Type == CellType.Pallet && fc.Pallet.Count > 0) return InteractResult.PickedUp;
+            if (fc.Type == CellType.Pallet && fc.Pallet.Count > 0) return PickUpOrExhausted();
 
             var p = sim.PackageAt(fx, fy);
             if (p != null)
-                return (fc.Type == CellType.Table && !p.Inspected) ? InteractResult.InspectionRequired : InteractResult.PickedUp;
+                return (fc.Type == CellType.Table && !p.Inspected) ? InteractResult.InspectionRequired : PickUpOrExhausted();
 
             if (!tool.HasValue) return InteractResult.NoTool;
             if (!IsWalkable(tool.Value.Type) && Overlaps(fx, fy)) return InteractResult.Standing;
             return Map(build.Check(fx, fy, tool.Value.Type, tool.Value.Direction));
         }
+
+        private InteractResult PickUpOrExhausted() => Worker.Stamina <= 0f ? InteractResult.Exhausted : InteractResult.PickedUp;
 
         /// <summary>우선순위: 운반 중이면 놓기(도크·팔레트·트랙) → 팔레트 더미·택배가 있으면 집기/검사 → 도구가 있으면 설치. Preview와 같은 결정을 실행한다.</summary>
         public InteractResult Interact(Tool? tool)
@@ -194,6 +241,7 @@ namespace ParcelFactory.Core
             if (fx != p.X || fy != p.Y) return false;
             if (sim.PackageAt(p.X, p.Y) != p || grid.Get(p.X, p.Y).Type != CellType.Table) return false;
             p.Inspect(reject);
+            sim.NoteInspected();
             return true;
         }
 

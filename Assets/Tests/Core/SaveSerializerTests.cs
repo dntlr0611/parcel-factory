@@ -29,7 +29,7 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(4, st.Version);
+            Assert.AreEqual(5, st.Version);
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
             Assert.AreEqual(6, st.Cells.Count); // 설치한 4개 + 시작 팔레트 2개
@@ -191,8 +191,80 @@ namespace ParcelFactory.Core.Tests
         public void FutureVersion_IsRejected()
         {
             var st = SaveSerializer.Capture(new GameSession());
-            st.Version = 5;
+            st.Version = 6;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+        }
+
+        [Test]
+        public void V4Save_IsRejected()
+        {
+            var st = SaveSerializer.Capture(new GameSession());
+            st.Version = 4;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+        }
+
+        [Test]
+        public void RoundTrip_PreservesClockDayStartAndStamina()
+        {
+            var s = new GameSession(new Economy(300));
+            s.Tick(540f); // 1일차 마감
+            s.Sim.NoteInspected();
+            s.NextDay();  // 2일차: 시작 잔액·카운터 기록
+            s.Sim.DeliveredCount += 2;
+            s.Sim.NoteInspected();
+            s.Economy.Earn(40);
+            s.Tick(200f); // 12:20 점심
+            s.Worker.Worker.Stamina = 42.5f;
+            int lost = s.Sim.LostCount;
+
+            var st = SaveSerializer.Capture(s);
+            Assert.AreEqual(2, st.Day);
+            var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
+            Assert.AreEqual(2, r.Clock.Day);
+            Assert.AreEqual(740f, r.Clock.MinuteOfDay, 1e-3f);
+            Assert.AreEqual(DayPhase.Lunch, r.Clock.Phase);
+            Assert.AreEqual(300, r.DayStartMoney);
+            Assert.AreEqual(s.DayStartDelivered, r.DayStartDelivered);
+            Assert.AreEqual(s.DayStartLost, r.DayStartLost);
+            Assert.AreEqual(1, r.DayStartInspected);
+            Assert.AreEqual(2, r.Sim.InspectedCount);
+            Assert.AreEqual(42.5f, r.Worker.Worker.Stamina, 1e-4f);
+            var sum = r.BuildSummary();
+            Assert.AreEqual(2, sum.Delivered);
+            Assert.AreEqual(1, sum.Inspected);
+            Assert.AreEqual(lost - s.DayStartLost, sum.Lost);
+            Assert.AreEqual(340, sum.EndMoney);
+        }
+
+        [Test]
+        public void Restore_RejectsInvalidClockOrStamina()
+        {
+            var st = SaveSerializer.Capture(new GameSession());
+            st.Day = 0;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st = SaveSerializer.Capture(new GameSession());
+            st.MinuteOfDay = 100f;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st = SaveSerializer.Capture(new GameSession());
+            st.Stamina = float.NaN;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st.Stamina = 101f;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+            st.Stamina = -1f;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
+        }
+
+        [Test]
+        public void RoundTrip_ClosedDay_StaysClosed()
+        {
+            var s = new GameSession();
+            s.Tick(540f);
+            var r = SaveSerializer.Restore(SaveSerializer.Capture(s));
+            Assert.AreEqual(DayPhase.Closed, r.Clock.Phase);
+            r.Tick(1f);
+            Assert.AreEqual(1080f, r.Clock.MinuteOfDay);
+            r.NextDay();
+            Assert.AreEqual(2, r.Clock.Day);
         }
 
         [Test]

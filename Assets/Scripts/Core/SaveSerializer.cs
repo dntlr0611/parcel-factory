@@ -12,9 +12,9 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        public const int CurrentVersion = 4;
-        /// <summary>읽을 수 있는 가장 오래된 버전. v4(팔레트·트럭 도크 좌표) 미만은 거부한다(스펙 10.4).</summary>
-        public const int MinReadableVersion = 4;
+        public const int CurrentVersion = 5;
+        /// <summary>읽을 수 있는 가장 오래된 버전. v5(근무 시계·스태미나, 스펙 11.1) 미만은 거부한다.</summary>
+        public const int MinReadableVersion = 5;
 
         public static GameState Capture(GameSession s)
         {
@@ -29,6 +29,14 @@ namespace ParcelFactory.Core
                 LostCount = s.Sim.LostCount,
                 Paused = s.Paused,
                 Speed = s.Speed,
+                Day = s.Clock.Day,
+                MinuteOfDay = s.Clock.MinuteOfDay,
+                DayStartMoney = s.DayStartMoney,
+                DayStartDelivered = s.DayStartDelivered,
+                DayStartLost = s.DayStartLost,
+                DayStartInspected = s.DayStartInspected,
+                InspectedCount = s.Sim.InspectedCount,
+                Stamina = s.Worker.Worker.Stamina,
             };
 
             foreach (var id in s.Unlocks.Purchased)
@@ -171,6 +179,16 @@ namespace ParcelFactory.Core
             s.Spawner.Timer = st.SpawnTimer;
             s.Paused = st.Paused;
             s.Speed = st.Speed;
+
+            s.Clock.Set(st.Day, st.MinuteOfDay); // 범위 밖이면 ArgumentOutOfRangeException → corrupt save
+            if (!(st.Stamina >= 0f && st.Stamina <= WorkerService.MaxStamina))
+                throw new SaveVersionException($"invalid stamina {st.Stamina}");
+            s.Worker.Worker.Stamina = st.Stamina;
+            s.Sim.InspectedCount = st.InspectedCount;
+            s.DayStartMoney = st.DayStartMoney;
+            s.DayStartDelivered = st.DayStartDelivered;
+            s.DayStartLost = st.DayStartLost;
+            s.DayStartInspected = st.DayStartInspected;
             return s;
         }
 
