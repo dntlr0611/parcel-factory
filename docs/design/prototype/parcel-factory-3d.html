@@ -63,7 +63,8 @@
   /* 체력 바: 상태줄 왼쪽에 붙는다 (스펙 11.3). 라벨 + 140×10 바 */
   .stamina { position: absolute; right: calc(100% + 8px); top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
   .stamina .lbl { font: 700 12px var(--font-body); color: var(--muted); white-space: nowrap; flex: none; }
-  .stamina .track { width: 140px; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.12); overflow: hidden; }
+  .stamina .track { position: relative; width: 140px; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.12); overflow: hidden; }
+  .stamina .tick { position: absolute; left: 80%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(0,0,0,0.55); } /* 평소 회복 상한 80% 눈금 (스펙 11.11) */
   .stamina .fill { display: block; height: 100%; width: 100%; border-radius: 5px; background: var(--good); transition: width .12s linear; }
   .stamina .fill.mid { background: var(--warn); } .stamina .fill.low { background: var(--bad); }
   .stamina .fill.pulse { animation: staPulse .78s ease-in-out infinite; }
@@ -185,13 +186,15 @@
     </div>
     <div class="panel help" id="help" hidden>
       <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
-      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>취소·닫기·빈손 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
+      <div><span class="k"><span class="key">1</span>~<span class="key">7</span></span>도구 선택 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>취소·닫기·빈손 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div><span class="k"><span class="key">R</span></span><b>R → 화살표: 방향 설정</b> (설치된 부품도 바라보고 R) · 분배기/팔레트: <b>R → 1 파랑 / 2 빨강</b></div>
       <div><b>분배기</b>: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배 (빨간 출구는 R → 2 → 화살표로 지정)</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
-      <div>09:00~18:00 근무 · 12시 점심(입고 정지, 체력 회복) · 18시 퇴근 요약 · 체력이 0이면 집을 수 없음</div>
+      <div>09:00~18:00 근무 · 12시 점심(입고 정지) · 18시 퇴근 요약 · 체력이 0이면 집을 수 없음</div>
+      <div>체력은 평소 <b>80%</b>까지만 차오릅니다(바의 눈금). 점심시간에 <b>가만히 서 있어야</b> 100%까지 회복합니다.</div>
+      <div>브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)</div>
       <div>입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
@@ -200,7 +203,7 @@
     <div class="prompt" id="prompt" hidden><span id="promptText">집기</span><span class="key">E</span><span class="pin"></span></div>
     <div class="panel clock" id="clock"><span id="clockText">1일차 09:00</span><span class="badge" id="phaseBadge" hidden>점심시간</span></div>
     <div class="cfgbanner" id="cfgBanner" hidden></div>
-    <div class="panel status" id="statusBox"><div class="stamina" id="stamina"><span class="lbl">체력</span><span class="track"><i class="fill" id="staminaFill"></i></span></div><span id="workerText">빈손</span></div>
+    <div class="panel status" id="statusBox"><div class="stamina" id="stamina"><span class="lbl">체력</span><span class="track"><i class="fill" id="staminaFill"></i><i class="tick"></i></span></div><span id="workerText">빈손</span></div>
     <div class="panel hotbar" id="hotbar"></div>
     <div class="touch">
       <button class="btn" data-move="N" style="grid-column:2;grid-row:1" aria-label="위로 이동">↑</button>
@@ -262,15 +265,16 @@
   // ---------------- 게임 로직 (코어와 동일 규칙) ----------------
   const DX = { N: 0, E: 1, S: 0, W: -1 }, DY = { N: 1, E: 0, S: -1, W: 0 }, ORDER = ['N', 'E', 'S', 'W'];
   const turnR = d => ORDER[(ORDER.indexOf(d) + 1) % 4], turnL = d => ORDER[(ORDER.indexOf(d) + 3) % 4], opp = d => ORDER[(ORDER.indexOf(d) + 2) % 4];
-  const COST = { conveyor: 10, fast: 25, pallet: 20, splitter: 60, table: 40, scanner: 120 };
-  const NAMES = { conveyor: '레일', fast: '고속 레일', pallet: '팔레트', splitter: '분배기', table: '검사대', scanner: '자동 검사기', inlet: '입고구', outlet: '출고 트럭', rdock: '반품 트럭', empty: '빈 칸', locked: '잠긴 칸' };
+  const COST = { conveyor: 10, fast: 25, bridge: 40, pallet: 20, splitter: 60, table: 40, scanner: 120 };
+  const NAMES = { conveyor: '레일', fast: '고속 레일', bridge: '브릿지', pallet: '팔레트', splitter: '분배기', table: '검사대', scanner: '자동 검사기', inlet: '입고구', outlet: '출고 트럭', rdock: '반품 트럭', empty: '빈 칸', locked: '잠긴 칸' };
   const ARROWS = { N: '↑', E: '→', S: '↓', W: '←' };
-  const SLOTS = ['conveyor', 'fast', 'pallet', 'table', 'splitter', 'scanner'];
-  const SW = { conveyor: '#3fa3a3', fast: '#c25a66', pallet: '#9a6b40', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
+  const SLOTS = ['conveyor', 'fast', 'bridge', 'pallet', 'table', 'splitter', 'scanner']; // 핫바 순서 (스펙 11.12), 키 1~7
+  const SW = { conveyor: '#3fa3a3', fast: '#c25a66', bridge: '#8a9a5b', pallet: '#9a6b40', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
   const PALLET_CAP = 6, OUTLET_X = 11, RDOCK_X = 11; // 스펙 10.1·10.2
   // 근무 시계·스태미나 (스펙 11): 시각은 하루 중 분(540..1080), 1게임분 = 1실제초(배속 전)
   const DAY_OPEN = 540, LUNCH_START = 720, LUNCH_END = 780, DAY_CLOSE = 1080;
   const BASE_STAMINA = 100, RUN_DRAIN = 3.0, RUN_CARRY_DRAIN = 5.5, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30, RUN_MULT = 1.6, RUN_MIN_STAMINA = 10; // 체력은 달리기에만 쓴다 (스펙 11.5)
+  const REGEN_CAP = 0.8; // 평소 회복은 최대 체력의 80%까지, 점심에 가만히 서 있어야 100% (스펙 11.11)
   const EXP_DELIVER = 10, EXP_RETURN = 8, EXP_INSPECT = 2; // 정상 출고 / 불량 반품 / 검사 수행
   const STATS = { // 상태창 강화 (스펙 11.5): 레벨 n으로 올리는 비용 = unit × n
     stamina: { name: '체력', max: 5, unit: 40, effect: l => '최대 체력 ' + (BASE_STAMINA + 20 * l), done: '체력 강화!' },
@@ -282,18 +286,26 @@
   const signed = d => d >= 0 ? '+' + d : '−' + (-d);
   const KIND_OF_DIR = { E: 'blue', W: 'red' }, KIND_LABEL = { blue: '파랑', red: '빨강' }; // 팔레트 도구: East = 파랑, West = 빨강
   const dirLabel = (type, dir) => type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[dir]] : ARROWS[dir];
-  const isTrack = c => ['conveyor', 'fast', 'splitter', 'inlet', 'table', 'scanner'].includes(c.type);
-  const isBuilding = c => ['conveyor', 'fast', 'splitter', 'table', 'scanner', 'pallet'].includes(c.type);
+  const isTrack = c => ['conveyor', 'fast', 'bridge', 'splitter', 'inlet', 'table', 'scanner'].includes(c.type);
+  const isBuilding = c => ['conveyor', 'fast', 'bridge', 'splitter', 'table', 'scanner', 'pallet'].includes(c.type);
   const isDock = t => t === 'outlet' || t === 'rdock';
   const inBounds = (x, y) => x >= 0 && y >= 0 && x < 12 && y < 12;
+  // 브릿지 차선 (스펙 11.12): 윗길 = c.occ, 아랫길 = c.occLow. 택배는 p.lane('upper'|'lower')을 가진다
+  const parallel = (a, b) => a === b || a === opp(b);
+  const laneOf = p => p.lane === 'lower' ? 'lower' : 'upper';
+  const occOf = (c, lane) => lane === 'lower' && c.type === 'bridge' ? c.occLow : c.occ;
+  function setOcc(c, lane, v) { if (lane === 'lower' && c.type === 'bridge') c.occLow = v; else c.occ = v; }
+  const release = (c, p) => setOcc(c, laneOf(p), -1); // 나갈 때는 자기 차선만 푼다
+  const entryLane = (c, heading) => c.type === 'bridge' && !parallel(c.dir, heading) ? 'lower' : 'upper'; // 윗길과 평행(같은/반대)하게 들어오면 윗길, 수직이면 아랫길
   const CATALOG = [
     { id: 'plot1', name: '부지 확장 1', sub: '9×9로 넓힙니다', price: 200, plot: 9 },
     { id: 'plot2', name: '부지 확장 2', sub: '12×12로 넓힙니다 · 확장 1 필요', price: 500, plot: 12, req: 'plot1' },
     { id: 'railS', name: '레일 ↓', sub: '남쪽으로 흐르는 레일', price: 50, tool: 'conveyor:S' }, { id: 'railW', name: '레일 ←', sub: '서쪽으로 흐르는 레일', price: 50, tool: 'conveyor:W' }, { id: 'railN', name: '레일 ↑', sub: '북쪽으로 흐르는 레일', price: 50, tool: 'conveyor:N' },
     { id: 'fastE', name: '고속 레일 →', sub: '2배 속도', price: 100, tool: 'fast:E' }, { id: 'fastS', name: '고속 레일 ↓', sub: '2배 속도', price: 100, tool: 'fast:S' }, { id: 'fastW', name: '고속 레일 ←', sub: '2배 속도', price: 100, tool: 'fast:W' }, { id: 'fastN', name: '고속 레일 ↑', sub: '2배 속도', price: 100, tool: 'fast:N' },
+    { id: 'bridge', name: '브릿지', sub: '윗길 + 아랫길 · 레일 교차 · 4방향 · 확장 1 필요', price: 200, bridge: true, req: 'plot1' },
     { id: 'splitter', name: '분배기', sub: '검사 결과로 분류 · 파랑/빨강 출구', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향 · 확장 2 필요', price: 600, scanner: true, req: 'plot2' },
   ];
-  function cell(type, dir) { const c = { type, dir: dir || 'E', demolishing: false, remain: 0, occ: -1 }; if (type === 'splitter') c.red = null; return c; } // splitter.red: 명시 빨간 출구 (null = 자동, 스펙 11.8)
+  function cell(type, dir) { const c = { type, dir: dir || 'E', demolishing: false, remain: 0, occ: -1 }; if (type === 'splitter') c.red = null; if (type === 'bridge') c.occLow = -1; return c; } // splitter.red: 명시 빨간 출구 (null = 자동, 스펙 11.8)
   function palletCell(kind) { const c = cell('pallet', kind === 'red' ? 'W' : 'E'); c.kind = kind; c.pile = []; return c; } // 더미: 맨 위 = 배열 끝
   function newGame() {
     const cells = [];
@@ -304,7 +316,7 @@
   }
   function demoLayout(g) { // #demo — 시안 확인용 샘플 배치 (Unity 데모 장면과 같은 구성)
     g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
-    const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, label: makeLabel(bad) });
+    const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, lane: 'upper', label: makeLabel(bad) });
     g.cells[2][5].pile.push(pkg(true, false), pkg(true, false), pkg(true, true));
     g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false), stamina: BASE_STAMINA }; g.money = 240; g.minute = 640; // 10:40
     g.dayStart.money = g.money; return g;
@@ -319,11 +331,26 @@
   function configLayout(g) { // #config — Unity 미니 상태바 장면: #demo + (3,3) 분배기(북향, 레일 N·E), 서쪽에서 바라보는 작업자, 슬롯 선택 모드, 일시정지
     demoLayout(g); g.paused = true; g.splitter = true;
     g.cells[3][3] = cell('splitter', 'N'); g.cells[4][3] = cell('conveyor', 'N'); g.cells[3][4] = cell('conveyor', 'E');
-    const wp = { id: g.nextId++, x: 3, y: 2, progress: 0.5, heading: 'E', entry: 'E', bad: false, inspected: false, rejected: false, label: makeLabel(false) }; g.packages.push(wp); g.cells[2][3].occ = wp.id; // 검사대에서 기다리는 택배 → "검사 대기 1"
+    const wp = { id: g.nextId++, x: 3, y: 2, progress: 0.5, heading: 'E', entry: 'E', lane: 'upper', bad: false, inspected: false, rejected: false, label: makeLabel(false) }; g.packages.push(wp); g.cells[2][3].occ = wp.id; // 검사대에서 기다리는 택배 → "검사 대기 1"
     g.worker = { x: 2.0, y: 3.0, facing: 'E', carrying: null, stamina: BASE_STAMINA }; return g;
   }
-  let S = location.hash === '#config' ? configLayout(newGame()) : location.hash === '#status' ? statusLayout(newGame()) : location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
-  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, running: false, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [], cfg: null, cfgHold: new Set() };
+  function bridgeLayout(g) { // #bridge — 브릿지 확인용: E 라인과 N 라인이 (3,3) 브릿지(북향)에서 교차, 윗길·아랫길에 택배 하나씩, 작업자는 서쪽에서 바라봄, 10:40 일시정지
+    for (const d of ORDER) g.owned['bridge:' + d] = true; g.purchased.bridge = true;
+    g.cells[3][3] = cell('bridge', 'N');
+    for (const x of [1, 2, 4, 5]) g.cells[3][x] = cell('conveyor', 'E');
+    for (const y of [1, 2, 4, 5]) g.cells[y][3] = cell('conveyor', 'N');
+    const put = (dir, lane, progress) => { const p = { id: g.nextId++, x: 3, y: 3, progress, heading: dir, entry: dir, lane, bad: false, inspected: false, rejected: false, label: makeLabel(false) }; g.packages.push(p); setOcc(g.cells[3][3], lane, p.id); return p; };
+    put('N', 'upper', 0.8); put('E', 'lower', 0.93); // 아랫길 택배는 윗길 벨트 아래라 카메라에서 가려지므로 동쪽 끝에 걸쳐 둔다
+    g.worker = { x: 2.0, y: 3.0, facing: 'E', carrying: null, stamina: BASE_STAMINA }; g.money = 240; g.dayStart.money = 240; g.minute = 640; g.paused = true; return g;
+  }
+  function fixOccupancy(g) { // 불러온 상태: 점유(occ·occLow)를 택배 위치와 차선에서 다시 계산한다. lane이 없으면(옛 저장) 윗길
+    for (const row of g.cells) for (const c of row) { c.occ = -1; if (c.type === 'bridge') c.occLow = -1; }
+    for (const p of g.packages) { const c = g.cells[p.y][p.x]; p.lane = p.lane === 'lower' && c.type === 'bridge' ? 'lower' : 'upper'; setOcc(c, p.lane, p.id); }
+    return g;
+  }
+  function loadState(json) { S = fixOccupancy(JSON.parse(json)); return S; }
+  let S = location.hash === '#bridge' ? bridgeLayout(newGame()) : location.hash === '#config' ? configLayout(newGame()) : location.hash === '#status' ? statusLayout(newGame()) : location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
+  const UI = { moved: false, tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, running: false, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [], cfg: null, cfgHold: new Set() };
   // 입력 상태: held = 눌린 키(e.code / 터치 패드). 설정 중이거나, 설정을 끝낸 키가 아직 눌려 있으면(cfgHold) 이동에 쓰지 않는다
   const held = new Set();
   const KEYDIR = { KeyW: 'N', ArrowUp: 'N', KeyS: 'S', ArrowDown: 'S', KeyA: 'W', ArrowLeft: 'W', KeyD: 'E', ArrowRight: 'E', padN: 'N', padS: 'S', padW: 'W', padE: 'E' }; // e.code 기준 — 한글 IME 상태에서도 동작
@@ -348,6 +375,7 @@
   const redGhost = (c, rt) => c.red && c.red !== c.dir && !rt.red ? c.red : null; // 명시했지만 연결되지 않은 빨간 출구 (뷰: 40% 투명 화살표)
   const splitterRoutes = (x, y) => routesOf(S.cells[y][x], splitterOutputs(x, y)); // 뷰용 (들어온 방향 제외 없음)
   function headingFor(c, incoming, x, y, p) { // 분배기: 검사 후 거부 → 빨강(없으면 파랑), 그 외 → 파랑. 파랑이 연결돼 있지 않으면 c.dir 직진
+    if (c.type === 'bridge') return parallel(c.dir, incoming) ? c.dir : incoming; // 윗길은 c.dir, 아랫길은 들어온 방향 그대로 직진 (스펙 11.12)
     if (c.type !== 'splitter') return c.dir;
     const r = routesOf(c, splitterOutputs(x, y, incoming));
     if (p && p.inspected && p.rejected && r.red) return r.red;
@@ -362,7 +390,7 @@
     const c = S.cells[y][x];
     if (!isTrack(c) || c.occ >= 0 || c.demolishing) return false;
     const bad = Math.random() < 0.3;
-    const p = { id: S.nextId++, x, y, progress: 0, heading: 'E', entry: 'E', bad, inspected: false, rejected: false, label: makeLabel(bad) };
+    const p = { id: S.nextId++, x, y, progress: 0, heading: 'E', entry: 'E', lane: 'upper', bad, inspected: false, rejected: false, label: makeLabel(bad) };
     p.heading = p.entry = headingFor(c, c.dir, x, y, p);
     c.occ = p.id; S.packages.push(p); return true;
   }
@@ -397,11 +425,11 @@
     if (r.success) { S.delivered++; addExp(dockType === 'outlet' ? EXP_DELIVER : EXP_RETURN); } // 벌점 출고/반품은 EXP 없음
     S.money += r.delta; toast(r.msg, r.kind); pushFx(x, y, r.delta);
   }
-  function remove(i, delivered) { const p = S.packages[i]; S.cells[p.y][p.x].occ = -1; S.packages.splice(i, 1); if (!delivered) S.lost++; }
+  function remove(i, delivered) { const p = S.packages[i]; release(S.cells[p.y][p.x], p); S.packages.splice(i, 1); if (!delivered) S.lost++; }
   // 시계 진행: 일시정지·퇴근이면 아무것도 안 한다. 단계 경계(12:00·13:00·18:00)에서 시간을 나눠
   // 입고는 근무 구간에서만, 레일·해체는 18:00까지 항상 돌린다. 18:00에 닿으면 하루 요약을 띄운다.
   function tick(dt) {
-    if (S.paused || !(dt > 0) || S.minute >= DAY_CLOSE) return;
+    if (S.paused || !(dt > 0) || S.minute >= DAY_CLOSE) { if (S.paused) UI.moved = false; return; }
     let remaining = dt * S.speed, work = 0, lunch = 0;
     while (remaining > 1e-9 && S.minute < DAY_CLOSE) {
       const boundary = S.minute < LUNCH_START ? LUNCH_START : S.minute < LUNCH_END ? LUNCH_END : DAY_CLOSE;
@@ -410,7 +438,7 @@
       simTick(seg);
       S.minute = remaining >= toB ? boundary : S.minute + seg; remaining -= seg;
     }
-    if (work > 0) rest(work, 'working'); if (lunch > 0) rest(lunch, 'lunch'); // 이동 플래그는 근무 회복이 먼저 소비한다
+    const mv = takeMoved(); if (work > 0) rest(work, 'working', mv); if (lunch > 0) rest(lunch, 'lunch', mv); // 이동 플래그는 이 틱에서 한 번만 소비하고 두 구간에 같이 쓴다
     if (S.minute >= DAY_CLOSE) endDay();
   }
   function spawnTick(d) { const iv = Math.max(3, 8 - 0.5 * Math.floor(S.delivered / 5)); S.timer += d; while (S.timer >= iv) { S.timer -= iv; spawn(0, 2); } } // 입고 주기: 8초에서 배송 5건마다 0.5초씩, 최소 3초
@@ -427,11 +455,12 @@
       if (isDock(next.type)) { deliver(p, next.type, nx, ny); remove(i, true); i--; continue; }
       if (next.type === 'pallet') { // 흐름에서 빠져 더미에 쌓인다(검사 상태 유지). 가득 차거나 해체 중이면 대기
         if (next.demolishing || next.pile.length >= PALLET_CAP) continue;
-        c.occ = -1; S.packages.splice(i, 1); i--; p.progress = 0; next.pile.push(p); continue;
+        release(c, p); S.packages.splice(i, 1); i--; p.progress = 0; next.pile.push(p); continue;
       }
       if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
-      if (next.occ >= 0 || next.demolishing) continue;
-      c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading, nx, ny, p);
+      const lane = entryLane(next, p.heading); // 브릿지: 평행 → 윗길, 수직 → 아랫길. 차선마다 따로 기다린다
+      if (occOf(next, lane) >= 0 || next.demolishing) continue;
+      release(c, p); setOcc(next, lane, p.id); p.lane = lane; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading, nx, ny, p);
       if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); }
     }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
@@ -448,10 +477,13 @@
   const maxStamina = () => BASE_STAMINA + 20 * S.lvl.stamina, speedMult = () => 1 + 0.08 * S.lvl.speed, regenMult = () => 1 + 0.5 * S.lvl.regen, statCost = id => STATS[id].unit * (S.lvl[id] + 1);
   const clampSta = v => v < 0 ? 0 : v > maxStamina() ? maxStamina() : v;
   const speedFactor = () => { const st = Math.max(0, S.worker.stamina); return st < SLOW_BELOW ? 0.5 + 0.5 * (st / SLOW_BELOW) : 1; }; // 30 아래면 0.5..1로 줄어든다
-  function rest(dt, phase) { // 스태미나 회복: 점심은 항상 +20/초, 근무 중에는 걷든 서든 +0.8/초 × 회복력 배율 (스펙 11.5)
+  const takeMoved = () => { const m = !!UI.moved; UI.moved = false; return m; }; // moveWorker가 세운 이동 플래그를 rest가 소비한다 (스펙 11.11)
+  function rest(dt, phase, moved) { // 스태미나 회복 (스펙 11.11): 점심에 이번 프레임 이동하지 않았으면 +20/초로 100%까지. 그 외(근무·점심 중 이동)는 +0.8/초 × 회복력, 최대 체력의 80%까지만
     if (!(dt > 0)) return;
-    if (phase === 'lunch') S.worker.stamina = clampSta(S.worker.stamina + LUNCH_REGEN * dt);
-    else if (phase === 'working') S.worker.stamina = clampSta(S.worker.stamina + STAND_REGEN * regenMult() * dt);
+    if (moved === undefined) moved = takeMoved();
+    const w = S.worker;
+    if (phase === 'lunch' && !moved) w.stamina = clampSta(w.stamina + LUNCH_REGEN * dt);
+    else if (phase === 'lunch' || phase === 'working') { const cap = REGEN_CAP * maxStamina(); if (w.stamina < cap) w.stamina = Math.min(cap, w.stamina + STAND_REGEN * regenMult() * dt); } // 80% 이상이면 회복 없음(깎지도 않는다)
   }
   function moveWorker(vx, vy, dt, run) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리. 퇴근 후에는 걷지 않는다 (일시정지 중에는 걸을 수 있다)
     const w = S.worker; const len = Math.hypot(vx, vy); UI.running = false; if (len < 1e-6 || S.minute >= DAY_CLOSE) return false;
@@ -459,7 +491,7 @@
     vx /= len; vy /= len; const step = WALK_SPEED * (sprint ? RUN_MULT : 1) * speedMult() * speedFactor() * dt; let moved = false;
     const nx = w.x + vx * step; if (walkableAt(nx, w.y)) { w.x = nx; moved = true; }
     const ny = w.y + vy * step; if (walkableAt(w.x, ny)) { w.y = ny; moved = true; }
-    if (moved) { UI.running = sprint; if (sprint) w.stamina = clampSta(w.stamina - (w.carrying ? RUN_CARRY_DRAIN : RUN_DRAIN) * dt); } // 달리는 프레임만 소모. 걷기·집기·놓기는 0
+    if (moved) { UI.moved = true; UI.running = sprint; if (sprint) w.stamina = clampSta(w.stamina - (w.carrying ? RUN_CARRY_DRAIN : RUN_DRAIN) * dt); } // 달리는 프레임만 소모. 걷기·집기·놓기는 0
     w.facing = Math.abs(vx) >= Math.abs(vy) ? (vx > 0 ? 'E' : 'W') : (vy > 0 ? 'N' : 'S');
     if (UI.inspect) { UI.inspect = null; $('inspect').hidden = true; }
     return true;
@@ -467,7 +499,17 @@
   const workerTile = () => ({ x: Math.round(S.worker.x), y: Math.round(S.worker.y) });
   const facingTile = () => ({ x: Math.round(S.worker.x + DX[S.worker.facing] * 0.8), y: Math.round(S.worker.y + DY[S.worker.facing] * 0.8) }); // 바라보는 쪽 0.8칸 앞의 칸
   const workerOverlaps = (gx, gy) => Math.abs(S.worker.x - gx) < 0.5 + WORKER_R && Math.abs(S.worker.y - gy) < 0.5 + WORKER_R;
-  const packageAt = (x, y) => inBounds(x, y) ? S.packages.findIndex(p => p.x === x && p.y === y) : -1;
+  const packagesAt = (x, y) => inBounds(x, y) ? S.packages.filter(p => p.x === x && p.y === y).sort((a, b) => (laneOf(a) === 'lower') - (laneOf(b) === 'lower')) : []; // 윗길 먼저
+  function packageAt(x, y) { // 인덱스. 브릿지는 윗길 택배를 먼저 (스펙 11.12)
+    if (!inBounds(x, y)) return -1; let low = -1;
+    for (let i = 0; i < S.packages.length; i++) { const p = S.packages[i]; if (p.x !== x || p.y !== y) continue; if (laneOf(p) === 'upper') return i; if (low < 0) low = i; }
+    return low;
+  }
+  function putOn(fc, p, x, y) { // 손에서 내려놓기. 브릿지: 윗길이 비면 윗길, 아니면 아랫길(진행 방향 = turnR(윗길 방향))
+    if (fc.type === 'bridge') { const lane = fc.occ < 0 ? 'upper' : 'lower'; p.lane = lane; p.heading = lane === 'upper' ? fc.dir : turnR(fc.dir); setOcc(fc, lane, p.id); }
+    else { p.lane = 'upper'; p.heading = headingFor(fc, fc.dir, x, y, p); fc.occ = p.id; }
+    p.entry = p.heading;
+  }
   function preview() {
     const w = S.worker, f = facingTile();
     if (!inBounds(f.x, f.y)) return 'nofloor';
@@ -475,7 +517,7 @@
     if (w.carrying) {
       if (isDock(fc.type)) return 'deliver';
       if (fc.type === 'pallet' && !fc.demolishing) return fc.pile.length < PALLET_CAP ? 'palletput' : 'palletfull';
-      if (isTrack(fc) && fc.occ < 0 && !fc.demolishing) return 'put'; return 'cannotput';
+      if (isTrack(fc) && (fc.occ < 0 || (fc.type === 'bridge' && fc.occLow < 0)) && !fc.demolishing) return 'put'; return 'cannotput';
     }
     const tired = S.worker.stamina <= 0; // 스태미나 0이면 집을 수 없다 (놓기·출고·설치는 가능)
     if (fc.type === 'pallet' && fc.pile.length > 0) return tired ? 'exhausted' : 'palletpick';
@@ -506,9 +548,9 @@
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     switch (r) {
       case 'deliver': deliver(w.carrying, fc.type, f.x, f.y); w.carrying = null; break;
-      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir, f.x, f.y, p); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); } break; }
+      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; putOn(fc, p, f.x, f.y); S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); } break; }
       case 'inspect': UI.cfg = null; UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
-      case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
+      case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); release(fc, p); w.carrying = p; break; }
       case 'palletpick': w.carrying = fc.pile.pop(); break;
       case 'palletput': { const p = w.carrying; p.progress = 0; fc.pile.push(p); w.carrying = null; break; }
       case 'palletfull': toast('팔레트가 가득 찼습니다'); break;
@@ -516,7 +558,7 @@
       case 'place': { S.money -= COST[UI.tool.type]; pushFx(f.x, f.y, -COST[UI.tool.type]); S.cells[f.y][f.x] = toolCell(); UI.dirty.add(f.x + ',' + f.y); break; }
       case 'nofloor': toast('바닥이 없는 곳입니다'); break;
       case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
-      case 'notool': toast('도구를 고르세요 (1~6)'); break;
+      case 'notool': toast('도구를 고르세요 (1~7)'); break;
       case 'standing': toast('서 있는 자리에는 놓을 수 없습니다'); break;
       case 'locked': toast('아직 사지 않은 부지입니다 · 상점에서 확장'); break;
       case 'occupied': toast('이미 무언가 있습니다'); break;
@@ -559,7 +601,7 @@
     if (S.money < def.price) return toast('잔액이 부족합니다', 'bad');
     S.money -= def.price; S.purchased[def.id] = true;
     if (def.plot) { S.unlocked = def.plot; for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) if (S.cells[y][x].type === 'locked' && x < def.plot && y < def.plot) S.cells[y][x].type = 'empty'; UI.rebuildAll = true; }
-    if (def.tool) S.owned[def.tool] = true; if (def.splitter) S.splitter = true; if (def.scanner) S.scanner = true;
+    if (def.tool) S.owned[def.tool] = true; if (def.bridge) for (const d of ORDER) S.owned['bridge:' + d] = true; if (def.splitter) S.splitter = true; if (def.scanner) S.scanner = true;
     toast(def.name + ' 해금', 'good'); renderShop(); renderHotbar();
   }
   function ownedDirs(type) {
@@ -591,7 +633,7 @@
   }
 
   // ---- 방향 설정 (스펙 11.8): R → [1/2] → 화살표. 방향은 순환하지 않고 직접 입력한다
-  const CONFIGURABLE = ['conveyor', 'fast', 'table', 'scanner', 'splitter', 'pallet'];
+  const CONFIGURABLE = ['conveyor', 'fast', 'bridge', 'table', 'scanner', 'splitter', 'pallet'];
   const cfgCell = () => { const c = UI.cfg; return c && c.target === 'cell' && inBounds(c.x, c.y) ? S.cells[c.y][c.x] : null; };
   const cfgType = () => { const c = UI.cfg; if (!c) return null; if (c.target === 'tool') return UI.tool ? UI.tool.type : null; const cc = cfgCell(); return cc ? cc.type : null; };
   function cancelConfig() { UI.cfg = null; }
@@ -605,7 +647,16 @@
     for (const k of held) if (KEYDIR[k]) UI.cfgHold.add(k); // 이미 누르고 있던 이동 키는 뗄 때까지 입력으로 치지 않는다
     return true;
   }
-  function rehead(x, y) { const c = S.cells[y][x]; for (const p of S.packages) if (p.x === x && p.y === y) p.heading = headingFor(c, p.entry, x, y, p); UI.dirty.add(x + ',' + y); } // 그 칸 위 택배의 진행 방향 갱신 (들어온 방향 = p.entry)
+  function rehead(x, y) { // 그 칸 위 택배의 진행 방향 갱신 (들어온 방향 = p.entry)
+    const c = S.cells[y][x];
+    for (const p of S.packages) {
+      if (p.x !== x || p.y !== y) continue;
+      if (c.type !== 'bridge') { p.heading = headingFor(c, p.entry, x, y, p); continue; }
+      if (laneOf(p) === 'upper') p.heading = c.dir; // 윗길 → 새 방향
+      else { if (parallel(c.dir, p.heading)) p.heading = turnR(c.dir); p.entry = p.heading; } // 아랫길: 아직 수직이면 그대로, 아니면 turnR(새 방향) (스펙 11.12)
+    }
+    UI.dirty.add(x + ',' + y);
+  }
   function cfgSlot(which) { // 1 = 파랑(primary), 2 = 빨강(secondary)
     const c = UI.cfg, type = cfgType(); if (!c || c.mode !== 'slot') return;
     if (!type) { UI.cfg = null; return; }
@@ -624,14 +675,14 @@
     }
     if (!cl) return; if (cl.demolishing) return toast('해체 중입니다');
     if (type === 'splitter' && which === 'secondary') { if (d === cl.dir) return toast('파란 출구와 같은 방향입니다'); cl.red = d; rehead(c.x, c.y); return toast('빨간 출구 ' + ARROWS[d]); }
-    if ((type === 'conveyor' || type === 'fast') && !ownedDirs(type).includes(d)) return toast('해금되지 않은 방향입니다');
+    if ((type === 'conveyor' || type === 'fast' || type === 'bridge') && !ownedDirs(type).includes(d)) return toast('해금되지 않은 방향입니다');
     cl.dir = d; rehead(c.x, c.y); toast('방향 변경 ' + ARROWS[d]);
   }
   const CFG_CANCEL = ['Escape', 'KeyE', 'KeyX', 'KeyQ', 'KeyR', 'KeyB', 'KeyC'];
   function cfgKey(code) { // 설정 중 키 처리. 소비했으면 true (P·T·O 같은 키는 통과)
     const c = UI.cfg; if (!c) return false;
     if (KEYDIR[code]) { if (c.mode === 'dir') cfgDir(KEYDIR[code]); return true; }
-    const dg = /^Digit([1-6])$/.exec(code);
+    const dg = /^Digit([1-7])$/.exec(code);
     if (dg && +dg[1] <= 2 && c.mode === 'slot') { cfgSlot(dg[1] === '1' ? 'primary' : 'secondary'); return true; } // 1/2 = 파랑/빨강 선택
     if (dg) { cancelConfig(); if (+dg[1] - 1 !== UI.slot) selectSlot(+dg[1] - 1); return true; } // 그 외 숫자 = 취소하고 그 슬롯으로 (예전엔 삼켜져서 첫 슬롯에 고정된 것처럼 보였다)
     if (CFG_CANCEL.includes(code)) { cancelConfig(); return true; }
@@ -647,6 +698,7 @@
       case 'conveyor': return ARROWS[c.dir];
       case 'fast': return '고속 ' + ARROWS[c.dir];
       case 'scanner': return '자동 ' + ARROWS[c.dir];
+      case 'bridge': return '브릿지 ' + ARROWS[c.dir];
       case 'table': { const n = S.packages.filter(p => p.x === x && p.y === y && !p.inspected).length; return n ? '검사 대기 ' + n : '검사대'; }
       case 'pallet': return KIND_LABEL[c.kind] + ' ' + c.pile.length + '/' + PALLET_CAP;
       case 'splitter': { const rt = splitterRoutes(x, y), gh = redGhost(c, rt);
@@ -654,7 +706,7 @@
     }
     return '';
   }
-  const barTop = c => (c.type === 'pallet' ? 0.12 + 0.4 * Math.ceil(c.pile.length / 2) : c.type === 'table' ? 0.6 : 0.4) + 0.45; // 타일 윗면(TopHeight) + 0.45 (분배기 화살표가 가려지지 않도록; 화면에서는 카메라 쪽으로 0.15칸 더 당긴다)
+  const barTop = c => (c.type === 'pallet' ? 0.12 + 0.4 * Math.ceil(c.pile.length / 2) : c.type === 'table' ? 0.6 : c.type === 'bridge' ? 1.3 : 0.4) + 0.45; // 타일 윗면(TopHeight) + 0.45 (분배기 화살표가 가려지지 않도록; 화면에서는 카메라 쪽으로 0.15칸 더 당긴다)
 
   // ---------------- HUD ----------------
   const $ = id => document.getElementById(id);
@@ -664,6 +716,7 @@
     table: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="9" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 6.5h6M5 9h4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>',
     pallet: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="5" rx="1" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M2 13.5h12" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><rect x="5" y="3" width="6" height="4" rx="0.8" fill="#fff"/></svg>',
     splitter: '<svg viewBox="0 0 16 16"><path d="M2 8h5l4-4M7 8l4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    bridge: '<svg viewBox="0 0 16 16"><path d="M1.5 5.5h9M8 3l3 2.5L8 8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8v6M12 8v6M2 14.5h12" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>',
     scanner: '<svg viewBox="0 0 16 16"><path d="M3 12V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 8h6" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round"/></svg>',
   };
   let toastTimer;
@@ -723,7 +776,7 @@
     $('statusClose').addEventListener('click', () => { el.hidden = true; });
   }
   $('saveBtn').addEventListener('click', () => { UI.saved = JSON.stringify(S); toast('저장했습니다', 'good'); });
-  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; if (S.minute >= DAY_CLOSE) showSummary(buildSummary()); else $('summary').hidden = true; toast('불러왔습니다', 'good'); });
+  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); loadState(UI.saved); clearTool(); UI.rebuildAll = true; if (S.minute >= DAY_CLOSE) showSummary(buildSummary()); else $('summary').hidden = true; toast('불러왔습니다', 'good'); });
   $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; $('summary').hidden = true; toast('새 게임'); });
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   { const b = $('touchRun'), on = e => { e.preventDefault(); held.add('padRun'); }, off = () => held.delete('padRun'); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); b.addEventListener('contextmenu', e => e.preventDefault()); }
@@ -743,7 +796,7 @@
     if (UI.cfg && cfgKey(k)) { e.preventDefault(); return; }
     if (k === 'KeyE') act(); else if (k === 'KeyX') askDemolish(); else if (k === 'KeyQ') dropTool(); else if (k === 'KeyR') enterConfig();
     else if (k === 'KeyP') $('pauseBtn').click(); else if (k === 'KeyT') $('speedBtn').click(); else if (k === 'KeyB') $('shopBtn').click(); else if (k === 'KeyC') $('statusBtn').click(); else if (k === 'KeyO') $('helpBtn').click();
-    else if (/^Digit[1-6]$/.test(k)) selectSlot(parseInt(k.slice(5), 10) - 1);
+    else if (/^Digit[1-7]$/.test(k)) selectSlot(parseInt(k.slice(5), 10) - 1);
   });
 
   // ---------------- 3D ----------------
@@ -884,6 +937,7 @@
   }
   const cellObjs = new Map(), objLayer = new THREE.Group(); scene.add(objLayer);
   const arrows = [];
+  const bridgePost = lit(srgb(0x5A5F66), { roughness: 0.8 });
   const splitterHub = lit(srgb(0x7A5CC9), { roughness: 0.6 }), splitterPlate = lit(srgb(0x2a2540), { roughness: 0.7 });
   const palletWood = lit(srgb(0xb98a5c), { roughness: 0.95 }), palletSlat = lit(srgb(0x6b4a2e), { roughness: 1 }), palletBlue = lit(srgb(0x3d7be0), { roughness: 0.6 }), palletRed = lit(srgb(0xd95a4a), { roughness: 0.6 });
   function cellMesh(c, x, y) {
@@ -895,6 +949,12 @@
       arrows.push({ pivot, ar, speed: c.type === 'fast' ? 2 : 1, t: Math.random() });
       if (c.type === 'fast') { const s = box(0.9, 0.02, 0.07, lit(0xff5a4a, { emissive: 0xff5a4a, emissiveIntensity: 1.6 }), 0, 0.41, 0); s.rotation.y = yaw; g.add(s); }
       if (c.type === 'scanner') { const sc = make('scanner-low', 0.58, yaw + Math.PI / 2); sc.position.y = 0.02; g.add(sc); const laser = box(0.8, 0.5, 0.02, new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.35 }), 0, 0.6, 0); laser.rotation.y = yaw; laser.castShadow = false; g.add(laser); }
+    } else if (c.type === 'bridge') { // 아랫길(수직 축, 화살표 없음) + 기둥 4개 + 높이 0.9의 윗길(c.dir 축) (스펙 11.12)
+      g.add(make('conveyor-stripe', 1, yawOf(turnR(c.dir)) + BELT_YAW));
+      for (const sx of [-0.42, 0.42]) for (const sz of [-0.42, 0.42]) g.add(box(0.08, 0.9, 0.08, bridgePost, sx, 0.45, sz));
+      const up = make('conveyor-stripe', 1, yaw + BELT_YAW); up.position.y = 0.9; g.add(up);
+      const pivot = new THREE.Group(); pivot.rotation.y = yaw; pivot.position.y = 0.9; const ar = chevron(); pivot.add(ar); g.add(pivot); // 화살표는 0.9 + 0.43에서 흐른다
+      arrows.push({ pivot, ar, speed: 1, t: Math.random() });
     } else if (c.type === 'splitter') {
       g.add(box(0.9, 0.4, 0.9, splitterHub, 0, 0.2, 0)); g.add(box(0.74, 0.02, 0.74, splitterPlate, 0, 0.41, 0));
       const rt = splitterRoutes(x, y); // 파란 출구(연결 안 되면 흐리게) + 빨간 출구(있을 때만). 이웃이 바뀌면 다시 그린다
@@ -953,7 +1013,7 @@
   const pileObjs = new Map(), PILE_Y = [0.12, 0.52, 0.92];
   function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(srgb(0xc9472f), { emissive: srgb(0xc9472f), emissiveIntensity: 0.5 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); const check = box(0.14, 0.02, 0.14, lit(srgb(0x3fa35a), { emissive: srgb(0x3fa35a), emissiveIntensity: 0.5 }), -0.1, 0.46, 0.08); check.name = 'check'; check.visible = false; g.add(check); return g; }
   const markState = (m, p) => { m.getObjectByName('stamp').visible = p.inspected && p.rejected; m.getObjectByName('check').visible = p.inspected && !p.rejected; };
-  const surface = t => t === 'table' ? 0.6 : t === 'inlet' ? 0.22 : 0.4;
+  const surface = (t, lane) => t === 'table' ? 0.6 : t === 'inlet' ? 0.22 : t === 'bridge' ? (lane === 'lower' ? 0.4 : 1.3) : 0.4; // 브릿지: 윗길 1.3 / 아랫길 0.4
   const worker = new THREE.Group(); scene.add(worker);
   let carried, cursor, mixer = null, actions = {}, curAction = null;
   function buildWorker() {
@@ -1034,12 +1094,12 @@
     if (UI.rebuildAll) { rebuildAll(); frameLot(false); UI.rebuildAll = false; UI.dirty.clear(); }
     { const k = 1 - Math.pow(0.02, dt); camera.position.lerp(camPos, k); camLook.lerp(camTarget, k); camera.lookAt(camLook); }
     for (const k of UI.dirty) { const [x, y] = k.split(',').map(Number); rebuildCell(x, y); for (const d of ORDER) { const ax = x + DX[d], ay = y + DY[d]; if (inBounds(ax, ay) && S.cells[ay][ax].type === 'splitter') rebuildCell(ax, ay); } } UI.dirty.clear(); // 이웃이 바뀌면 분배기 출구 화살표도 다시 그린다
-    if (!S.paused && S.minute < DAY_CLOSE) for (const a of arrows) { a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); }
+    { const adv = !S.paused && S.minute < DAY_CLOSE; for (const a of arrows) { if (adv) a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); } } // 일시정지 중에도 화살표는 벨트 위에 보인다(멈춘 채로)
     const seen = new Set();
     for (const p of S.packages) {
       seen.add(p.id); let m = parcelObjs.get(p.id); if (!m) { m = parcelMesh(); parcelLayer.add(m); parcelObjs.set(p.id, m); }
       const dir = p.progress < 0.5 ? p.entry : p.heading, off = p.progress - 0.5;
-      m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); markState(m, p);
+      m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type, p.lane), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); markState(m, p);
     }
     for (const [id, m] of parcelObjs) if (!seen.has(id)) { parcelLayer.remove(m); parcelObjs.delete(id); }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { // 팔레트 더미: 층당 2개, 최대 3층 (레일 위 상자와 같은 크기)
@@ -1063,7 +1123,7 @@
     const r = preview(); let label = null;
     if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = promptLabel(S.worker.carrying, fc.type); else if (r === 'inspect') label = '검사'; else if (r === 'exhausted') label = '집기 (지침)'; else if (r === 'place' || r === 'nomoney') { const tt = UI.tool.type, nm = tt === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[tt]; label = nm + ' 설치' + (tt === 'splitter' ? ' (파랑 ' + ARROWS[UI.tool.dir] + (UI.tool.red && UI.tool.red !== UI.tool.dir ? ' · 빨강 ' + ARROWS[UI.tool.red] : '') + ')' : '') + ' · ₩' + COST[tt] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
     const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney' || r === 'exhausted');
-    if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.25 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
+    if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && fc.type === 'bridge' ? 1.15 : fc && isBuilding(fc) ? 0.25 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     { const bt = cfgBanner(), bn = $('cfgBanner'); if (bt) { if (bn.textContent !== bt) bn.textContent = bt; } bn.hidden = !bt; $('touchRotate').classList.toggle('on', !!bt); }
     updateBars(f);
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
@@ -1076,7 +1136,7 @@
     { const ph = phaseAt(S.minute), mx = maxStamina(), st = Math.max(0, Math.min(mx, w.stamina)) / mx * 100; $('clockText').textContent = S.day + '일차 ' + timeText(S.minute);
       const bd = $('phaseBadge'); bd.hidden = ph === 'working'; bd.textContent = ph === 'lunch' ? '점심시간' : '퇴근'; bd.classList.toggle('closed', ph === 'closed');
       const fl = $('staminaFill'); fl.style.width = st + '%'; fl.className = 'fill' + (st > 50 ? '' : st > 20 ? ' mid' : ' low') + (st < 20 ? ' pulse' : ''); }
-    $('workerText').textContent = (UI.running ? '달리는 중 · ' : '') + (w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + (UI.tool.type === 'splitter' ? ' (파랑 ' + dirLabel('splitter', UI.tool.dir) + (UI.tool.red && UI.tool.red !== UI.tool.dir ? ' · 빨강 ' + ARROWS[UI.tool.red] : '') + ')' : ' ' + dirLabel(UI.tool.type, UI.tool.dir)) + ' 들고 있음 · E로 설치, R 설정' : '빈손 · 1~6으로 도구를 고르세요'));
+    $('workerText').textContent = (UI.running ? '달리는 중 · ' : '') + (w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + (UI.tool.type === 'splitter' ? ' (파랑 ' + dirLabel('splitter', UI.tool.dir) + (UI.tool.red && UI.tool.red !== UI.tool.dir ? ' · 빨강 ' + ARROWS[UI.tool.red] : '') + ')' : ' ' + dirLabel(UI.tool.type, UI.tool.dir)) + ' 들고 있음 · E로 설치, R 설정' : '빈손 · 1~7로 도구를 고르세요'));
     renderer.render(scene, camera);
   }
   loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch' || location.hash === '#status' || location.hash === '#config') selectSlot(0); if (location.hash === '#config') UI.cfg = { mode: 'slot', target: 'cell', x: 3, y: 3, which: 'primary' }; if (location.hash === '#status') togglePanel('statusPanel'); /* #ghost: 빈 칸 = 초록, #ghostred: 점유된 칸 = 빨강 (설치 미리보기 확인용) */ if (location.hash === '#ghost' || location.hash === '#ghostred') { selectSlot(0); S.worker = location.hash === '#ghost' ? { x: 2.0, y: 3.0, facing: 'E', carrying: null, stamina: BASE_STAMINA } : { x: 4.0, y: 2.0, facing: 'E', carrying: null, stamina: BASE_STAMINA }; } UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
