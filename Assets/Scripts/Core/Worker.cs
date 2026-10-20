@@ -20,7 +20,8 @@ namespace ParcelFactory.Core
         Standing,
     }
 
-    /// <summary>작업자 규칙: 해금 부지 안에서 연속 좌표로 걷고(레일·도크 위 통과), 바라보는 칸에 대해 집기/놓기/검사/설치/해체를 한다.</summary>
+    /// <summary>작업자 규칙: 건물 안 12×12 전체를 연속 좌표로 걷고(레일·도크·잠긴 칸 위 통과, 스펙 10.3),
+    /// 바라보는 칸에 대해 집기/놓기/검사/설치/해체를 한다.</summary>
     public sealed class WorkerService
     {
         public const float StartX = 2f, StartY = 4f, Speed = 3.4f, Radius = 0.28f, Reach = 0.8f;
@@ -47,28 +48,28 @@ namespace ParcelFactory.Core
         public (int x, int y) FacingTile() =>
             (Round(Worker.X + Worker.Facing.Dx() * Reach), Round(Worker.Y + Worker.Facing.Dy() * Reach));
 
+        /// <summary>막는 부품(검사대·자동 검사기·분배기·팔레트)만 false. 잠긴 칸은 바닥일 뿐이므로 걸을 수 있다(스펙 10.3).</summary>
         public static bool IsWalkable(CellType t)
         {
             switch (t)
             {
-                case CellType.Empty:
-                case CellType.Conveyor:
-                case CellType.FastConveyor:
-                case CellType.Inlet:
-                case CellType.Outlet:
-                case CellType.ReturnDock:
-                    return true;
-                default:
+                case CellType.Table:
+                case CellType.Scanner:
+                case CellType.Splitter:
+                case CellType.Pallet:
                     return false;
+                default:
+                    return true;
             }
         }
 
-        /// <summary>충돌원(반지름 R)이 해금 부지 안에 있고, 그 사각 외곽이 걸치는 칸이 모두 걸을 수 있으면 true.
+        /// <summary>충돌원(반지름 R)이 격자 안에 있고, 그 사각 외곽이 걸치는 칸이 모두 걸을 수 있으면 true.
         /// 칸 경계에 정확히 닿기만 한 것은 걸친 것으로 보지 않는다(Overlaps와 같은 규칙).</summary>
         public bool CanStand(float px, float py)
         {
-            float lo = -0.5f + Radius, hi = grid.UnlockedSize - 0.5f - Radius;
-            if (!(px >= lo && px <= hi && py >= lo && py <= hi)) return false; // NaN도 여기서 거부
+            float lo = -0.5f + Radius;
+            float hiX = FactoryGrid.Width - 0.5f - Radius, hiY = FactoryGrid.Height - 0.5f - Radius;
+            if (!(px >= lo && px <= hiX && py >= lo && py <= hiY)) return false; // NaN도 여기서 거부
             int x0 = (int)Math.Floor(px - Radius - 0.5f) + 1, x1 = (int)Math.Ceiling(px + Radius + 0.5f) - 1;
             int y0 = (int)Math.Floor(py - Radius - 0.5f) + 1, y1 = (int)Math.Ceiling(py + Radius + 0.5f) - 1;
             return WalkableAt(x0, y0) && WalkableAt(x1, y0) && WalkableAt(x0, y1) && WalkableAt(x1, y1);
@@ -117,9 +118,13 @@ namespace ParcelFactory.Core
             if (Worker.Carrying != null)
             {
                 if (fc.IsDock) return InteractResult.Delivered;
+                if (fc.Type == CellType.Pallet)
+                    return !fc.IsPalletFull && !fc.Demolishing ? InteractResult.PutDown : InteractResult.CannotPutHere;
                 if (fc.IsTrack && !fc.IsOccupied && !fc.Demolishing) return InteractResult.PutDown;
                 return InteractResult.CannotPutHere;
             }
+
+            if (fc.Type == CellType.Pallet && fc.Pallet.Count > 0) return InteractResult.PickedUp;
 
             var p = sim.PackageAt(fx, fy);
             if (p != null)
@@ -130,7 +135,7 @@ namespace ParcelFactory.Core
             return Map(build.Check(fx, fy, tool.Value.Type, tool.Value.Direction));
         }
 
-        /// <summary>우선순위: 운반 중이면 놓기 → 택배가 있으면 검사/집기 → 도구가 있으면 설치. Preview와 같은 결정을 실행한다.</summary>
+        /// <summary>우선순위: 운반 중이면 놓기(도크·팔레트·트랙) → 팔레트 더미·택배가 있으면 집기/검사 → 도구가 있으면 설치. Preview와 같은 결정을 실행한다.</summary>
         public InteractResult Interact(Tool? tool)
         {
             var result = Preview(tool);
@@ -142,15 +147,20 @@ namespace ParcelFactory.Core
                     Worker.Carrying = null;
                     break;
                 case InteractResult.PutDown:
-                    sim.PlaceCarried(Worker.Carrying, fx, fy);
+                    if (grid.Get(fx, fy).Type == CellType.Pallet)
+                    {
+                        if (!sim.PutOnPallet(Worker.Carrying, fx, fy)) throw new InvalidOperationException("Preview said PutDown but pallet refused");
+                    }
+                    else sim.PlaceCarried(Worker.Carrying, fx, fy);
                     Worker.Carrying = null;
                     break;
                 case InteractResult.InspectionRequired:
                     PendingInspection = sim.PackageAt(fx, fy);
                     break;
                 case InteractResult.PickedUp:
-                    var p = sim.PackageAt(fx, fy);
-                    sim.Take(p);
+                    Package p;
+                    if (grid.Get(fx, fy).Type == CellType.Pallet) p = sim.TakeFromPallet(fx, fy);
+                    else { p = sim.PackageAt(fx, fy); sim.Take(p); }
                     Worker.Carrying = p;
                     break;
                 case InteractResult.Placed:

@@ -8,8 +8,12 @@ namespace ParcelFactory.Core
         public const int Height = 12;
         public const int InitialUnlocked = 6;
         public const int InletX = 0, InletY = 2;
-        public const int OutletX = 5, OutletY = 2;
-        public const int ReturnDockX = 5, ReturnDockY = 4;
+        /// <summary>트럭 도크(스펙 10.1): 동쪽 벽 출입구 바로 안쪽. 해금 여부와 무관하게 처음부터 존재한다.</summary>
+        public const int OutletX = 11, OutletY = 2;
+        public const int ReturnDockX = 11, ReturnDockY = 4;
+        /// <summary>시작 팔레트(스펙 10.2): 옛 출고구·반품구 자리. 플레이어가 해체할 수 있다.</summary>
+        public const int StartBluePalletX = 5, StartBluePalletY = 2;
+        public const int StartRedPalletX = 5, StartRedPalletY = 4;
 
         private readonly Cell[,] cells = new Cell[Width, Height];
 
@@ -25,6 +29,16 @@ namespace ParcelFactory.Core
             cells[InletX, InletY].Direction = Direction.East;
             cells[OutletX, OutletY].Type = CellType.Outlet;
             cells[ReturnDockX, ReturnDockY].Type = CellType.ReturnDock;
+
+            SetPallet(cells[StartBluePalletX, StartBluePalletY], PalletKind.Blue);
+            SetPallet(cells[StartRedPalletX, StartRedPalletY], PalletKind.Red);
+        }
+
+        private static void SetPallet(Cell c, PalletKind kind)
+        {
+            c.Type = CellType.Pallet;
+            c.Direction = kind == PalletKind.Blue ? Direction.East : Direction.West;
+            c.PalletKind = kind;
         }
 
         public bool InBounds(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height;
@@ -33,6 +47,7 @@ namespace ParcelFactory.Core
 
         public Cell Get(int x, int y) => cells[x, y];
 
+        /// <summary>잠긴 칸만 빈 칸으로 바꾼다. 도크·팔레트 등 이미 무언가 있는 칸은 건드리지 않는다.</summary>
         public void UnlockRegion(int size)
         {
             if (size < UnlockedSize || size > Width)
@@ -46,7 +61,7 @@ namespace ParcelFactory.Core
 
         public static bool IsPlaceable(CellType type) =>
             type == CellType.Conveyor || type == CellType.FastConveyor || type == CellType.Splitter ||
-            type == CellType.Table || type == CellType.Scanner;
+            type == CellType.Table || type == CellType.Scanner || type == CellType.Pallet;
 
         public bool CanPlace(int x, int y) => IsUnlocked(x, y) && cells[x, y].Type == CellType.Empty;
 
@@ -62,6 +77,8 @@ namespace ParcelFactory.Core
             c.Demolishing = false;
             c.DemolishRemaining = 0f;
             c.SplitterToggle = false;
+            c.PalletKind = type == CellType.Pallet ? Tool.KindOf(dir) : PalletKind.None;
+            c.Pallet.Clear();
         }
 
         public void Clear(int x, int y)
@@ -74,6 +91,8 @@ namespace ParcelFactory.Core
             c.DemolishRemaining = 0f;
             c.SplitterToggle = false;
             c.OccupantId = -1;
+            c.PalletKind = PalletKind.None;
+            c.Pallet.Clear();
         }
     }
 }

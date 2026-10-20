@@ -56,6 +56,7 @@ namespace ParcelFactory.Core
             var c = grid.Get(x, y);
             if (!c.IsBuilding) return BuildResult.NotDemolishable;
             if (c.Demolishing) return BuildResult.AlreadyDemolishing;
+            if (c.Type == CellType.Pallet && c.Pallet.Count > 0) return BuildResult.Occupied; // 더미가 있으면 해체 불가
             c.Demolishing = true;
             c.DemolishRemaining = DemolishSeconds;
             CellChanged?.Invoke(x, y);

@@ -29,10 +29,10 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(3, st.Version);
+            Assert.AreEqual(4, st.Version);
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
-            Assert.AreEqual(4, st.Cells.Count);
+            Assert.AreEqual(6, st.Cells.Count); // 설치한 4개 + 시작 팔레트 2개
             Assert.AreEqual(1, st.Packages.Count);
             Assert.IsTrue(st.Paused);
             Assert.AreEqual(2f, st.Speed);
@@ -177,26 +177,21 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void V2Save_WithIntegerWorkerCoords_IsRead()
+        public void V2Save_IsRejected()
         {
             const string json = "{\"Version\":2,\"Money\":90,\"UnlockedSize\":6,\"Purchased\":[]," +
                 "\"Cells\":[{\"X\":1,\"Y\":2,\"Type\":\"Conveyor\",\"Direction\":\"East\",\"Demolishing\":false,\"DemolishRemaining\":0.0,\"SplitterToggle\":false}]," +
                 "\"Packages\":[],\"SpawnTimer\":0.5,\"NextPackageId\":1,\"DeliveredCount\":0,\"LostCount\":0,\"Paused\":false,\"Speed\":1.0," +
                 "\"Worker\":{\"X\":1,\"Y\":3,\"Facing\":\"West\",\"Carrying\":null}}";
-            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(json));
-            Assert.AreEqual(1f, restored.Worker.Worker.X);
-            Assert.AreEqual(3f, restored.Worker.Worker.Y);
-            Assert.AreEqual(Direction.West, restored.Worker.Worker.Facing);
-            Assert.AreEqual(CellType.Conveyor, restored.Grid.Get(1, 2).Type);
-            Assert.AreEqual(90, restored.Economy.Money);
-            Assert.AreEqual(3, SaveSerializer.Capture(restored).Version);
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(SaveSerializer.FromJson(json)));
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(SaveSerializer.FromJson(json.Replace("\"Version\":2", "\"Version\":3"))));
         }
 
         [Test]
         public void FutureVersion_IsRejected()
         {
             var st = SaveSerializer.Capture(new GameSession());
-            st.Version = 4;
+            st.Version = 5;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
         }
 

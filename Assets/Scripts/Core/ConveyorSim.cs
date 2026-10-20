@@ -102,6 +102,45 @@ namespace ParcelFactory.Core
             return ApplyDelivery(p, dockType);
         }
 
+        /// <summary>팔레트 더미에 쌓인 택배 수. 팔레트가 아니면 0.</summary>
+        public int PalletCount(int x, int y)
+        {
+            if (!grid.InBounds(x, y)) return 0;
+            var c = grid.Get(x, y);
+            return c.Type == CellType.Pallet ? c.Pallet.Count : 0;
+        }
+
+        /// <summary>팔레트 맨 위(마지막에 쌓인) 택배를 꺼낸다. 비었거나 팔레트가 아니면 null. 소실로 세지 않는다.</summary>
+        public Package TakeFromPallet(int x, int y)
+        {
+            if (!grid.InBounds(x, y)) return null;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Pallet || c.Pallet.Count == 0) return null;
+            var p = c.Pallet[c.Pallet.Count - 1];
+            c.Pallet.RemoveAt(c.Pallet.Count - 1);
+            return p;
+        }
+
+        /// <summary>들고 있던 택배를 팔레트 더미에 올린다. 팔레트가 아니거나 가득 찼거나 해체 중이면 false.</summary>
+        public bool PutOnPallet(Package p, int x, int y)
+        {
+            if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
+            if (!grid.InBounds(x, y)) return false;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Pallet || c.IsPalletFull || c.Demolishing) return false;
+            Stack(p, c, x, y);
+            return true;
+        }
+
+        private static void Stack(Package p, Cell pallet, int x, int y)
+        {
+            p.X = x;
+            p.Y = y;
+            p.Progress = 0f;
+            p.EntryHeading = p.Heading;
+            pallet.Pallet.Add(p);
+        }
+
         /// <summary>분배기는 자기 방향 기준 좌·우로 번갈아 내보내되, 들어온 방향의 정반대로는 절대 내보내지 않는다.</summary>
         private static Direction HeadingFor(Cell cell, Direction incoming)
         {
@@ -133,6 +172,15 @@ namespace ParcelFactory.Core
 
                 var next = grid.Get(nx, ny);
                 if (next.IsDock) { Deliver(i, p, next.Type); i--; continue; }
+                if (next.Type == CellType.Pallet)
+                {
+                    if (next.IsPalletFull || next.Demolishing) continue; // 대기
+                    cell.OccupantId = -1;
+                    packages.RemoveAt(i);
+                    i--;
+                    Stack(p, next, nx, ny); // 흐름에서 빠져 더미로. 팔레트에서 레일로 유출은 없다.
+                    continue;
+                }
                 if (!next.IsTrack || next.Type == CellType.Inlet) { Lose(i, p); i--; continue; }
                 if (next.IsOccupied || next.Demolishing) continue; // 대기
 
@@ -147,11 +195,21 @@ namespace ParcelFactory.Core
             }
         }
 
+        /// <summary>칸 위의 택배를 모두 소실 처리한다. 팔레트 더미도 비운다(해체는 더미가 있으면 막히지만 안전망).</summary>
         public void RemovePackagesAt(int x, int y)
         {
             for (int i = packages.Count - 1; i >= 0; i--)
                 if (packages[i].X == x && packages[i].Y == y)
                     Lose(i, packages[i]);
+            if (!grid.InBounds(x, y)) return;
+            var pile = grid.Get(x, y).Pallet;
+            while (pile.Count > 0)
+            {
+                var p = pile[pile.Count - 1];
+                pile.RemoveAt(pile.Count - 1);
+                LostCount++;
+                PackageLost?.Invoke(p);
+            }
         }
 
         private int ApplyDelivery(Package p, CellType dockType)

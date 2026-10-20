@@ -116,14 +116,16 @@ namespace ParcelFactory.Core.Tests
         public void ReturnDock_PaysForRejectedBad()
         {
             var sim = NewSim(1.0);
+            grid.UnlockRegion(12);
+            grid.Clear(5, 4); // 시작 팔레트를 치우고 트럭 도크 (11,4)까지 레일
             grid.Place(1, 2, CellType.Conveyor, Direction.North);
             grid.Place(1, 3, CellType.Conveyor, Direction.North);
-            for (int x = 1; x <= 4; x++) grid.Place(x, 4, CellType.Conveyor, Direction.East);
+            for (int x = 1; x <= 10; x++) grid.Place(x, 4, CellType.Conveyor, Direction.East);
             Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
             p.Inspect(true);
             DeliveryOutcome seen = DeliveryOutcome.Delivered; int seenDelta = 0;
             sim.PackageDelivered += (pk, o, d) => { seen = o; seenDelta = d; };
-            for (int i = 0; i < 8; i++) sim.Tick(1f);
+            for (int i = 0; i < 14; i++) sim.Tick(1f);
             Assert.AreEqual(0, sim.Packages.Count);
             Assert.AreEqual(5, economy.Money);
             Assert.AreEqual(DeliveryOutcome.ReturnedBad, seen);
@@ -135,9 +137,11 @@ namespace ParcelFactory.Core.Tests
         public void Outlet_UninspectedGoesNegative()
         {
             var sim = NewSim(0.0);
-            for (int x = 1; x <= 4; x++) grid.Place(x, 2, CellType.Conveyor, Direction.East);
+            grid.UnlockRegion(12);
+            grid.Clear(5, 2);
+            for (int x = 1; x <= 10; x++) grid.Place(x, 2, CellType.Conveyor, Direction.East);
             Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out _));
-            for (int i = 0; i < 5; i++) sim.Tick(1f);
+            for (int i = 0; i < 12; i++) sim.Tick(1f);
             Assert.AreEqual(-10, economy.Money);
             Assert.AreEqual(0, sim.DeliveredCount);
         }

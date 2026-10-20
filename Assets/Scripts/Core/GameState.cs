@@ -29,6 +29,10 @@ namespace ParcelFactory.Core
         public bool Demolishing;
         public float DemolishRemaining;
         public bool SplitterToggle;
+        /// <summary>팔레트 종류(None/Blue/Red). v4.</summary>
+        public string PalletKind;
+        /// <summary>팔레트 더미(아래 → 위). 팔레트가 아니면 null. v4.</summary>
+        public List<PackageState> Pallet;
     }
 
     public sealed class PackageState
@@ -51,7 +55,7 @@ namespace ParcelFactory.Core
 
     public sealed class WorkerState
     {
-        /// <summary>연속 좌표(칸 단위). v2 저장의 정수 좌표는 그대로 칸 중심으로 읽힌다.</summary>
+        /// <summary>연속 좌표(칸 단위).</summary>
         public float X;
         public float Y;
         public string Facing;

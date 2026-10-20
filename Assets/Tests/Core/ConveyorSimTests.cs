@@ -105,17 +105,19 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Delivery_RemovesPackageAndPays()
         {
-            for (int x = 1; x <= 4; x++) Rail(x, 2, Direction.East);
+            grid.UnlockRegion(12);
+            grid.Clear(5, 2); // 시작 팔레트를 치우고 트럭 도크 (11,2)까지 레일
+            for (int x = 1; x <= 10; x++) Rail(x, 2, Direction.East);
             var p = SpawnAtInlet();
             p.Inspect(false);
             var delivered = new List<Package>();
             sim.PackageDelivered += (pk, outcome, delta) => delivered.Add(pk);
-            for (int i = 0; i < 5; i++) sim.Tick(1f);
+            for (int i = 0; i < 11; i++) sim.Tick(1f);
             Assert.AreEqual(0, sim.Packages.Count);
             Assert.AreEqual(15, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);
             Assert.AreSame(p, delivered[0]);
-            Assert.AreEqual(-1, grid.Get(4, 2).OccupantId);
+            Assert.AreEqual(-1, grid.Get(10, 2).OccupantId);
         }
 
         [Test]
@@ -259,11 +261,12 @@ namespace ParcelFactory.Core.Tests
         {
             for (int x = 1; x <= 4; x++) Rail(x, 2, Direction.East);
             var a = SpawnAtInlet();
-            for (int i = 0; i < 4; i++) sim.Tick(1f); // a는 (4,2)에서 배달 대기
+            for (int i = 0; i < 4; i++) sim.Tick(1f); // a는 (4,2) 끝에서 팔레트 (5,2) 진입 직전
             Assert.AreEqual((4, 2), (a.X, a.Y));
             var b = SpawnAtInlet();
             sim.Tick(1f);
-            Assert.AreEqual(1, sim.Packages.Count); // a 배달됨
+            Assert.AreEqual(1, sim.Packages.Count); // a는 팔레트 더미로
+            Assert.AreEqual(1, sim.PalletCount(5, 2));
             Assert.AreEqual((1, 2), (b.X, b.Y));
             Assert.AreEqual(0f, b.Progress, 1e-4f); // 같은 틱에 따라 이동
         }

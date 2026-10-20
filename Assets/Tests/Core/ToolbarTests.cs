@@ -16,7 +16,8 @@ namespace ParcelFactory.Core.Tests
             Assert.IsFalse(t.Owns(CellType.Splitter, Direction.East));
             Assert.IsTrue(t.Owns(CellType.Table, Direction.West));
             Assert.IsFalse(t.Owns(CellType.Scanner, Direction.East));
-            Assert.AreEqual(5, t.OwnedTools().Count());
+            Assert.IsTrue(t.Owns(CellType.Pallet, Direction.East));
+            Assert.AreEqual(7, t.OwnedTools().Count()); // 레일 → + 팔레트 2 + 검사대 4
         }
 
         [Test]
@@ -35,7 +36,7 @@ namespace ParcelFactory.Core.Tests
             t.Add(CellType.Splitter, Direction.East);
             Assert.IsTrue(t.SplitterOwned);
             Assert.IsTrue(t.Owns(CellType.Splitter, Direction.West));
-            Assert.AreEqual(9, t.OwnedTools().Count());
+            Assert.AreEqual(11, t.OwnedTools().Count());
         }
 
         [Test]
@@ -46,10 +47,11 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(t.ScannerOwned);
             Assert.IsTrue(t.Owns(CellType.Scanner, Direction.South));
             var tools = t.OwnedTools().ToList();
-            Assert.AreEqual(9, tools.Count);
+            Assert.AreEqual(11, tools.Count);
             Assert.AreEqual(CellType.Conveyor, tools[0].Type);
-            Assert.AreEqual(CellType.Table, tools[1].Type);
-            Assert.AreEqual(CellType.Scanner, tools[5].Type);
+            Assert.AreEqual(CellType.Pallet, tools[1].Type);
+            Assert.AreEqual(CellType.Table, tools[3].Type);
+            Assert.AreEqual(CellType.Scanner, tools[7].Type);
         }
 
         [Test]

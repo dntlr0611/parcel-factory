@@ -13,6 +13,7 @@ namespace ParcelFactory.Core
                 case CellType.Splitter: return 60;
                 case CellType.Table: return 40;
                 case CellType.Scanner: return 120;
+                case CellType.Pallet: return 20;
                 default: throw new ArgumentException($"{type} is not buildable", nameof(type));
             }
         }

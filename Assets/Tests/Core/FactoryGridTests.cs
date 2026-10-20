@@ -12,7 +12,8 @@ namespace ParcelFactory.Core.Tests
             var g = new FactoryGrid();
             Assert.AreEqual(CellType.Inlet, g.Get(0, 2).Type);
             Assert.AreEqual(Direction.East, g.Get(0, 2).Direction);
-            Assert.AreEqual(CellType.Outlet, g.Get(5, 2).Type);
+            Assert.AreEqual(CellType.Outlet, g.Get(11, 2).Type);
+            Assert.AreEqual(CellType.Pallet, g.Get(5, 2).Type);
         }
 
         [Test]
@@ -103,7 +104,7 @@ namespace ParcelFactory.Core.Tests
         {
             var g = new FactoryGrid();
             Assert.Throws<InvalidOperationException>(() => g.Clear(0, 2));
-            Assert.Throws<InvalidOperationException>(() => g.Clear(5, 2));
+            Assert.Throws<InvalidOperationException>(() => g.Clear(11, 2));
         }
 
         [Test]
@@ -118,11 +119,13 @@ namespace ParcelFactory.Core.Tests
         public void NewGrid_HasReturnDockFixed()
         {
             var g = new FactoryGrid();
-            Assert.AreEqual(CellType.ReturnDock, g.Get(5, 4).Type);
-            Assert.IsTrue(g.Get(5, 4).IsDock);
-            Assert.IsTrue(g.Get(5, 2).IsDock);
+            Assert.AreEqual(CellType.ReturnDock, g.Get(11, 4).Type);
+            Assert.IsTrue(g.Get(11, 4).IsDock);
+            Assert.IsTrue(g.Get(11, 2).IsDock);
             Assert.IsFalse(g.Get(0, 2).IsDock);
-            Assert.Throws<InvalidOperationException>(() => g.Clear(5, 4));
+            Assert.IsFalse(g.Get(5, 4).IsDock); // 옛 반품구 자리는 이제 팔레트
+            Assert.Throws<InvalidOperationException>(() => g.Clear(11, 4));
+            Assert.IsFalse(g.CanPlace(11, 4));
             Assert.IsFalse(g.CanPlace(5, 4));
         }
 

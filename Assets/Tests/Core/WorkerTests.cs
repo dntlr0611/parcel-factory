@@ -43,17 +43,16 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Move_StopsAtUnlockedBoundary()
+        public void Move_StopsAtGridBoundary_NotUnlockedBoundary()
         {
-            Assert.IsFalse(ws.Move(0f, 1f, 0.5f)); // 1.7칸 → 5.7은 경계 밖이라 취소
+            Assert.IsTrue(ws.Move(0f, 1f, 0.5f)); // 4 → 5.7: 잠긴 칸도 바닥이라 걸을 수 있다
+            Assert.Greater(ws.Worker.Y, 5.5f);
+            MoveRepeatedly(0f, 1f, 40);
+            Assert.LessOrEqual(ws.Worker.Y, 11.5f - R + 1e-4f); // 11.22
+            Assert.Greater(ws.Worker.Y, 11f);
             Assert.IsFalse(ws.Move(0f, 1f, 0.5f));
-            Assert.LessOrEqual(ws.Worker.Y, 5.5f - R + 1e-4f);
-            MoveRepeatedly(0f, 1f, 20);
-            Assert.LessOrEqual(ws.Worker.Y, 5.5f - R + 1e-4f); // 5.22
-            Assert.Greater(ws.Worker.Y, 5f);
             Assert.AreEqual(Direction.North, ws.Worker.Facing);
-            var (fx, fy) = ws.FacingTile();
-            Assert.IsTrue(grid.InBounds(fx, fy));
+            Assert.AreEqual(InteractResult.NoFloor, ws.Preview(null)); // (2,12)은 격자 밖
         }
 
         [Test]
@@ -100,7 +99,7 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Move_WalksOntoInlet_ButNotIntoLockedCells()
+        public void Move_WalksOntoInlet_AndIntoLockedCells()
         {
             ws.Worker.X = 0f; ws.Worker.Y = 3f;
             MoveRepeatedly(0f, -1f, 3); // 3 → 1.98
@@ -109,9 +108,10 @@ namespace ParcelFactory.Core.Tests
 
             ws.Worker.X = 4f; ws.Worker.Y = 3f;
             MoveRepeatedly(1f, 0f, 20);
-            Assert.LessOrEqual(ws.Worker.X, 5.5f - R + 1e-4f);
-            Assert.AreEqual(5, ws.Tile().x);
-            Assert.IsFalse(ws.CanStand(6f, 3f));
+            Assert.LessOrEqual(ws.Worker.X, 11.5f - R + 1e-4f);
+            Assert.AreEqual(11, ws.Tile().x);
+            Assert.IsTrue(ws.CanStand(6f, 3f));
+            Assert.IsFalse(ws.CanStand(12f, 3f));
             Assert.IsFalse(ws.CanStand(-0.3f, 3f));
             Assert.IsFalse(ws.CanStand(float.NaN, 3f));
         }
@@ -119,9 +119,9 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void IsWalkable_PerSpec()
         {
-            foreach (var t in new[] { CellType.Empty, CellType.Conveyor, CellType.FastConveyor, CellType.Inlet, CellType.Outlet, CellType.ReturnDock })
+            foreach (var t in new[] { CellType.Empty, CellType.Locked, CellType.Conveyor, CellType.FastConveyor, CellType.Inlet, CellType.Outlet, CellType.ReturnDock })
                 Assert.IsTrue(WorkerService.IsWalkable(t), t.ToString());
-            foreach (var t in new[] { CellType.Locked, CellType.Splitter, CellType.Table, CellType.Scanner })
+            foreach (var t in new[] { CellType.Splitter, CellType.Table, CellType.Scanner, CellType.Pallet })
                 Assert.IsFalse(WorkerService.IsWalkable(t), t.ToString());
         }
 
@@ -216,7 +216,7 @@ namespace ParcelFactory.Core.Tests
             p.Inspect(false);
             ws.Worker.X = 0; ws.Worker.Y = 3; ws.Worker.Facing = Direction.South;
             Assert.AreEqual(InteractResult.PickedUp, ws.Interact(null));
-            ws.Worker.X = 4; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East; // 출고구 (5,2)
+            ws.Worker.X = 10; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East; // 트럭 도크 출고 (11,2)
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
             Assert.IsNull(ws.Worker.Carrying);
             Assert.AreEqual(215, economy.Money);
@@ -346,7 +346,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(InteractResult.CannotPutHere, ws.Preview(new Tool(CellType.Conveyor, Direction.East))); AssertUnchanged(190, 0, p);
             ws.Worker.Facing = Direction.South; // (2,3) 검사대, 비어 있음
             Assert.AreEqual(InteractResult.PutDown, ws.Preview(null)); AssertUnchanged(190, 0, p);
-            ws.Worker.X = 4; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East; // (5,4) 반품구
+            ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East; // (11,4) 반품구
             Assert.AreEqual(InteractResult.Delivered, ws.Preview(null)); AssertUnchanged(190, 0, p);
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
             Assert.AreEqual(185, economy.Money); // 승인된 정상 택배를 반품구에 → −5
@@ -377,7 +377,7 @@ namespace ParcelFactory.Core.Tests
             var bad = new PackageFactory(new Random(1), 1.0).Create(50, 0, 0, Direction.East);
             bad.Inspect(true);
             ws.Worker.Carrying = bad;
-            ws.Worker.X = 4; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
+            ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
             Assert.AreEqual(205, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);

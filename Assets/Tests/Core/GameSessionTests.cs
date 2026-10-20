@@ -25,26 +25,30 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void StraightLine_UninspectedDeliveryIsPenalized()
         {
-            var s = new GameSession(new Economy(), new PackageFactory(new Random(1), 0.0));
-            for (int x = 1; x <= 4; x++)
+            var s = new GameSession(new Economy(200), new PackageFactory(new Random(1), 0.0));
+            s.Unlocks.Grant(UnlockId.Plot2);
+            s.Grid.Clear(5, 2); // 시작 팔레트를 치우고 트럭 도크 (11,2)까지 레일
+            for (int x = 1; x <= 10; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
-            Assert.AreEqual(60, s.Economy.Money);
-            for (int i = 0; i < 180; i++) s.Tick(0.05f); // 9초: 3초에 생성, 5초 이동, 검사 없이 출고 → −10
-            Assert.AreEqual(50, s.Economy.Money);
+            Assert.AreEqual(100, s.Economy.Money);
+            for (int i = 0; i < 290; i++) s.Tick(0.05f); // 14.5초: 3초에 생성, 11초 이동, 검사 없이 출고 → −10
+            Assert.AreEqual(90, s.Economy.Money);
             Assert.AreEqual(0, s.Sim.DeliveredCount);
         }
 
         [Test]
         public void StraightLine_WithScanner_Earns15()
         {
-            var s = new GameSession(new Economy(300), new PackageFactory(new Random(1), 0.0));
+            var s = new GameSession(new Economy(400), new PackageFactory(new Random(1), 0.0));
+            s.Unlocks.Grant(UnlockId.Plot2);
+            s.Grid.Clear(5, 2);
             s.Toolbar.Add(CellType.Scanner, Direction.East);
             Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 2, CellType.Scanner, Direction.East));
-            for (int x = 2; x <= 4; x++)
+            for (int x = 2; x <= 10; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
-            Assert.AreEqual(150, s.Economy.Money);
-            for (int i = 0; i < 180; i++) s.Tick(0.05f);
-            Assert.AreEqual(165, s.Economy.Money);
+            Assert.AreEqual(190, s.Economy.Money);
+            for (int i = 0; i < 290; i++) s.Tick(0.05f);
+            Assert.AreEqual(205, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
 
@@ -98,7 +102,11 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(InteractResult.InspectionRequired, s.Worker.Interact(null));
             Assert.IsTrue(s.Worker.Inspect(false));
             Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
-            s.Worker.Worker.X = 4; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East;
+            s.Worker.Worker.X = 4; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East; // 파랑 팔레트 (5,2)
+            Assert.AreEqual(InteractResult.PutDown, s.Worker.Interact(null));
+            Assert.AreEqual(1, s.Sim.PalletCount(5, 2));
+            Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
+            s.Worker.Worker.X = 10; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East; // 트럭 도크 (11,2)
             Assert.AreEqual(InteractResult.Delivered, s.Worker.Interact(null));
             Assert.AreEqual(75, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);

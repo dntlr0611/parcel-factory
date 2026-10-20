@@ -12,9 +12,9 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        public const int CurrentVersion = 3;
-        /// <summary>읽을 수 있는 가장 오래된 버전. v2는 작업자 좌표가 정수였을 뿐 구조가 같다.</summary>
-        public const int MinReadableVersion = 2;
+        public const int CurrentVersion = 4;
+        /// <summary>읽을 수 있는 가장 오래된 버전. v4(팔레트·트럭 도크 좌표) 미만은 거부한다(스펙 10.4).</summary>
+        public const int MinReadableVersion = 4;
 
         public static GameState Capture(GameSession s)
         {
@@ -40,6 +40,12 @@ namespace ParcelFactory.Core
                 {
                     var c = s.Grid.Get(x, y);
                     if (!c.IsBuilding) continue;
+                    List<PackageState> pile = null;
+                    if (c.Type == CellType.Pallet)
+                    {
+                        pile = new List<PackageState>();
+                        foreach (var p in c.Pallet) pile.Add(ToState(p));
+                    }
                     st.Cells.Add(new CellState
                     {
                         X = x, Y = y,
@@ -48,6 +54,8 @@ namespace ParcelFactory.Core
                         Demolishing = c.Demolishing,
                         DemolishRemaining = c.DemolishRemaining,
                         SplitterToggle = c.SplitterToggle,
+                        PalletKind = c.PalletKind.ToString(),
+                        Pallet = pile,
                     });
                 }
             }
@@ -93,6 +101,12 @@ namespace ParcelFactory.Core
             foreach (var id in ids)
                 s.Unlocks.Grant(id);
 
+            // 새 세션은 시작 팔레트를 갖고 있다. 저장된 건물 목록이 전부이므로(철거된 시작 팔레트 포함) 먼저 비운다.
+            for (int x = 0; x < FactoryGrid.Width; x++)
+                for (int y = 0; y < FactoryGrid.Height; y++)
+                    if (s.Grid.Get(x, y).IsBuilding) s.Grid.Clear(x, y);
+
+            int maxId = -1;
             foreach (var c in st.Cells)
             {
                 var type = ParseDefined<CellType>(c.Type);
@@ -104,9 +118,26 @@ namespace ParcelFactory.Core
                 cell.Demolishing = c.Demolishing;
                 cell.DemolishRemaining = c.DemolishRemaining;
                 cell.SplitterToggle = c.SplitterToggle;
+                if (type == CellType.Pallet)
+                {
+                    var kind = ParseDefined<PalletKind>(c.PalletKind);
+                    if (kind == PalletKind.None) throw new SaveVersionException($"pallet at ({c.X},{c.Y}) has no kind");
+                    cell.PalletKind = kind;
+                    var pile = c.Pallet ?? new List<PackageState>();
+                    if (pile.Count > Cell.PalletCapacity)
+                        throw new SaveVersionException($"pallet at ({c.X},{c.Y}) holds {pile.Count} > {Cell.PalletCapacity}");
+                    foreach (var ps in pile)
+                    {
+                        var pk = FromState(ps);
+                        pk.X = c.X; pk.Y = c.Y;
+                        cell.Pallet.Add(pk); // 더미는 흐름(Sim.Packages)에 넣지 않는다
+                        if (pk.Id > maxId) maxId = pk.Id;
+                    }
+                }
+                else if (c.Pallet != null && c.Pallet.Count > 0)
+                    throw new SaveVersionException($"non-pallet cell ({c.X},{c.Y}) has a pile");
             }
 
-            int maxId = -1;
             foreach (var p in st.Packages)
             {
                 if (!s.Grid.InBounds(p.X, p.Y))
