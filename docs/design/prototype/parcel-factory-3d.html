@@ -630,7 +630,7 @@
     }
     return '';
   }
-  const barTop = c => (c.type === 'pallet' ? 0.12 + 0.4 * Math.ceil(c.pile.length / 2) : c.type === 'table' ? 0.6 : 0.4) + 0.25; // 타일 윗면(TopHeight) + 0.25
+  const barTop = c => (c.type === 'pallet' ? 0.12 + 0.4 * Math.ceil(c.pile.length / 2) : c.type === 'table' ? 0.6 : 0.4) + 0.45; // 타일 윗면(TopHeight) + 0.45 (분배기 화살표가 가려지지 않도록; 화면에서는 카메라 쪽으로 0.15칸 더 당긴다)
 
   // ---------------- HUD ----------------
   const $ = id => document.getElementById(id);
@@ -950,7 +950,7 @@
       const faced = x === f.x && y === f.y && !c.demolishing, html = barInfo(c, x, y) + (faced ? ' · R 설정' : '');
       if (html !== b.html) { b.html = html; b.el.innerHTML = html; }
       if (faced !== b.on) { b.on = faced; b.el.classList.toggle('on', faced); }
-      tmpV.set(W(x), barTop(c), Z(y)).project(camera);
+      tmpV.set(W(x), barTop(c), Z(y) + 0.15).project(camera); // 분배기 허브 앞쪽 화살표가 보이도록 0.15칸 뒤로
       const hid = tmpV.z > 1; if (hid !== b.hid) { b.hid = hid; b.el.hidden = hid; }
       if (!hid) b.el.style.transform = 'translate(' + ((tmpV.x + 1) / 2 * cw).toFixed(1) + 'px,' + ((1 - tmpV.y) / 2 * ch - 4).toFixed(1) + 'px) translate(-50%,-100%)';
     }
