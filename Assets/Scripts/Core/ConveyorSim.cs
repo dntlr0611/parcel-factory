@@ -49,7 +49,7 @@ namespace ParcelFactory.Core
             var cell = grid.Get(x, y);
             if (!cell.IsTrack || cell.IsOccupied || cell.Demolishing) return false;
 
-            var heading = HeadingFor(cell, cell.Direction);
+            var heading = HeadingFor(x, y, cell.Direction);
             package = factory.Create(NextId++, x, y, heading);
             package.Kind = kind;
             cell.OccupantId = package.Id;
@@ -100,7 +100,7 @@ namespace ParcelFactory.Core
             p.X = x;
             p.Y = y;
             p.Progress = 0f;
-            p.Heading = HeadingFor(cell, cell.Direction);
+            p.Heading = HeadingFor(x, y, cell.Direction);
             p.EntryHeading = p.Heading;
             cell.OccupantId = p.Id;
             packages.Add(p);
@@ -153,17 +153,38 @@ namespace ParcelFactory.Core
             pallet.Pallet.Add(p);
         }
 
-        /// <summary>분배기는 자기 방향 기준 좌·우로 번갈아 내보내되, 들어온 방향의 정반대로는 절대 내보내지 않는다.</summary>
-        private static Direction HeadingFor(Cell cell, Direction incoming)
+        /// <summary>분배기 출구 후보(스펙 11.6). 분배기 방향 기준 왼쪽 → 앞 → 오른쪽 → 뒤 순서로,
+        /// (a) 택배가 들어온 방향의 정반대가 아니고(incoming이 null이면 제외 없음) (b) 격자 안이며
+        /// (c) 택배를 받는 칸(레일·고속·검사대·자동 검사기·분배기, 팔레트, 트럭 도크)인 이웃 방향만 남긴다.
+        /// 뒤쪽은 옆에서 들어온 택배를 T자 줄기로 내보낼 때만 쓰인다(정면 진입이면 뒤 = 되돌아감이라 제외).</summary>
+        public static List<Direction> SplitterOutputs(FactoryGrid grid, int x, int y, Direction? incoming)
         {
+            var result = new List<Direction>(4);
+            var d = grid.Get(x, y).Direction;
+            foreach (var cand in new[] { d.TurnLeft(), d, d.TurnRight(), d.Opposite() })
+            {
+                if (incoming.HasValue && cand == incoming.Value.Opposite()) continue;
+                int nx = x + cand.Dx(), ny = y + cand.Dy();
+                if (!grid.InBounds(nx, ny)) continue;
+                if (AcceptsFromSplitter(grid.Get(nx, ny))) result.Add(cand);
+            }
+            return result;
+        }
+
+        /// <summary>분배기가 출구로 삼는 칸. 반입구(Inlet)는 트랙이지만 들어가면 소실되므로 제외한다.</summary>
+        private static bool AcceptsFromSplitter(Cell c) =>
+            (c.IsTrack && c.Type != CellType.Inlet) || c.Type == CellType.Pallet || c.IsDock;
+
+        /// <summary>분배기는 연결된 출구로 라운드로빈 분배한다(스펙 11.6). 후보가 없으면 분배기 방향(그 앞이 비면 소실).</summary>
+        private Direction HeadingFor(int x, int y, Direction incoming)
+        {
+            var cell = grid.Get(x, y);
             if (cell.Type != CellType.Splitter) return cell.Direction;
-            var left = cell.Direction.TurnLeft();
-            var right = cell.Direction.TurnRight();
-            var chosen = cell.SplitterToggle ? right : left;
-            var other = cell.SplitterToggle ? left : right;
-            if (chosen == incoming.Opposite()) chosen = other;
-            cell.SplitterToggle = !cell.SplitterToggle;
-            return chosen;
+            var outs = SplitterOutputs(grid, x, y, incoming);
+            if (outs.Count == 0) return cell.Direction;
+            int i = cell.SplitterIndex % outs.Count;
+            cell.SplitterIndex = i + 1; // 나머지로 줄여 저장해 오버플로를 막는다(순서는 동일)
+            return outs[i];
         }
 
         public void Tick(float dt)
@@ -202,7 +223,7 @@ namespace ParcelFactory.Core
                 p.Y = ny;
                 p.Progress = 0f;
                 p.EntryHeading = p.Heading;
-                p.Heading = HeadingFor(next, p.Heading);
+                p.Heading = HeadingFor(nx, ny, p.Heading);
                 if (next.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
             }
         }

@@ -103,6 +103,59 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
+        private static int ChevronCount(GameObject view)
+        {
+            int n = 0;
+            foreach (Transform t in view.transform) if (t.name == "Chevron") n++;
+            return n;
+        }
+
+        [UnityTest]
+        public IEnumerator SplitterView_ShowsArrowPerConnectedOutput_AndUpdatesWithNeighbours()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Economy.Adjust(10000);
+                Assert.AreEqual(ParcelFactory.Core.UnlockResult.Ok, s.Unlocks.TryPurchase(ParcelFactory.Core.UnlockId.Splitter));
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 4, ParcelFactory.Core.CellType.Splitter, ParcelFactory.Core.Direction.East));
+                yield return null;
+                var view = FindCellView("Splitter", 3, 4);
+                Assert.IsNotNull(view, "splitter view not created");
+                Assert.IsNotNull(view.transform.Find("SplitterHub"), "splitter hub missing");
+                Assert.IsNotNull(view.transform.Find("SplitterPlate"), "splitter top plate missing");
+                Assert.AreEqual(0, ChevronCount(view), "no connected outputs → no arrows");
+
+                // 북(3,5)·남(3,3)에 레일을 놓으면 이웃 변경으로 분배기 뷰가 다시 그려져 화살표 2개.
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 5, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 3, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
+                yield return null;
+                view = FindCellView("Splitter", 3, 4);
+                Assert.AreEqual(2, ChevronCount(view));
+                // 남쪽 화살표는 허브 중심에서 남쪽으로 0.3.
+                bool south = false;
+                foreach (Transform t in view.transform)
+                    if (t.name == "Chevron" && Mathf.Abs(t.localPosition.z + 0.3f) < 1e-3f) south = true;
+                Assert.IsTrue(south, "south arrow missing");
+
+                // 남쪽 레일 해체 완료(2초) → 화살표 1개.
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.BeginDemolish(3, 3));
+                s.Build.Tick(ParcelFactory.Core.BuildService.DemolishSeconds + 0.1f);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(3, 3).Type);
+                yield return null;
+                view = FindCellView("Splitter", 3, 4);
+                Assert.AreEqual(1, ChevronCount(view));
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator TouchControls_StayInsideCanvas()
         {

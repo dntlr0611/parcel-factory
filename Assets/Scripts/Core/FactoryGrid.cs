@@ -76,7 +76,7 @@ namespace ParcelFactory.Core
             c.Direction = dir;
             c.Demolishing = false;
             c.DemolishRemaining = 0f;
-            c.SplitterToggle = false;
+            c.SplitterIndex = 0;
             c.PalletKind = type == CellType.Pallet ? Tool.KindOf(dir) : PalletKind.None;
             c.Pallet.Clear();
         }
@@ -89,7 +89,7 @@ namespace ParcelFactory.Core
             c.Type = CellType.Empty;
             c.Demolishing = false;
             c.DemolishRemaining = 0f;
-            c.SplitterToggle = false;
+            c.SplitterIndex = 0;
             c.OccupantId = -1;
             c.PalletKind = PalletKind.None;
             c.Pallet.Clear();

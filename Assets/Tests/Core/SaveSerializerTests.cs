@@ -95,14 +95,34 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void SplitterToggle_SurvivesRoundTrip()
+        public void SplitterIndex_SurvivesRoundTrip()
         {
             var s = new GameSession(new Economy(5000));
             s.Unlocks.TryPurchase(UnlockId.Splitter);
             s.Build.TryPlace(1, 2, CellType.Splitter, Direction.East);
-            s.Grid.Get(1, 2).SplitterToggle = true;
-            var restored = SaveSerializer.Restore(SaveSerializer.Capture(s));
-            Assert.IsTrue(restored.Grid.Get(1, 2).SplitterToggle);
+            s.Grid.Get(1, 2).SplitterIndex = 2;
+            var json = SaveSerializer.ToJson(SaveSerializer.Capture(s));
+            var restored = SaveSerializer.Restore(SaveSerializer.FromJson(json));
+            Assert.AreEqual(2, restored.Grid.Get(1, 2).SplitterIndex);
+            Assert.AreEqual(6, SaveSerializer.CurrentVersion); // 기본값 0인 필드 추가라 버전은 그대로
+        }
+
+        [Test]
+        public void SplitterIndex_MissingInOldV6Save_DefaultsToZero_AndNegativeIsRejected()
+        {
+            var s = new GameSession(new Economy(5000));
+            s.Unlocks.TryPurchase(UnlockId.Splitter);
+            s.Build.TryPlace(1, 2, CellType.Splitter, Direction.East);
+            s.Grid.Get(1, 2).SplitterIndex = 3;
+            var json = SaveSerializer.ToJson(SaveSerializer.Capture(s));
+            // 옛 v6 저장: SplitterIndex 대신 SplitterToggle만 있다.
+            var old = json.Replace("\"SplitterIndex\": 3", "\"SplitterToggle\": true");
+            Assert.AreNotEqual(json, old);
+            Assert.AreEqual(0, SaveSerializer.Restore(SaveSerializer.FromJson(old)).Grid.Get(1, 2).SplitterIndex);
+
+            var st = SaveSerializer.Capture(s);
+            st.Cells.Find(c => c.Type == "Splitter").SplitterIndex = -1;
+            Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
         }
 
         [Test]

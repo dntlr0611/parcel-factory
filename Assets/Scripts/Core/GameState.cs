@@ -50,7 +50,9 @@ namespace ParcelFactory.Core
         public string Direction;
         public bool Demolishing;
         public float DemolishRemaining;
-        public bool SplitterToggle;
+        /// <summary>분배기 라운드로빈 인덱스(스펙 11.6). v6 안에서 추가된 필드라 버전을 올리지 않는다:
+        /// 이전 v6 저장에는 없으므로 0(첫 후보부터)으로 읽힌다. 옛 SplitterToggle 필드는 무시된다(Json 미지 필드).</summary>
+        public int SplitterIndex;
         /// <summary>팔레트 종류(None/Blue/Red). v4.</summary>
         public string PalletKind;
         /// <summary>팔레트 더미(아래 → 위). 팔레트가 아니면 null. v4.</summary>

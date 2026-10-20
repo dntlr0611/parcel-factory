@@ -204,43 +204,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual((2, 2), (p.X, p.Y));
         }
 
-        [Test]
-        public void Splitter_AlternatesLeftThenRight()
-        {
-            Rail(1, 2, Direction.East, CellType.Splitter);
-            Rail(1, 3, Direction.North); // 동쪽 기준 왼쪽 = 북
-            Rail(1, 1, Direction.South); // 동쪽 기준 오른쪽 = 남
-            var a = SpawnAtInlet();
-            sim.Tick(1f);               // a → splitter
-            Assert.AreEqual(Direction.North, a.Heading);
-            var b = SpawnAtInlet();
-            sim.Tick(1f);               // a → (1,3), b → splitter
-            Assert.AreEqual((1, 3), (a.X, a.Y));
-            Assert.AreEqual(Direction.South, b.Heading);
-            sim.Tick(1f);
-            Assert.AreEqual((1, 1), (b.X, b.Y));
-        }
-
-        [Test]
-        public void Splitter_FedFromSide_NeverSendsBackward()
-        {
-            // 동쪽을 보는 분배기에 북쪽(1,3)에서 남쪽으로 진입. 왼쪽 출구(북)는 되돌아가는 방향이므로 쓰면 안 된다.
-            Rail(1, 2, Direction.East, CellType.Splitter);
-            Rail(1, 3, Direction.South);
-            Rail(1, 1, Direction.South);
-            Rail(1, 0, Direction.South);
-            Assert.IsTrue(sim.TrySpawn(1, 3, PackageKind.Normal, out var a));
-            sim.Tick(1f); // a → splitter
-            Assert.AreEqual((1, 2), (a.X, a.Y));
-            Assert.AreEqual(Direction.South, a.Heading);
-            Assert.IsTrue(sim.TrySpawn(1, 3, PackageKind.Normal, out var b));
-            sim.Tick(1f); // a → (1,1), b → splitter; 토글이 바뀌어도 여전히 남쪽
-            Assert.AreEqual((1, 1), (a.X, a.Y));
-            Assert.AreEqual((1, 2), (b.X, b.Y));
-            Assert.AreEqual(Direction.South, b.Heading);
-            sim.Tick(1f);
-            Assert.AreEqual(2, sim.Packages.Count); // 아무도 소실되거나 막히지 않음
-        }
+        // 분배기 규칙(스펙 11.6) 테스트는 SplitterTests.cs.
 
         [Test]
         public void EntryHeading_RecordsHowPackageEnteredCell()

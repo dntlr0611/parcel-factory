@@ -16,8 +16,8 @@ namespace ParcelFactory.Core
         public Direction Direction = Direction.East;
         public bool Demolishing;
         public float DemolishRemaining;
-        /// <summary>false → 다음 택배는 왼쪽 출구, true → 오른쪽 출구.</summary>
-        public bool SplitterToggle;
+        /// <summary>분배기 라운드로빈 인덱스(스펙 11.6). 다음 택배는 출구 후보[인덱스 % 후보 수]로 나간다. 항상 0 이상.</summary>
+        public int SplitterIndex;
         /// <summary>셀 위에 있는 택배 id. 없으면 -1. 팔레트 더미는 여기에 기록하지 않는다.</summary>
         public int OccupantId = -1;
         /// <summary>팔레트 종류. 팔레트가 아니면 None.</summary>

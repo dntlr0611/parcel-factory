@@ -116,14 +116,26 @@ namespace ParcelFactory.Game
         {
             cat = GameBootstrap.Instance.Catalog;
             if (root == null) { root = new GameObject("Cells").transform; root.SetParent(GameBootstrap.Instance.WorldRoot, false); }
-            if (bound != null) { bound.Build.CellChanged -= Rebuild; bound.Unlocks.Unlocked -= OnUnlocked; }
+            if (bound != null) { bound.Build.CellChanged -= OnCellChanged; bound.Unlocks.Unlocked -= OnUnlocked; }
             bound = s;
-            bound.Build.CellChanged += Rebuild;
+            bound.Build.CellChanged += OnCellChanged;
             bound.Unlocks.Unlocked += OnUnlocked;
             RebuildAll();
         }
 
         private void OnUnlocked(UnlockId _) => RebuildAll();
+
+        /// <summary>칸이 바뀌면 그 칸과, 출구 화살표가 달라질 수 있는 이웃 분배기를 다시 그린다(스펙 11.6).</summary>
+        private void OnCellChanged(int x, int y)
+        {
+            Rebuild(x, y);
+            for (int d = 0; d < 4; d++)
+            {
+                var dir = (Direction)d;
+                int nx = x + dir.Dx(), ny = y + dir.Dy();
+                if (bound.Grid.InBounds(nx, ny) && bound.Grid.Get(nx, ny).Type == CellType.Splitter) Rebuild(nx, ny);
+            }
+        }
 
         public void RebuildAll()
         {
@@ -134,7 +146,7 @@ namespace ParcelFactory.Game
         {
             if (objs.TryGetValue((x, y), out var old)) { Destroy(old); objs.Remove((x, y)); }
             var c = bound.Grid.Get(x, y);
-            var go = Make(c);
+            var go = Make(c, x, y);
             if (go == null) return;
             go.transform.SetParent(root, false);
             go.transform.position = Grid3D.Tile(x, y);
@@ -162,7 +174,9 @@ namespace ParcelFactory.Game
             return b;
         }
 
-        private GameObject Make(Cell c)
+        public static readonly Color SplitterHub = new Color(0x7A / 255f, 0x5C / 255f, 0xC9 / 255f);
+
+        private GameObject Make(Cell c, int x, int y)
         {
             if (!c.IsBuilding) return null;
             var go = new GameObject(c.Type.ToString());
@@ -205,8 +219,19 @@ namespace ParcelFactory.Game
                     break;
                 }
                 case CellType.Splitter:
-                    Model("conveyor-junction-t", go.transform, Vector3.zero, facing, 1f);
+                {
+                    // 보라 허브 0.9×0.4×0.9(윗면 = 택배 표면 0.4) + 얇은 어두운 상판 + 연결된 출구마다 노란 화살표(스펙 11.6).
+                    float top = PackageViews.SurfaceHeight(CellType.Splitter);
+                    Box("SplitterHub", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(SplitterHub, 0.3f));
+                    Box("SplitterPlate", go.transform, new Vector3(0f, top + 0.005f, 0f), new Vector3(0.72f, 0.01f, 0.72f), MaterialLibrary.Lit(new Color(0.16f, 0.14f, 0.2f), 0.2f));
+                    foreach (var d in ConveyorSim.SplitterOutputs(bound.Grid, x, y, null))
+                    {
+                        var chevron = ChevronMesh.Create(go.transform);
+                        chevron.transform.localRotation = Grid3D.Facing(d);
+                        chevron.transform.localPosition = Grid3D.Forward(d) * 0.3f + new Vector3(0f, top + 0.03f, 0f);
+                    }
                     break;
+                }
                 case CellType.Pallet:
                 {
                     // 나무 팔레트 0.9×0.12×0.9 + 종류 색 테두리 띠(0.04). 색은 PalletKind에서만 읽는다(Direction 아님).
