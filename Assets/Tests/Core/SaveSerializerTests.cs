@@ -16,7 +16,7 @@ namespace ParcelFactory.Core.Tests
             s.Build.TryPlace(2, 2, CellType.Splitter, Direction.East);
             s.Build.TryPlace(2, 3, CellType.Conveyor, Direction.North);
             s.Build.TryPlace(7, 7, CellType.Conveyor, Direction.North);
-            s.Tick(3f);      // 택배 1개 생성, 같은 틱에 (1,2)로 이동 (progress 0)
+            s.Tick(Spawner.StartInterval); // 택배 1개 생성, 같은 틱에 (1,2)로 이동 (progress 0)
             s.Build.BeginDemolish(7, 7);
             s.Tick(0.5f);    // 택배 progress 0.5, DemolishRemaining 1.5, SpawnTimer 0.5
             s.Paused = true;
@@ -124,7 +124,7 @@ namespace ParcelFactory.Core.Tests
         {
             var s = new GameSession(new Economy(500), new PackageFactory(new Random(2), 1.0));
             s.Build.TryPlace(1, 2, CellType.Table, Direction.East);
-            s.Tick(3f);
+            s.Tick(Spawner.StartInterval);
             s.Tick(1f); // 택배가 검사대 (1,2)에 도착해 대기
             s.Worker.Worker.X = 1; s.Worker.Worker.Y = 3; s.Worker.Worker.Facing = Direction.South;
             Assert.AreEqual(InteractResult.InspectionRequired, s.Worker.Interact(null));

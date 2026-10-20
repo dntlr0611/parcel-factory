@@ -139,7 +139,7 @@
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
-      <div>입고 3초마다 1개 · 배송 +15 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
+      <div>입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 배송 +15 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
     <div class="panel drawer" id="shop" hidden></div>
@@ -267,7 +267,7 @@
   function tick(dt) {
     if (S.paused) return;
     const d = dt * S.speed;
-    S.timer += d; while (S.timer >= 3) { S.timer -= 3; spawn(0, 2); }
+    const iv = Math.max(3, 8 - 0.5 * Math.floor(S.delivered / 5)); S.timer += d; while (S.timer >= iv) { S.timer -= iv; spawn(0, 2); } // 입고 주기: 8초에서 배송 5건마다 0.5초씩, 최소 3초
     for (let i = 0; i < S.packages.length; i++) {
       const p = S.packages[i], c = S.cells[p.y][p.x];
       p.progress = Math.min(1, p.progress + (c.type === 'fast' ? 2 : 1) * d);

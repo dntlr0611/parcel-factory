@@ -31,7 +31,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 1; x <= 10; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(100, s.Economy.Money);
-            for (int i = 0; i < 290; i++) s.Tick(0.05f); // 14.5초: 3초에 생성, 11초 이동, 검사 없이 출고 → −10
+            for (int i = 0; i < 390; i++) s.Tick(0.05f); // 19.5초: 8초에 생성, 11초 이동, 검사 없이 출고 → −10
             Assert.AreEqual(90, s.Economy.Money);
             Assert.AreEqual(0, s.Sim.DeliveredCount);
         }
@@ -47,7 +47,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 2; x <= 10; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(190, s.Economy.Money);
-            for (int i = 0; i < 290; i++) s.Tick(0.05f);
+            for (int i = 0; i < 390; i++) s.Tick(0.05f); // 8초 생성 + 11초 이동
             Assert.AreEqual(205, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
@@ -70,9 +70,9 @@ namespace ParcelFactory.Core.Tests
         {
             var s = new GameSession { Speed = 2f };
             s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
-            s.Tick(1.25f);
-            Assert.AreEqual(0, s.Sim.Packages.Count); // 2.5초 상당, 아직 생성 전
-            s.Tick(0.75f); // 누적 4초 상당: 3초에 생성, 이후 1초 이동
+            s.Tick(3.75f);
+            Assert.AreEqual(0, s.Sim.Packages.Count); // 7.5초 상당, 아직 생성 전
+            s.Tick(0.75f); // 누적 9초 상당: 8초에 생성, 이후 1초 이동
             Assert.AreEqual(1, s.Sim.Packages.Count);
             Assert.AreEqual((1, 2), (s.Sim.Packages[0].X, s.Sim.Packages[0].Y));
         }
@@ -95,7 +95,7 @@ namespace ParcelFactory.Core.Tests
             var s = new GameSession(new Economy(100), new PackageFactory(new Random(1), 0.0));
             Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(1, 2, CellType.Table, Direction.East));
             Assert.AreEqual(60, s.Economy.Money);
-            s.Tick(3f); // 생성 후 같은 틱에 검사대로 이동
+            s.Tick(Spawner.StartInterval); // 생성 후 같은 틱에 검사대로 이동
             s.Tick(1f); // 검사 대기
             Assert.AreEqual(1, s.Sim.AwaitingInspectionCount);
             s.Worker.Worker.X = 1; s.Worker.Worker.Y = 3; s.Worker.Worker.Facing = Direction.South;

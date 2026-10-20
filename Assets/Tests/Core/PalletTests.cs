@@ -375,7 +375,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 2; x <= 4; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(150, s.Economy.Money);
-            for (int i = 0; i < 180; i++) s.Tick(0.05f); // 3초 생성 + 5초 이동 → 파랑 팔레트
+            for (int i = 0; i < 280; i++) s.Tick(0.05f); // 8초 생성 + 5초 이동 → 파랑 팔레트 (다음 생성 16초 전)
             Assert.AreEqual(1, s.Sim.PalletCount(5, 2));
             Assert.AreEqual(150, s.Economy.Money); // 팔레트는 판정하지 않는다
 
