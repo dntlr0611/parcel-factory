@@ -16,6 +16,8 @@ namespace ParcelFactory.Game
         public WorldBuilder World { get; private set; }
         public CellViews Cells { get; private set; }
         public WorkerView Worker { get; private set; }
+        /// <summary>설치 미리보기(스펙 11.9).</summary>
+        public PlacementGhost Ghost { get; private set; }
         public InputController Input { get; private set; }
         public HudController Hud { get; private set; }
         public StatusBars StatusBars { get; private set; }
@@ -52,6 +54,9 @@ namespace ParcelFactory.Game
             var workerGo = new GameObject("WorkerView");
             workerGo.transform.SetParent(WorldRoot, false);
             Worker = workerGo.AddComponent<WorkerView>();
+            var ghostGo = new GameObject("PlacementGhost");
+            ghostGo.transform.SetParent(WorldRoot, false);
+            Ghost = ghostGo.AddComponent<PlacementGhost>();
             Hud = gameObject.AddComponent<HudController>();
             StatusBars = gameObject.AddComponent<StatusBars>();
             Panels = gameObject.AddComponent<Panels>();

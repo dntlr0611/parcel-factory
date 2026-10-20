@@ -153,7 +153,7 @@ namespace ParcelFactory.Game
             objs[(x, y)] = go;
         }
 
-        private GameObject Model(string key, Transform parent, Vector3 localPos, Quaternion localRot, float scale)
+        private static GameObject Model(ModelCatalog cat, string key, Transform parent, Vector3 localPos, Quaternion localRot, float scale)
         {
             var m = Instantiate(cat.Get(key), parent);
             m.transform.localPosition = localPos;
@@ -189,23 +189,47 @@ namespace ParcelFactory.Game
         private GameObject Make(Cell c, int x, int y)
         {
             if (!c.IsBuilding) return null;
-            var go = new GameObject(c.Type.ToString());
-            var facing = Grid3D.Facing(c.Direction);
-            switch (c.Type)
+            Direction blue = c.Direction;
+            Direction? red = null;
+            bool blueConnected = true, redConnected = true;
+            if (c.Type == CellType.Splitter)
+                ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out blue, out red, out blueConnected, out redConnected);
+            return Build(cat, c.Type, c.Direction, c.PalletKind, blue, red, blueConnected, redConnected, c);
+        }
+
+        /// <summary>설치 미리보기(스펙 11.9)용: 실제 칸 뷰와 같은 모델을 parent 아래에 만든다. 분배기는 파란 화살표 = dir, 빨간 화살표 = red(있을 때만).
+        /// 팔레트 더미(PalletView)는 붙이지 않는다. 재질·그림자·충돌체 처리는 호출하는 쪽(PlacementGhost)이 한다.</summary>
+        public static GameObject BuildPreview(Transform parent, CellType type, Direction dir, PalletKind kind, Direction? red)
+        {
+            var boot = GameBootstrap.Instance;
+            if (boot == null || boot.Catalog == null) return null;
+            var go = Build(boot.Catalog, type, dir, kind, dir, red, true, true, null);
+            if (go == null) return null;
+            go.transform.SetParent(parent, false);
+            return go;
+        }
+
+        /// <summary>칸 종류·방향·팔레트 종류로 모델을 만든다. cell이 있으면 팔레트에 더미 뷰(PalletView)를 붙인다.</summary>
+        private static GameObject Build(ModelCatalog cat, CellType type, Direction direction, PalletKind palletKind,
+            Direction blue, Direction? red, bool blueConnected, bool redConnected, Cell cell)
+        {
+            var go = new GameObject(type.ToString());
+            var facing = Grid3D.Facing(direction);
+            switch (type)
             {
                 case CellType.Conveyor:
                 case CellType.FastConveyor:
                 case CellType.Scanner:
                 {
-                    Model("conveyor-stripe", go.transform, Vector3.zero, facing, 1f);
+                    Model(cat, "conveyor-stripe", go.transform, Vector3.zero, facing, 1f);
                     var arrowPivot = new GameObject("ArrowPivot").transform;
                     arrowPivot.SetParent(go.transform, false);
                     arrowPivot.localRotation = facing;
                     var arrow = ChevronMesh.Create(arrowPivot);
                     arrow.transform.localPosition = new Vector3(0f, 0.43f, -0.32f);
                     var ba = arrow.AddComponent<BeltArrow>();
-                    ba.Speed = c.Type == CellType.FastConveyor ? 2f : 1f;
-                    if (c.Type == CellType.FastConveyor)
+                    ba.Speed = type == CellType.FastConveyor ? 2f : 1f;
+                    if (type == CellType.FastConveyor)
                     {
                         var stripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
                         stripe.transform.SetParent(go.transform, false);
@@ -215,9 +239,9 @@ namespace ParcelFactory.Game
                         stripe.GetComponent<Renderer>().material = MaterialLibrary.Emissive(new Color(1f, 0.3f, 0.25f), 2f);
                         Destroy(stripe.GetComponent<Collider>());
                     }
-                    if (c.Type == CellType.Scanner)
+                    if (type == CellType.Scanner)
                     {
-                        Model("scanner-low", go.transform, new Vector3(0f, 0.02f, 0f), facing * Quaternion.Euler(0f, 90f, 0f), 0.58f);
+                        Model(cat, "scanner-low", go.transform, new Vector3(0f, 0.02f, 0f), facing * Quaternion.Euler(0f, 90f, 0f), 0.58f);
                         var laser = GameObject.CreatePrimitive(PrimitiveType.Cube);
                         laser.transform.SetParent(go.transform, false);
                         laser.transform.localRotation = facing;
@@ -236,7 +260,6 @@ namespace ParcelFactory.Game
                     Box("SplitterHub", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(SplitterHub, 0.3f));
                     Box("SplitterPlate", go.transform, new Vector3(0f, top + 0.005f, 0f), new Vector3(0.72f, 0.01f, 0.72f), MaterialLibrary.Lit(new Color(0.16f, 0.14f, 0.2f), 0.2f));
                     // 빨간 출구는 명시 설정(RedDirection, 스펙 11.8)이면 연결되지 않아도 흐리게 보인다. 자동 규칙이면 연결된 출구가 있을 때만.
-                    ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out var blue, out var red, out var blueConnected, out var redConnected);
                     var dimBlue = SplitterBlue; dimBlue.a = 0.4f;
                     var dimRed = SplitterRed; dimRed.a = 0.4f;
                     SplitterArrow(go.transform, "BlueArrow", blue, top, blueConnected ? MaterialLibrary.Emissive(SplitterBlue, 0.5f) : MaterialLibrary.Transparent(dimBlue));
@@ -252,16 +275,19 @@ namespace ParcelFactory.Game
                     var slat = MaterialLibrary.Lit(gapColor, 0.05f);
                     foreach (var z in new[] { -0.15f, 0.15f })
                         Box("PalletGap", go.transform, new Vector3(0f, top + 0.002f, z), new Vector3(0.84f, 0.004f, 0.025f), slat);
-                    var band = MaterialLibrary.Lit(c.PalletKind == PalletKind.Blue ? PalletView.BlueBand : PalletView.RedBand, 0.3f);
+                    var band = MaterialLibrary.Lit(palletKind == PalletKind.Blue ? PalletView.BlueBand : PalletView.RedBand, 0.3f);
                     const float bh = 0.04f, bw = 0.05f, outer = 0.94f;
                     float by = top - bh / 2f + 0.005f;
                     Box("Band", go.transform, new Vector3(0f, by, (outer - bw) / 2f), new Vector3(outer, bh, bw), band);
                     Box("Band", go.transform, new Vector3(0f, by, -(outer - bw) / 2f), new Vector3(outer, bh, bw), band);
                     Box("Band", go.transform, new Vector3((outer - bw) / 2f, by, 0f), new Vector3(bw, bh, outer - 2f * bw), band);
                     Box("Band", go.transform, new Vector3(-(outer - bw) / 2f, by, 0f), new Vector3(bw, bh, outer - 2f * bw), band);
-                    var pv = go.AddComponent<PalletView>();
-                    pv.Cell = c;
-                    pv.Catalog = cat;
+                    if (cell != null)
+                    {
+                        var pv = go.AddComponent<PalletView>();
+                        pv.Cell = cell;
+                        pv.Catalog = cat;
+                    }
                     break;
                 }
                 case CellType.Table:
@@ -271,7 +297,7 @@ namespace ParcelFactory.Game
                     Box("TableBody", go.transform, new Vector3(0f, (top - 0.04f) / 2f, 0f), new Vector3(0.9f, top - 0.04f, 0.9f), MaterialLibrary.Lit(new Color(0x8E / 255f, 0x94 / 255f, 0x9B / 255f), 0.3f));
                     Box("TableTop", go.transform, new Vector3(0f, top - 0.02f, 0f), new Vector3(0.96f, 0.04f, 0.96f), MaterialLibrary.Lit(new Color(0xC9 / 255f, 0xCD / 255f, 0xD2 / 255f), 0.35f));
                     // 검사 화면: 상판 뒤쪽(북쪽) 가장자리에 카메라를 향해 세운다. 택배를 가리지 않도록 작게.
-                    var panel = Model("screen-panel-flat", go.transform, new Vector3(0f, top, 0.3f), Quaternion.Euler(0f, 180f, 0f), 0.4f);
+                    var panel = Model(cat, "screen-panel-flat", go.transform, new Vector3(0f, top, 0.3f), Quaternion.Euler(0f, 180f, 0f), 0.4f);
                     panel.name = "TableScreen";
                     break;
                 }

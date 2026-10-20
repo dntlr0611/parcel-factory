@@ -113,6 +113,17 @@ namespace ParcelFactory.Game.Tests
                 StringAssert.Contains("레일 설치 · ₩10", placePrompt.text);
                 yield return Capture(boot, "unity-place.png", Width, Height);
 
+                // (c2b) 설치 미리보기(스펙 11.9): 레일 도구로 라인 아래 빈 칸 (3,0)을 (3,1)에서 바라본다 → 초록 반투명 레일.
+                //      카메라 쪽(남쪽) 칸이라 작업자에 가리지 않는다. 설정 모드는 끄고 찍는다.
+                boot.Input.CancelConfig();
+                s.Worker.Worker.X = 3.0f; s.Worker.Worker.Y = 1.0f; s.Worker.Worker.Facing = Direction.South;
+                Assert.AreEqual(CellType.Empty, s.Grid.Get(3, 0).Type);
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Assert.IsTrue(boot.Ghost.Visible, "ghost hidden");
+                Assert.AreEqual(PlacementGhost.GreenTint, boot.Ghost.Tint);
+                yield return Capture(boot, "unity-ghost.png", Width, Height);
+
                 // (c3) 점심시간 12:20: 시계 옆 노란 "점심시간" 배지, 체력 15라 바가 빨갛다.
                 //      점심에는 체력이 초당 20 회복되므로 일시정지해 캡처 동안 값을 고정한다(일시정지 버튼이 켜져 보인다).
                 s.Paused = true;

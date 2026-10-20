@@ -930,5 +930,149 @@ namespace ParcelFactory.Game.Tests
             }
             yield return null;
         }
+
+        [UnityTest]
+        public IEnumerator Escape_Priority_ConfigThenPanelsThenTool_AndHotbarKept()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true;
+                var w = s.Worker.Worker;
+                var input = boot.Input;
+                w.X = 2f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.South; // (2,3) 빈 칸
+
+                // 설정 모드에서 화살표를 입력해도 핫바 선택은 그대로, 설정 모드는 끝난다.
+                input.SelectSlot(0);
+                Assert.AreEqual(0, input.SelectedSlot);
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.East);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(0, input.SelectedSlot);
+                input.BeginConfig();
+                input.CancelConfig();
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(0, input.SelectedSlot);
+
+                // ① 설정 모드 중 Esc = 취소만(도구 유지)
+                input.BeginConfig();
+                input.PressEscape();
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(0, input.SelectedSlot, "Esc in config mode must keep the tool");
+
+                // ② 패널이 열려 있으면 Esc = 패널 닫기(도구 유지)
+                boot.Panels.ToggleStatus();
+                Assert.IsTrue(boot.Panels.AnyOpen);
+                input.PressEscape();
+                Assert.IsFalse(boot.Panels.AnyOpen, "Esc should close the panel");
+                Assert.IsFalse(input.UiBlocksInput);
+                Assert.AreEqual(0, input.SelectedSlot, "Esc closing a panel must keep the tool");
+
+                // ③ 아무것도 열려 있지 않으면 Esc = 빈손
+                input.PressEscape();
+                Assert.IsNull(input.SelectedTool);
+                Assert.AreEqual(-1, input.SelectedSlot);
+                Assert.AreEqual(InputController.EmptyHandMessage, boot.Hud.LastToast);
+                input.PressEscape(); // 이미 빈손이면 아무 일도 없다
+                Assert.IsNull(input.SelectedTool);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator PlacementGhost_TintFollowsPreview_HidesWithoutTool_AndShowsSplitterRed()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 입고구에 택배가 생기지 않게
+                s.Economy.Adjust(10000);
+                var w = s.Worker.Worker;
+                var input = boot.Input;
+                var ghost = boot.Ghost;
+                Assert.IsNotNull(ghost, "boot.Ghost missing");
+                yield return null;
+                Assert.IsFalse(ghost.Visible, "no tool → no ghost");
+
+                // 레일 도구로 빈 칸 (2,3) → 초록
+                w.X = 2f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.South;
+                input.SelectSlot(0);
+                yield return null;
+                Assert.IsTrue(ghost.Visible, "ghost should show on an empty unlocked tile");
+                Assert.GreaterOrEqual(ghost.Model.GetComponentsInChildren<Renderer>().Length, 1);
+                Assert.IsTrue(ghost.Placeable);
+                Assert.AreEqual(PlacementGhost.GreenTint, ghost.Tint);
+                Assert.AreEqual(Grid3D.Tile(2, 3).x, ghost.Model.transform.position.x, 1e-3f);
+                Assert.AreEqual(Grid3D.Tile(2, 3).z, ghost.Model.transform.position.z, 1e-3f);
+                foreach (var r in ghost.Model.GetComponentsInChildren<Renderer>())
+                    Assert.AreEqual(UnityEngine.Rendering.ShadowCastingMode.Off, r.shadowCastingMode, r.name + " casts shadows");
+                int rebuilds = ghost.Rebuilds;
+                yield return null; yield return null;
+                Assert.AreEqual(rebuilds, ghost.Rebuilds, "ghost must not rebuild when nothing changed");
+                Assert.AreEqual(0, ghost.Model.GetComponentsInChildren<Collider>().Length, "ghost has colliders");
+
+                // 입고구(점유) → 빨강
+                w.X = 1f; w.Y = 2f; w.Facing = ParcelFactory.Core.Direction.West;
+                yield return null;
+                Assert.IsTrue(ghost.Visible);
+                Assert.IsFalse(ghost.Placeable);
+                Assert.AreEqual(PlacementGhost.RedTint, ghost.Tint);
+
+                // 격자 밖 → 숨김
+                w.X = 0f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.West;
+                yield return null;
+                Assert.IsFalse(ghost.Visible, "out of bounds → hidden");
+
+                // 택배를 들고 있으면 숨김
+                w.X = 2f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.South;
+                w.Carrying = new ParcelFactory.Core.PackageFactory(new System.Random(1)).Create(9100, 2, 4, ParcelFactory.Core.Direction.East);
+                yield return null;
+                Assert.IsFalse(ghost.Visible, "carrying → hidden");
+                w.Carrying = null;
+                yield return null;
+                Assert.IsTrue(ghost.Visible);
+
+                // 빈손 → 숨김
+                input.ClearTool();
+                yield return null;
+                Assert.IsFalse(ghost.Visible, "ClearTool → hidden");
+
+                // 분배기 도구 + 빨간 출구 → 파란·빨간 화살표
+                Assert.AreEqual(ParcelFactory.Core.UnlockResult.Ok, s.Unlocks.TryPurchase(ParcelFactory.Core.UnlockId.Splitter));
+                int splitterSlot = input.AvailableSlots().IndexOf(ParcelFactory.Core.CellType.Splitter);
+                input.SelectSlot(splitterSlot);
+                var blue = input.SelectedTool.Value.Direction;
+                var red = blue == ParcelFactory.Core.Direction.South ? ParcelFactory.Core.Direction.North : ParcelFactory.Core.Direction.South;
+                input.BeginConfig();
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                input.ApplyConfigSlot(2);
+                yield return null;
+                Assert.IsTrue(ghost.Visible, "ghost stays visible during config");
+                input.ApplyConfigDirection(red);
+                Assert.AreEqual(red, input.ToolSplitterRed);
+                yield return null;
+                Assert.IsTrue(ghost.Visible);
+                Assert.IsNotNull(ghost.Model.transform.Find("BlueArrow"), "ghost BlueArrow missing");
+                Assert.IsNotNull(ghost.Model.transform.Find("RedArrow"), "ghost RedArrow missing");
+                Assert.AreEqual(Pointing(ghost.Model.transform.Find("RedArrow")).z, Grid3D.Forward(red).z, 1e-3f);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
     }
 }

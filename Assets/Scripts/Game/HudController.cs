@@ -397,7 +397,7 @@ namespace ParcelFactory.Game
         private void BuildHelp()
         {
             help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 336f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · Q 빈손\nR 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · Q·Esc 빈손\nR 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();

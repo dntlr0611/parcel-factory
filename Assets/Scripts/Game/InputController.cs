@@ -132,11 +132,7 @@ namespace ParcelFactory.Game
         private void Update()
         {
             if (S == null) return;
-            if (escape.WasPressedThisFrame())
-            {
-                if (ConfigMode != ConfigMode.None) CancelConfig(); // 설정 취소만 하고 패널 닫기로 넘기지 않는다
-                else Escape?.Invoke();
-            }
+            if (escape.WasPressedThisFrame()) PressEscape();
             // 상점·상태창이 유일하게 열려 있으면 B·C 키가 닫기(또는 서로 바꾸기) 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
             bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
@@ -199,6 +195,20 @@ namespace ParcelFactory.Game
         {
             if (on) blockers.Add(owner); else blockers.Remove(owner);
         }
+
+        /// <summary>Esc(스펙 11.9): ① 설정 모드 취소(도구 선택은 유지) → ② 열린 패널·조작 서랍 닫기(하루 요약은 모달이라 그대로) → ③ 손에 든 도구 내려놓기(빈손, Q와 같음).
+        /// 한 번에 한 단계만 처리한다.</summary>
+        public void PressEscape()
+        {
+            if (ConfigMode != ConfigMode.None) { CancelConfig(); return; }
+            var panels = GameBootstrap.Instance != null ? GameBootstrap.Instance.Panels : null;
+            if (UiBlocksInput || (panels != null && panels.AnyOpen)) { Escape?.Invoke(); return; }
+            if (!SelectedTool.HasValue) return;
+            ClearTool();
+            Feedback(EmptyHandMessage);
+        }
+
+        public const string EmptyHandMessage = "빈손";
 
         public void RequestShop() => ToggleShop?.Invoke();
         public void RequestStatus() => ToggleStatus?.Invoke();
