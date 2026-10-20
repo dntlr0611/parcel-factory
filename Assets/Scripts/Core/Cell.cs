@@ -22,6 +22,8 @@ namespace ParcelFactory.Core
         public PalletKind PalletKind = PalletKind.None;
         /// <summary>팔레트 위 더미(아래 → 위 순서). 흐름(ConveyorSim.Packages)에는 없는 택배들이다.</summary>
         public readonly List<Package> Pallet = new List<Package>();
+        /// <summary>분배기의 명시 빨간 출구(스펙 11.8). null이면 자동 규칙(11.7). 분배기가 아니면 null.</summary>
+        public Direction? RedDirection;
 
         public bool IsOccupied => OccupantId >= 0;
 

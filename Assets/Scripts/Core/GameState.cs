@@ -56,6 +56,8 @@ namespace ParcelFactory.Core
         public string PalletKind;
         /// <summary>팔레트 더미(아래 → 위). 팔레트가 아니면 null. v4.</summary>
         public List<PackageState> Pallet;
+        /// <summary>분배기의 명시 빨간 출구(스펙 11.8). 설정 안 됐거나 분배기가 아니면 null. 선택 필드라 버전은 v6 그대로.</summary>
+        public string RedDirection;
     }
 
     public sealed class PackageState

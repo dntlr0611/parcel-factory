@@ -170,18 +170,46 @@ namespace ParcelFactory.Core
             return result;
         }
 
-        /// <summary>분배기 = 분류기(스펙 11.7). 파란 출구 = 분배기 Direction(연결 여부는 blueConnected),
-        /// 빨간 출구 = 파란 기준 오른쪽 → 왼쪽 → 뒤 중 처음으로 연결된 출구(없으면 null).
+        /// <summary>분배기 = 분류기(스펙 11.7, 11.8). 파란 출구 = 분배기 Direction(연결 여부는 blueConnected),
+        /// 빨간 출구(라우팅에 쓰는 것, 없으면 null) = 명시 RedDirection이 파랑과 다르면 그것(연결돼 있을 때만, 아니면 null),
+        /// 명시 설정이 없거나 파랑과 같으면 자동 규칙(파란 기준 오른쪽 → 왼쪽 → 뒤 중 처음으로 연결된 출구).
         /// 연결 판정은 SplitterOutputs와 같다(incoming이 null이면 들어온 방향 제외 없음 — 뷰·프롬프트용).</summary>
         public static void SplitterRoutes(FactoryGrid grid, int x, int y, Direction? incoming,
             out Direction blue, out Direction? red, out bool blueConnected)
         {
-            blue = grid.Get(x, y).Direction;
+            SplitterRoutes(grid, x, y, incoming, out blue, out red, out blueConnected, out var redConnected);
+            if (!redConnected) red = null;
+        }
+
+        /// <summary>뷰용 변형(스펙 11.8). red는 설정된 빨간 출구다: 명시 RedDirection(파랑과 다를 때)이면 연결 여부와 무관하게 그 방향,
+        /// 아니면 자동 규칙의 결과(없으면 null). redConnected가 false면 라우팅은 "빨강 없음"으로 취급한다(뷰는 흐린 화살표).</summary>
+        public static void SplitterRoutes(FactoryGrid grid, int x, int y, Direction? incoming,
+            out Direction blue, out Direction? red, out bool blueConnected, out bool redConnected)
+        {
+            var cell = grid.Get(x, y);
+            blue = cell.Direction;
             var connected = SplitterOutputs(grid, x, y, incoming);
             blueConnected = connected.Contains(blue);
+            if (cell.RedDirection.HasValue && cell.RedDirection.Value != blue)
+            {
+                red = cell.RedDirection.Value;
+                redConnected = connected.Contains(red.Value);
+                return;
+            }
             red = null;
+            redConnected = false;
             foreach (var cand in new[] { blue.TurnRight(), blue.TurnLeft(), blue.Opposite() })
-                if (connected.Contains(cand)) { red = cand; break; }
+                if (connected.Contains(cand)) { red = cand; redConnected = true; break; }
+        }
+
+        /// <summary>칸의 방향 설정이 바뀌었을 때(스펙 11.8 재설정) 그 칸 위 택배의 Heading을 다시 정한다. Progress는 유지한다.
+        /// 분배기는 EntryHeading을 들어온 방향으로 보고 분류 규칙을 다시 적용한다.</summary>
+        public void RefreshHeadingsAt(int x, int y)
+        {
+            if (!grid.InBounds(x, y)) return;
+            foreach (var p in packages)
+                if (p.X == x && p.Y == y)
+                    p.Heading = HeadingFor(x, y, p.EntryHeading, p);
         }
 
         /// <summary>분배기가 출구로 삼는 칸. 반입구(Inlet)는 트랙이지만 들어가면 소실되므로 제외한다.</summary>

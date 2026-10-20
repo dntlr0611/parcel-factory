@@ -69,6 +69,7 @@ namespace ParcelFactory.Core
                         DemolishRemaining = c.DemolishRemaining,
                         PalletKind = c.PalletKind.ToString(),
                         Pallet = pile,
+                        RedDirection = c.RedDirection?.ToString(),
                     });
                 }
             }
@@ -148,6 +149,12 @@ namespace ParcelFactory.Core
                 }
                 else if (c.Pallet != null && c.Pallet.Count > 0)
                     throw new SaveVersionException($"non-pallet cell ({c.X},{c.Y}) has a pile");
+                if (c.RedDirection != null)
+                {
+                    if (type != CellType.Splitter)
+                        throw new SaveVersionException($"non-splitter cell ({c.X},{c.Y}) has a red direction");
+                    cell.RedDirection = ParseDefined<Direction>(c.RedDirection);
+                }
             }
 
             foreach (var p in st.Packages)

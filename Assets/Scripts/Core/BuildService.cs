@@ -4,6 +4,9 @@ namespace ParcelFactory.Core
 {
     public enum BuildResult { Ok, Locked, Occupied, NotOwned, NotEnoughMoney, NotDemolishable, AlreadyDemolishing }
 
+    /// <summary>설치된 부품 재설정 결과(스펙 11.8). NotOwned = 툴바가 그 방향을 보유하지 않음(레일·고속만 해당).</summary>
+    public enum ReconfigureResult { Ok, NotConfigurable, Invalid, NotOwned }
+
     public sealed class BuildService
     {
         public const float DemolishSeconds = 2f;
@@ -61,6 +64,57 @@ namespace ParcelFactory.Core
             c.DemolishRemaining = DemolishSeconds;
             CellChanged?.Invoke(x, y);
             return BuildResult.Ok;
+        }
+
+        private static bool HasDirectionSetting(CellType t) =>
+            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Table ||
+            t == CellType.Scanner || t == CellType.Splitter;
+
+        /// <summary>설치된 레일·고속·검사대·자동 검사기·분배기(파랑)의 방향을 그 자리에서 바꾼다(스펙 11.8). 비용 없음.
+        /// 그 칸 위 택배의 Heading도 새로 정한다. 실제로 바뀐 경우에만 CellChanged.</summary>
+        public ReconfigureResult SetDirection(int x, int y, Direction dir)
+        {
+            if (!grid.InBounds(x, y) || !Enum.IsDefined(typeof(Direction), dir)) return ReconfigureResult.NotConfigurable;
+            var c = grid.Get(x, y);
+            if (!HasDirectionSetting(c.Type)) return ReconfigureResult.NotConfigurable;
+            if (c.Demolishing) return ReconfigureResult.Invalid;
+            if (c.Direction == dir) return ReconfigureResult.Ok;
+            if (!toolbar.Owns(c.Type, dir)) return ReconfigureResult.NotOwned;
+            c.Direction = dir;
+            sim.RefreshHeadingsAt(x, y);
+            CellChanged?.Invoke(x, y);
+            return ReconfigureResult.Ok;
+        }
+
+        /// <summary>분배기의 빨간 출구를 명시 설정한다(스펙 11.8). null이면 자동 규칙으로 돌아간다. 파랑과 같은 방향은 Invalid.</summary>
+        public ReconfigureResult SetSplitterRed(int x, int y, Direction? dir)
+        {
+            if (!grid.InBounds(x, y)) return ReconfigureResult.NotConfigurable;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Splitter) return ReconfigureResult.NotConfigurable;
+            if (c.Demolishing) return ReconfigureResult.Invalid;
+            if (dir.HasValue && (!Enum.IsDefined(typeof(Direction), dir.Value) || dir.Value == c.Direction))
+                return ReconfigureResult.Invalid;
+            if (c.RedDirection == dir) return ReconfigureResult.Ok;
+            c.RedDirection = dir;
+            sim.RefreshHeadingsAt(x, y);
+            CellChanged?.Invoke(x, y);
+            return ReconfigureResult.Ok;
+        }
+
+        /// <summary>팔레트 종류(파랑/빨강)를 바꾼다(스펙 11.8). None은 Invalid. 색은 안내용이라 더미가 있어도 바꿀 수 있다.</summary>
+        public ReconfigureResult SetPalletKind(int x, int y, PalletKind kind)
+        {
+            if (!grid.InBounds(x, y)) return ReconfigureResult.NotConfigurable;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Pallet) return ReconfigureResult.NotConfigurable;
+            if (c.Demolishing) return ReconfigureResult.Invalid;
+            if (kind != PalletKind.Blue && kind != PalletKind.Red) return ReconfigureResult.Invalid;
+            if (c.PalletKind == kind) return ReconfigureResult.Ok;
+            c.PalletKind = kind;
+            c.Direction = kind == PalletKind.Blue ? Direction.East : Direction.West; // 팔레트 도구 방향 규약(Tool.KindOf)과 맞춘다
+            CellChanged?.Invoke(x, y);
+            return ReconfigureResult.Ok;
         }
 
         public void Tick(float dt)

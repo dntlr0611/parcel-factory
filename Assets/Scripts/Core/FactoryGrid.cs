@@ -78,6 +78,7 @@ namespace ParcelFactory.Core
             c.DemolishRemaining = 0f;
             c.PalletKind = type == CellType.Pallet ? Tool.KindOf(dir) : PalletKind.None;
             c.Pallet.Clear();
+            c.RedDirection = null;
         }
 
         public void Clear(int x, int y)
@@ -91,6 +92,7 @@ namespace ParcelFactory.Core
             c.OccupantId = -1;
             c.PalletKind = PalletKind.None;
             c.Pallet.Clear();
+            c.RedDirection = null;
         }
     }
 }
