@@ -29,7 +29,7 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(5, st.Version);
+            Assert.AreEqual(6, st.Version);
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
             Assert.AreEqual(6, st.Cells.Count); // 설치한 4개 + 시작 팔레트 2개
@@ -191,7 +191,7 @@ namespace ParcelFactory.Core.Tests
         public void FutureVersion_IsRejected()
         {
             var st = SaveSerializer.Capture(new GameSession());
-            st.Version = 6;
+            st.Version = SaveSerializer.CurrentVersion + 1;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
         }
 

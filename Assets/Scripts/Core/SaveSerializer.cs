@@ -12,9 +12,9 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        public const int CurrentVersion = 5;
-        /// <summary>읽을 수 있는 가장 오래된 버전. v5(근무 시계·스태미나, 스펙 11.1) 미만은 거부한다.</summary>
-        public const int MinReadableVersion = 5;
+        public const int CurrentVersion = 6;
+        /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
+        public const int MinReadableVersion = 6;
 
         public static GameState Capture(GameSession s)
         {
@@ -37,6 +37,12 @@ namespace ParcelFactory.Core
                 DayStartInspected = s.DayStartInspected,
                 InspectedCount = s.Sim.InspectedCount,
                 Stamina = s.Worker.Worker.Stamina,
+                Exp = s.Progression.Exp,
+                TotalExp = s.Progression.TotalEarned,
+                DayStartExp = s.DayStartExp,
+                StaminaLevel = s.Progression.Level(Stat.Stamina),
+                SpeedLevel = s.Progression.Level(Stat.Speed),
+                RegenLevel = s.Progression.Level(Stat.Regen),
             };
 
             foreach (var id in s.Unlocks.Purchased)
@@ -181,7 +187,11 @@ namespace ParcelFactory.Core
             s.Speed = st.Speed;
 
             s.Clock.Set(st.Day, st.MinuteOfDay); // 범위 밖이면 ArgumentOutOfRangeException → corrupt save
-            if (!(st.Stamina >= 0f && st.Stamina <= WorkerService.MaxStamina))
+            // 레벨 범위 밖·음수 EXP는 ArgumentOutOfRangeException → corrupt save. 최대 체력이 레벨에 달렸으므로 체력보다 먼저.
+            s.Progression.Restore(st.Exp, st.StaminaLevel, st.SpeedLevel, st.RegenLevel, st.TotalExp);
+            if (st.DayStartExp < 0 || st.DayStartExp > st.TotalExp)
+                throw new SaveVersionException($"invalid DayStartExp {st.DayStartExp}");
+            if (!(st.Stamina >= 0f && st.Stamina <= s.Worker.EffectiveMaxStamina))
                 throw new SaveVersionException($"invalid stamina {st.Stamina}");
             s.Worker.Worker.Stamina = st.Stamina;
             s.Sim.InspectedCount = st.InspectedCount;
@@ -189,6 +199,7 @@ namespace ParcelFactory.Core
             s.DayStartDelivered = st.DayStartDelivered;
             s.DayStartLost = st.DayStartLost;
             s.DayStartInspected = st.DayStartInspected;
+            s.DayStartExp = st.DayStartExp;
             return s;
         }
 

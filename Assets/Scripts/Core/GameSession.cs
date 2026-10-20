@@ -14,6 +14,8 @@ namespace ParcelFactory.Core
         public readonly WorkerService Worker;
         /// <summary>근무 시계(스펙 11.1).</summary>
         public readonly Clock Clock = new Clock();
+        /// <summary>EXP와 작업자 강화(스펙 11.5). Worker가 같은 인스턴스를 읽는다.</summary>
+        public readonly Progression Progression = new Progression();
 
         public bool Paused { get; set; }
         public float Speed { get; set; } = 1f;
@@ -23,6 +25,8 @@ namespace ParcelFactory.Core
         public int DayStartDelivered { get; set; }
         public int DayStartLost { get; set; }
         public int DayStartInspected { get; set; }
+        /// <summary>그날 시작 시점의 Progression.TotalEarned. 하루 요약의 획득 EXP는 이 값 대비 증가분이다.</summary>
+        public int DayStartExp { get; set; }
 
         /// <summary>18:00이 되는 틱에 한 번 발생한다.</summary>
         public event Action<DaySummary> DayEnded;
@@ -40,8 +44,27 @@ namespace ParcelFactory.Core
             Toolbar = new Toolbar();
             Build = new BuildService(Grid, Economy, Toolbar, Sim);
             Unlocks = new UnlockService(Economy, Grid, Toolbar);
-            Worker = new WorkerService(Grid, Sim, Build);
+            Worker = new WorkerService(Grid, Sim, Build, Progression);
+            Sim.PackageDelivered += OnPackageDelivered;
+            Sim.Inspected += OnInspected;
+            Progression.Upgraded += OnUpgraded;
             CaptureDayStart();
+        }
+
+        /// <summary>EXP 적립(스펙 11.5): 정상 출고 +10, 불량 반품 +8. 실패 판정은 0.</summary>
+        private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
+        {
+            if (!DeliveryScoring.IsSuccess(outcome)) return;
+            Progression.AddExp(outcome == DeliveryOutcome.Delivered ? Progression.DeliveredExp : Progression.ReturnedBadExp);
+        }
+
+        /// <summary>검사 판정(검사대·자동 검사기) +2.</summary>
+        private void OnInspected() => Progression.AddExp(Progression.InspectExp);
+
+        /// <summary>체력 강화 시 현재 체력도 같은 양만큼 오른다.</summary>
+        private void OnUpgraded(Stat stat, int level)
+        {
+            if (stat == Stat.Stamina) Worker.AddStamina(Progression.StaminaPerLevel);
         }
 
         /// <summary>일시정지이거나 퇴근(Closed)이면 아무것도 하지 않는다. 시간은 단계 경계(12:00·13:00·18:00)에서 나눠 처리한다:
@@ -63,7 +86,6 @@ namespace ParcelFactory.Core
                 Clock.Advance(seg);
                 remaining -= seg;
             }
-            // 이동 플래그를 근무 회복이 먼저 소비한다(점심 회복은 이동과 무관).
             if (workSeconds > 0f) Worker.Rest(workSeconds, DayPhase.Working);
             if (lunchSeconds > 0f) Worker.Rest(lunchSeconds, DayPhase.Lunch);
             if (!Clock.IsOpen) DayEnded?.Invoke(BuildSummary());
@@ -78,6 +100,7 @@ namespace ParcelFactory.Core
             Inspected = Sim.InspectedCount - DayStartInspected,
             StartMoney = DayStartMoney,
             EndMoney = Economy.Money,
+            Exp = Progression.TotalEarned - DayStartExp,
         };
 
         /// <summary>퇴근 상태에서만 동작: 다음 날 09:00, 스태미나 가득, 그날 시작 값 기록. 레일·팔레트 위 택배는 그대로.</summary>
@@ -95,6 +118,7 @@ namespace ParcelFactory.Core
             DayStartDelivered = Sim.DeliveredCount;
             DayStartLost = Sim.LostCount;
             DayStartInspected = Sim.InspectedCount;
+            DayStartExp = Progression.TotalEarned;
         }
     }
 }

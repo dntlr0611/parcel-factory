@@ -32,25 +32,26 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Walking_Drains1_2PerSecond()
+        public void Walking_DoesNotDrain()
         {
             Assert.IsTrue(ws.Move(0f, 1f, 1f));
-            Assert.AreEqual(98.8f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(100f, ws.Worker.Stamina, 1e-4f);
         }
 
         [Test]
-        public void WalkingWhileCarrying_Drains2_2PerSecond()
+        public void WalkingWhileCarrying_DoesNotDrain()
         {
             ws.Worker.Carrying = NewPackage(1);
             Assert.IsTrue(ws.Move(0f, 1f, 1f));
-            Assert.AreEqual(97.8f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(100f, ws.Worker.Stamina, 1e-4f);
         }
 
         [Test]
         public void BlockedMove_DoesNotDrain()
         {
             ws.Worker.X = -0.5f + WorkerService.Radius; ws.Worker.Y = -0.5f + WorkerService.Radius;
-            Assert.IsFalse(ws.Move(-1f, -1f, 1f));
+            Assert.IsFalse(ws.Move(-1f, -1f, 1f, run: true));
+            Assert.IsFalse(ws.IsRunning);
             Assert.AreEqual(100f, ws.Worker.Stamina);
         }
 
@@ -63,15 +64,17 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Rest_AfterMoving_NoRegen_ThenFlagIsConsumed()
+        public void Walking_StillRegens0_8PerSecond()
         {
             ws.Worker.Stamina = 50f;
             Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
-            Assert.AreEqual(49.4f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(50f, ws.Worker.Stamina, 1e-4f);
             ws.Rest(0.5f, DayPhase.Working);
-            Assert.AreEqual(49.4f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(50.4f, ws.Worker.Stamina, 1e-4f);
+            ws.Worker.Carrying = NewPackage(1);
+            Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
             ws.Rest(0.5f, DayPhase.Working);
-            Assert.AreEqual(49.8f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(50.8f, ws.Worker.Stamina, 1e-4f);
         }
 
         [Test]
@@ -80,7 +83,7 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.Stamina = 50f;
             Assert.IsTrue(ws.Move(0f, 1f, 0.5f));
             ws.Rest(0.5f, DayPhase.Lunch);
-            Assert.AreEqual(59.4f, ws.Worker.Stamina, 1e-4f);
+            Assert.AreEqual(60f, ws.Worker.Stamina, 1e-4f);
         }
 
         [Test]
@@ -89,8 +92,10 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.Stamina = 99.9f;
             ws.Rest(10f, DayPhase.Lunch);
             Assert.AreEqual(100f, ws.Worker.Stamina);
-            ws.Worker.Stamina = 0.5f;
-            Assert.IsTrue(ws.Move(0f, 1f, 1f));
+            ws.Worker.Stamina = 10.5f; // RunMinStamina 이상이라 달린다: 5.5/초 × 2초 > 10.5
+            ws.Worker.Carrying = NewPackage(1);
+            ws.Worker.X = 2f; ws.Worker.Y = 0f; // 북쪽으로 약 10.9칸 비어 있다
+            Assert.IsTrue(ws.Move(0f, 1f, 2f, run: true));
             Assert.AreEqual(0f, ws.Worker.Stamina);
         }
 

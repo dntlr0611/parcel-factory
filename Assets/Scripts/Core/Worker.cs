@@ -10,7 +10,7 @@ namespace ParcelFactory.Core
         public Direction Facing;
         /// <summary>들고 있는 택배. 없으면 null. 라인(ConveyorSim)에는 없는 상태다.</summary>
         public Package Carrying;
-        /// <summary>0..100, 하루 시작 100(스펙 11.3).</summary>
+        /// <summary>0..WorkerService.EffectiveMaxStamina(기본 100), 하루 시작 가득(스펙 11.3, 11.5).</summary>
         public float Stamina = WorkerService.MaxStamina;
     }
 
@@ -29,10 +29,11 @@ namespace ParcelFactory.Core
     public sealed class WorkerService
     {
         public const float StartX = 2f, StartY = 4f, Speed = 3.4f, Radius = 0.28f, Reach = 0.8f;
-        /// <summary>스태미나(스펙 11.3): 초당 소모·회복량과 속도 저하 시작점.</summary>
-        public const float MaxStamina = 100f, WalkDrain = 1.2f, CarryDrain = 2.2f, StandRegen = 0.8f, LunchRegen = 20f, SlowBelow = 30f;
-        /// <summary>달리기(스페이스 유지): 속도 ×1.6, 소모 ×2.5. 스태미나가 RunMinStamina 미만이면 달릴 수 없다(걷기로 처리).</summary>
-        public const float RunSpeedMultiplier = 1.6f, RunDrainMultiplier = 2.5f, RunMinStamina = 10f;
+        /// <summary>스태미나(스펙 11.3, 11.5): MaxStamina는 강화 전 기본 최대치. 걷기·들고 걷기는 소모 없음(WalkDrain·CarryDrain = 0).
+        /// 회복은 걷든 서든 초당 StandRegen × 회복 배율, 점심에는 초당 LunchRegen. SlowBelow 아래면 속도 저하.</summary>
+        public const float MaxStamina = 100f, WalkDrain = 0f, CarryDrain = 0f, StandRegen = 0.8f, LunchRegen = 20f, SlowBelow = 30f;
+        /// <summary>달리기(스페이스 유지): 속도 ×1.6, 초당 소모 RunDrain(들고 달리면 RunCarryDrain). 스태미나가 RunMinStamina 미만이면 달릴 수 없다(걷기로 처리).</summary>
+        public const float RunSpeedMultiplier = 1.6f, RunDrain = 3f, RunCarryDrain = 5.5f, RunMinStamina = 10f;
         /// <summary>직전 Move가 실제로 달리기로 처리됐는지(뷰 애니메이션용).</summary>
         public bool IsRunning { get; private set; }
         public bool CanRun => Worker.Stamina >= RunMinStamina;
@@ -42,11 +43,14 @@ namespace ParcelFactory.Core
         private readonly BuildService build;
 
         public Worker Worker { get; } = new Worker { X = StartX, Y = StartY, Facing = Direction.South };
+        /// <summary>강화 상태(스펙 11.5). 최대 체력·속도·회복 배율을 여기서 읽는다.</summary>
+        public Progression Progression { get; }
+        /// <summary>강화가 반영된 최대 체력(100 + 20 × 체력 레벨).</summary>
+        public float EffectiveMaxStamina => Progression.MaxStamina;
+        /// <summary>강화가 반영된 기본 걷기 속도(Speed × 속도 배율). 체력 저하·달리기 배율은 Move가 곱한다.</summary>
+        public float EffectiveSpeed => Speed * Progression.SpeedMultiplier;
         /// <summary>검사대에서 검사를 기다리는 택배. 검사 카드 UI가 이를 보고 Inspect를 호출한다.</summary>
         public Package PendingInspection { get; private set; }
-
-        /// <summary>마지막 Rest 이후 Move로 실제로 움직였는가. Rest가 소비한다.</summary>
-        private bool movedSinceRest;
 
         /// <summary>걷는 속도 배율: 스태미나가 SlowBelow 아래면 lerp(0.5, 1, stamina/SlowBelow), 아니면 1.</summary>
         public float SpeedFactor
@@ -58,11 +62,15 @@ namespace ParcelFactory.Core
             }
         }
 
-        public WorkerService(FactoryGrid grid, ConveyorSim sim, BuildService build)
+        public WorkerService(FactoryGrid grid, ConveyorSim sim, BuildService build) : this(grid, sim, build, null) { }
+
+        /// <summary>progression이 null이면 새(레벨 0) Progression을 쓴다.</summary>
+        public WorkerService(FactoryGrid grid, ConveyorSim sim, BuildService build, Progression progression)
         {
             this.grid = grid;
             this.sim = sim;
             this.build = build;
+            Progression = progression ?? new Progression();
         }
 
         private static int Round(float v) => (int)Math.Floor(v + 0.5f);
@@ -117,7 +125,7 @@ namespace ParcelFactory.Core
             if (!(dt > 0f) || float.IsInfinity(dt)) return false;
 
             IsRunning = run && CanRun;
-            float step = Speed * SpeedFactor * (IsRunning ? RunSpeedMultiplier : 1f) * dt / len;
+            float step = EffectiveSpeed * SpeedFactor * (IsRunning ? RunSpeedMultiplier : 1f) * dt / len;
             bool moved = false;
             if (vx != 0f)
             {
@@ -132,33 +140,36 @@ namespace ParcelFactory.Core
             if (moved)
             {
                 CancelInspection();
-                movedSinceRest = true;
-                // 움직인 프레임만 소모한다(양 축 모두 막히면 소모 없음).
-                Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? CarryDrain : WalkDrain) * (IsRunning ? RunDrainMultiplier : 1f) * dt);
+                // 달려서 움직인 프레임만 소모한다(걷기는 소모 없음, 양 축 모두 막히면 소모 없음).
+                if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * dt);
             }
             if (!moved) IsRunning = false;
             return moved;
         }
 
-        /// <summary>스태미나 회복(GameSession.Tick이 호출). 점심이면 항상 +LunchRegen/초, 아니면 지난 Rest 이후 움직이지 않았을 때만 +StandRegen/초.
-        /// 이동 플래그는 여기서 소비된다.</summary>
+        /// <summary>스태미나 회복(GameSession.Tick이 호출). 점심이면 +LunchRegen/초, 근무 중이면 걷든 서든 +StandRegen × 회복 배율/초.</summary>
         public void Rest(float dt, DayPhase phase)
         {
-            bool moved = movedSinceRest;
-            movedSinceRest = false;
             if (!(dt > 0f) || float.IsInfinity(dt)) return;
             if (phase == DayPhase.Lunch) Worker.Stamina = Clamp(Worker.Stamina + LunchRegen * dt);
-            else if (phase == DayPhase.Working && !moved) Worker.Stamina = Clamp(Worker.Stamina + StandRegen * dt);
+            else if (phase == DayPhase.Working) Worker.Stamina = Clamp(Worker.Stamina + StandRegen * Progression.RegenMultiplier * dt);
         }
 
-        /// <summary>다음 날 시작: 스태미나 가득.</summary>
-        public void Refill()
+        /// <summary>다음 날 시작: 스태미나를 EffectiveMaxStamina로 가득.</summary>
+        public void Refill() => Worker.Stamina = EffectiveMaxStamina;
+
+        /// <summary>현재 체력에 amount를 더하고 0..EffectiveMaxStamina로 자른다(체력 강화 시 +20).</summary>
+        public void AddStamina(float amount)
         {
-            Worker.Stamina = MaxStamina;
-            movedSinceRest = false;
+            if (float.IsNaN(amount) || float.IsInfinity(amount)) return;
+            Worker.Stamina = Clamp(Worker.Stamina + amount);
         }
 
-        private static float Clamp(float v) => v < 0f ? 0f : v > MaxStamina ? MaxStamina : v;
+        private float Clamp(float v)
+        {
+            float max = EffectiveMaxStamina;
+            return v < 0f ? 0f : v > max ? max : v;
+        }
 
         /// <summary>작업자의 충돌원이 칸 (gx, gy)와 겹치는가.</summary>
         public bool Overlaps(int gx, int gy) =>

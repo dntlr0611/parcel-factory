@@ -28,8 +28,18 @@ namespace ParcelFactory.Core
         public int DayStartInspected;
         /// <summary>누적 검사 수(v5).</summary>
         public int InspectedCount;
-        /// <summary>작업자 스태미나 0..100(v5).</summary>
+        /// <summary>작업자 스태미나 0..최대 체력(v5; v6부터 최대는 100 + 20 × StaminaLevel).</summary>
         public float Stamina;
+        /// <summary>쓸 수 있는 EXP(v6, 스펙 11.5).</summary>
+        public int Exp;
+        /// <summary>누적 획득 EXP(v6). 하루 요약의 획득 EXP 계산용.</summary>
+        public int TotalExp;
+        /// <summary>그날 시작 시점의 누적 획득 EXP(v6).</summary>
+        public int DayStartExp;
+        /// <summary>강화 레벨(v6).</summary>
+        public int StaminaLevel;
+        public int SpeedLevel;
+        public int RegenLevel;
     }
 
     public sealed class CellState

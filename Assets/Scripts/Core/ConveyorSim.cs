@@ -20,8 +20,15 @@ namespace ParcelFactory.Core
         /// <summary>검사 판정 횟수(검사대에서 작업자 검사 + 자동 검사기). 하루 요약용(스펙 11.1).</summary>
         public int InspectedCount { get; set; }
 
-        /// <summary>검사 한 건을 센다. 검사대 검사(WorkerService.Inspect)와 자동 검사기가 호출한다.</summary>
-        public void NoteInspected() => InspectedCount++;
+        /// <summary>검사 한 건을 센다. 검사대 검사(WorkerService.Inspect)와 자동 검사기가 호출한다. Inspected 이벤트를 발생시킨다.</summary>
+        public void NoteInspected()
+        {
+            InspectedCount++;
+            Inspected?.Invoke();
+        }
+
+        /// <summary>검사 판정 한 건마다(NoteInspected) 발생한다. Tick 루프 중간일 수 있으므로 핸들러는 시뮬레이션을 변경하면 안 된다.</summary>
+        public event Action Inspected;
 
         /// <summary>Tick 루프 중간에 발생한다. 핸들러는 시뮬레이션을 변경(생성·제거)하면 안 되며 읽기만 해야 한다.</summary>
         public event Action<Package, DeliveryOutcome, int> PackageDelivered;

@@ -406,7 +406,7 @@ namespace ParcelFactory.Core.Tests
             s.Sim.NextId = 3;
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(5, st.Version);
+            Assert.AreEqual(6, st.Version);
             var json = SaveSerializer.ToJson(st);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(json));
 
@@ -452,8 +452,8 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V3_IsRejected()
         {
-            Assert.AreEqual(5, SaveSerializer.CurrentVersion);
-            Assert.AreEqual(5, SaveSerializer.MinReadableVersion);
+            Assert.AreEqual(6, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(6, SaveSerializer.MinReadableVersion);
             var st = SaveSerializer.Capture(new GameSession());
             st.Version = 3;
             Assert.Throws<SaveVersionException>(() => SaveSerializer.Restore(st));
