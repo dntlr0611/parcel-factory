@@ -27,7 +27,7 @@ namespace ParcelFactory.Core
             new UnlockDef { Id = UnlockId.FastWest, Name = "고속 레일 ←", Price = 100 },
             new UnlockDef { Id = UnlockId.FastNorth, Name = "고속 레일 ↑", Price = 100 },
             new UnlockDef { Id = UnlockId.Splitter, Name = "분배기", Price = 300 },
-            new UnlockDef { Id = UnlockId.Scanner, Name = "자동 검사기", Price = 250 },
+            new UnlockDef { Id = UnlockId.Scanner, Name = "자동 검사기", Price = 600, Requires = UnlockId.Plot2 }, // 12×12까지 넓힌 뒤에만 (스펙 11.10)
         };
 
         public static UnlockDef Get(UnlockId id)

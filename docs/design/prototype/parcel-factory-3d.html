@@ -291,7 +291,7 @@
     { id: 'plot2', name: '부지 확장 2', sub: '12×12로 넓힙니다 · 확장 1 필요', price: 500, plot: 12, req: 'plot1' },
     { id: 'railS', name: '레일 ↓', sub: '남쪽으로 흐르는 레일', price: 50, tool: 'conveyor:S' }, { id: 'railW', name: '레일 ←', sub: '서쪽으로 흐르는 레일', price: 50, tool: 'conveyor:W' }, { id: 'railN', name: '레일 ↑', sub: '북쪽으로 흐르는 레일', price: 50, tool: 'conveyor:N' },
     { id: 'fastE', name: '고속 레일 →', sub: '2배 속도', price: 100, tool: 'fast:E' }, { id: 'fastS', name: '고속 레일 ↓', sub: '2배 속도', price: 100, tool: 'fast:S' }, { id: 'fastW', name: '고속 레일 ←', sub: '2배 속도', price: 100, tool: 'fast:W' }, { id: 'fastN', name: '고속 레일 ↑', sub: '2배 속도', price: 100, tool: 'fast:N' },
-    { id: 'splitter', name: '분배기', sub: '검사 결과로 분류 · 파랑/빨강 출구', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향', price: 250, scanner: true },
+    { id: 'splitter', name: '분배기', sub: '검사 결과로 분류 · 파랑/빨강 출구', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향 · 확장 2 필요', price: 600, scanner: true, req: 'plot2' },
   ];
   function cell(type, dir) { const c = { type, dir: dir || 'E', demolishing: false, remain: 0, occ: -1 }; if (type === 'splitter') c.red = null; return c; } // splitter.red: 명시 빨간 출구 (null = 자동, 스펙 11.8)
   function palletCell(kind) { const c = cell('pallet', kind === 'red' ? 'W' : 'E'); c.kind = kind; c.pile = []; return c; } // 더미: 맨 위 = 배열 끝

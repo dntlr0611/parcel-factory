@@ -32,7 +32,8 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(100, UnlockCatalog.Get(UnlockId.FastEast).Price);
             Assert.AreEqual(100, UnlockCatalog.Get(UnlockId.FastNorth).Price);
             Assert.AreEqual(300, UnlockCatalog.Get(UnlockId.Splitter).Price);
-            Assert.AreEqual(250, UnlockCatalog.Get(UnlockId.Scanner).Price);
+            Assert.AreEqual(600, UnlockCatalog.Get(UnlockId.Scanner).Price);
+            Assert.AreEqual(UnlockId.Plot2, UnlockCatalog.Get(UnlockId.Scanner).Requires);
             Assert.AreEqual(UnlockId.Plot1, UnlockCatalog.Get(UnlockId.Plot2).Requires);
             Assert.IsNull(UnlockCatalog.Get(UnlockId.Plot1).Requires);
         }
@@ -68,6 +69,10 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(toolbar.Owns(CellType.FastConveyor, Direction.West));
             Assert.AreEqual(UnlockResult.Ok, unlocks.TryPurchase(UnlockId.Splitter));
             Assert.IsTrue(toolbar.SplitterOwned);
+            Assert.AreEqual(UnlockResult.RequirementMissing, unlocks.TryPurchase(UnlockId.Scanner)); // 12×12 전에는 못 산다
+            Assert.IsFalse(toolbar.ScannerOwned);
+            unlocks.Grant(UnlockId.Plot2);
+            economy.Earn(1000); // 600이 필요하다
             Assert.AreEqual(UnlockResult.Ok, unlocks.TryPurchase(UnlockId.Scanner));
             Assert.IsTrue(toolbar.ScannerOwned);
         }
