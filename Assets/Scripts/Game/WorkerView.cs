@@ -19,12 +19,12 @@ namespace ParcelFactory.Game
         private float bob;
         private Animation anim;
         private string currentClip;
-        private bool hasHolding;
+        private bool hasHolding, hasSprint;
 
         private static readonly Color CursorTint = new Color(1f, 0.83f, 0.4f, 0.45f);
         private static readonly Color RefusedTint = new Color(0.95f, 0.32f, 0.26f, 0.45f);
 
-        private const string IdleClip = "idle", WalkClip = "walk", HoldingClip = "holding-both";
+        private const string IdleClip = "idle", WalkClip = "walk", HoldingClip = "holding-both", SprintClip = "sprint";
 
         private void Start()
         {
@@ -54,19 +54,20 @@ namespace ParcelFactory.Game
             transform.position = lastPos = Grid3D.TileF(w.X, w.Y);
         }
 
-        /// <summary>Kenney 캐릭터 FBX(Legacy 임포트)에 내장된 idle/walk/holding-both 클립을 쓴다. 없으면 bob으로 대신한다.</summary>
+        /// <summary>Kenney 캐릭터 FBX(Legacy 임포트)에 내장된 idle/walk/holding-both/sprint 클립을 쓴다. 없으면 bob으로 대신한다.</summary>
         private void SetupAnimation()
         {
             anim = Model.GetComponent<Animation>();
             if (anim == null) anim = Model.GetComponentInChildren<Animation>();
             if (anim == null || anim.GetClip(IdleClip) == null || anim.GetClip(WalkClip) == null) { anim = null; return; }
             hasHolding = anim.GetClip(HoldingClip) != null;
-            foreach (var n in new[] { IdleClip, WalkClip, HoldingClip })
+            hasSprint = anim.GetClip(SprintClip) != null;
+            foreach (var n in new[] { IdleClip, WalkClip, HoldingClip, SprintClip })
             {
                 var st = anim[n];
                 if (st == null) continue;
                 st.wrapMode = WrapMode.Loop;
-                st.speed = n == WalkClip ? 1.6f : 1f;
+                st.speed = n == WalkClip ? 1.6f : n == SprintClip ? 1.3f : 1f;
             }
             anim.Play(IdleClip);
             currentClip = IdleClip;
@@ -92,7 +93,7 @@ namespace ParcelFactory.Game
             lastPos = transform.position;
             if (anim != null)
             {
-                PlayClip(moving ? WalkClip : (w.Carrying != null && hasHolding ? HoldingClip : IdleClip));
+                PlayClip(moving ? (ws.IsRunning && hasSprint ? SprintClip : WalkClip) : (w.Carrying != null && hasHolding ? HoldingClip : IdleClip));
             }
             else
             {

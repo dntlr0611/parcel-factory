@@ -42,6 +42,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNotNull(workerAnim, "worker model has no legacy Animation (CatalogBuilder.ConfigureCharacterImport)");
                 Assert.IsNotNull(workerAnim.GetClip("walk"), "walk clip missing");
                 Assert.IsNotNull(workerAnim.GetClip("holding-both"), "holding-both clip missing");
+                Assert.IsNotNull(workerAnim.GetClip("sprint"), "sprint clip missing");
                 Assert.IsNotNull(boot.Input);
                 // 팔레트 뷰: 시작 파랑 팔레트 (5,2)에 "Pallet" 오브젝트, 더미 3개를 올리면 3개를 그린다.
                 var pallet = FindCellView("Pallet", 5, 2);
@@ -116,16 +117,32 @@ namespace ParcelFactory.Game.Tests
                 boot.Hud.Root.GetWorldCorners(canvasCorners);
                 var min = canvasCorners[0];
                 var max = canvasCorners[2];
-                foreach (var name in new[] { "TouchE", "TouchX", "TouchR", "TouchPadN", "TouchPadS", "TouchPadW", "TouchPadE" })
+                foreach (var name in new[] { "TouchE", "TouchX", "TouchR", "TouchRun", "TouchPadN", "TouchPadS", "TouchPadW", "TouchPadE" })
                 {
                     var go = GameObject.Find(name);
                     Assert.IsNotNull(go, name + " missing");
+                    var rt = go.GetComponent<RectTransform>();
+                    Assert.GreaterOrEqual(Mathf.Min(rt.rect.width, rt.rect.height), 44f, name + " smaller than 44 px");
                     var corners = new Vector3[4];
-                    go.GetComponent<RectTransform>().GetWorldCorners(corners);
+                    rt.GetWorldCorners(corners);
                     foreach (var c in corners)
                         Assert.IsTrue(c.x >= min.x - 0.01f && c.x <= max.x + 0.01f && c.y >= min.y - 0.01f && c.y <= max.y + 0.01f,
                             name + " corner " + c + " outside canvas " + min + ".." + max);
                 }
+                // 달리기 버튼: 누르는 동안만 달리기 요청, 떼거나 밖으로 나가면 해제.
+                var runBtn = GameObject.Find("TouchRun");
+                var ped = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+                Assert.IsFalse(boot.Input.RunRequested);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(runBtn, ped, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+                Assert.IsTrue(boot.Input.RunRequested, "PointerDown should request running");
+                UnityEngine.EventSystems.ExecuteEvents.Execute(runBtn, ped, UnityEngine.EventSystems.ExecuteEvents.pointerUpHandler);
+                Assert.IsFalse(boot.Input.RunRequested, "PointerUp should release running");
+                UnityEngine.EventSystems.ExecuteEvents.Execute(runBtn, ped, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(runBtn, ped, UnityEngine.EventSystems.ExecuteEvents.pointerExitHandler);
+                Assert.IsFalse(boot.Input.RunRequested, "PointerExit should release running");
+                boot.Input.SetRun(true);
+                boot.Input.ClearPad();
+                Assert.IsFalse(boot.Input.RunRequested, "ClearPad should release running");
                 LogAssert.NoUnexpectedReceived();
             }
             finally
@@ -429,6 +446,82 @@ namespace ParcelFactory.Game.Tests
             }
             finally
             {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>(1,3)에서 동쪽 패드를 10프레임 누른다. 결과: [이동 거리, 체력 소모, 누르는 중 IsRunning(1/0)].</summary>
+        private static IEnumerator Stride(GameBootstrap boot, bool run, float[] result)
+        {
+            var s = boot.Session;
+            var w = s.Worker.Worker;
+            w.X = 1f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South; w.Stamina = 100f;
+            boot.Input.SetRun(run);
+            boot.Input.SetPad(ParcelFactory.Core.Direction.East, true);
+            for (int i = 0; i < 10; i++) yield return null;
+            result[0] = w.X - 1f;
+            result[1] = 100f - w.Stamina;
+            result[2] = s.Worker.IsRunning ? 1f : 0f;
+            boot.Input.ClearPad();
+            yield return null; // 멈춘 프레임: 달리기 즉시 해제
+            Assert.IsFalse(s.Worker.IsRunning, "IsRunning must clear when the worker stops");
+        }
+
+        [UnityTest]
+        public IEnumerator Running_MovesFartherAndDrainsMore_AndNeedsStamina()
+        {
+            var boot = GameBootstrap.Ensure();
+            Time.captureDeltaTime = 1f / 30f; // 걷기·달리기 구간이 같은 시간(10프레임)이 되게 프레임 시간을 고정한다
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 회복·시계·택배를 멈춘다(일시정지 중에도 걸을 수 있다)
+                Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(2, 3).Type);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(3, 3).Type);
+
+                var walk = new float[3];
+                yield return Stride(boot, false, walk);
+                Assert.Greater(walk[0], 0.5f, "walk did not move");
+                Assert.AreEqual(0f, walk[2], "walking must not report IsRunning");
+
+                var run = new float[3];
+                var statusText = boot.Hud.Root.Find("Status/Text").GetComponent<UnityEngine.UI.Text>();
+                yield return Stride(boot, true, run); // Stride가 위치·체력을 다시 맞춘다
+                Assert.AreEqual(1f, run[2], "worker should be running while Space/touch run is held");
+                Assert.Greater(run[0], walk[0] * 1.3f, "running should move farther (" + run[0] + " vs " + walk[0] + ")");
+                Assert.Greater(run[1], walk[1] * 2f, "running should drain more stamina (" + run[1] + " vs " + walk[1] + ")");
+
+                // 상태줄 접두어: 달리는 동안 "달리는 중 · ".
+                var w = s.Worker.Worker;
+                w.X = 1f; w.Y = 3f; w.Stamina = 100f;
+                boot.Input.SetRun(true);
+                boot.Input.SetPad(ParcelFactory.Core.Direction.East, true);
+                yield return null;
+                yield return null;
+                Assert.IsTrue(s.Worker.IsRunning);
+                StringAssert.StartsWith(HudController.RunningPrefix, statusText.text);
+                boot.Input.ClearPad();
+                yield return null;
+                yield return null;
+                Assert.IsFalse(statusText.text.StartsWith(HudController.RunningPrefix), "prefix should clear after stopping");
+
+                // 체력 5(< RunMinStamina 10): 달리기를 눌러도 걷는다.
+                w.X = 1f; w.Y = 3f; w.Stamina = 5f;
+                boot.Input.SetRun(true);
+                boot.Input.SetPad(ParcelFactory.Core.Direction.East, true);
+                Assert.IsTrue(boot.Input.RunRequested);
+                yield return null;
+                yield return null;
+                Assert.Greater(w.X, 1f, "worker should still walk when tired");
+                Assert.IsFalse(s.Worker.IsRunning, "cannot run below RunMinStamina");
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Time.captureDeltaTime = 0f;
+                boot.Input.ClearPad();
                 Object.Destroy(boot.gameObject);
             }
             yield return null;

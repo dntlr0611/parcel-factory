@@ -24,10 +24,11 @@ namespace ParcelFactory.Game
         public event Action<BuildResult> DemolishRequested;
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleHelp, Escape, ToolChanged;
 
-        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, help, escape;
+        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, help, escape, runAction;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
+        private bool runHeld; // 화면 "달리기" 버튼을 누르고 있는가
         private const float MoveSubStep = 0.05f;
 
         private void Awake()
@@ -49,6 +50,8 @@ namespace ParcelFactory.Game
             shop = Button("Shop", "<Keyboard>/b", "<Gamepad>/select");
             help = Button("Help", "<Keyboard>/o", null);
             escape = Button("Escape", "<Keyboard>/escape", null);
+            runAction = Button("Run", "<Keyboard>/space", "<Gamepad>/leftTrigger");
+            runAction.AddBinding("<Gamepad>/leftShoulder");
             for (int i = 0; i < slots.Length; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
         }
 
@@ -91,11 +94,14 @@ namespace ParcelFactory.Game
         private IEnumerable<InputAction> All()
         {
             yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
-            yield return pause; yield return speed; yield return shop; yield return help; yield return escape;
+            yield return pause; yield return speed; yield return shop; yield return help; yield return escape; yield return runAction;
             foreach (var s in slots) yield return s;
         }
 
         private GameSession S => GameBootstrap.Instance != null ? GameBootstrap.Instance.Session : null;
+
+        /// <summary>달리기 입력(스페이스·LT/LB 유지 또는 화면 버튼)을 누르고 있는가. 실제로 달리는지는 코어가 체력으로 판단한다(Worker.IsRunning).</summary>
+        public bool RunRequested => (runAction != null && runAction.IsPressed()) || runHeld;
 
         private void Update()
         {
@@ -104,7 +110,7 @@ namespace ParcelFactory.Game
             // 상점이 유일하게 열려 있으면 B 키가 닫기 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
             if (shop.WasPressedThisFrame() && (!UiBlocksInput || (panels != null && panels.ShopIsOnlyOpen))) ToggleShop?.Invoke();
-            if (UiBlocksInput) return;
+            if (UiBlocksInput) { StopMoving(); return; }
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
@@ -116,9 +122,14 @@ namespace ParcelFactory.Game
 
             var v = move.ReadValue<Vector2>();
             foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
-            if (!S.Clock.IsOpen) return; // 퇴근 후에는 걷지 않는다(일시정지 중에는 걸을 수 있다: 일시정지 중 건설 허용)
-            if (v.sqrMagnitude > 0.04f) for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep)); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
+            // 퇴근 후에는 걷지 않는다(일시정지 중에는 걸을 수 있다: 일시정지 중 건설 허용)
+            if (!S.Clock.IsOpen || v.sqrMagnitude <= 0.04f) { StopMoving(); return; }
+            bool run = RunRequested;
+            for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep), run); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection·달리기 판정을 처리한다
         }
+
+        /// <summary>이동하지 않는 프레임: 영벡터 Move로 코어의 IsRunning만 끈다(멈추면 달리기 즉시 해제, 스펙 11.4). 위치·방향·체력은 바뀌지 않는다.</summary>
+        private void StopMoving() => S.Worker.Move(0f, 0f, 0f);
 
         /// <summary>차단 주체별로 입력 차단을 켜고 끈다. 서로 다른 UI가 서로의 차단을 풀어버리지 않는다.</summary>
         public void SetBlock(string owner, bool on)
@@ -135,8 +146,11 @@ namespace ParcelFactory.Game
             if (held) padHeld.Add(d); else padHeld.Remove(d);
         }
 
-        /// <summary>화면 D-패드 입력을 모두 해제한다. 패널이 열릴 때 이동을 멈추는 데 쓴다.</summary>
-        public void ClearPad() => padHeld.Clear();
+        /// <summary>화면 "달리기" 버튼용. 누르는 동안 held=true, 떼면 false.</summary>
+        public void SetRun(bool held) => runHeld = held;
+
+        /// <summary>화면 D-패드·달리기 입력을 모두 해제한다. 패널이 열릴 때 이동을 멈추는 데 쓴다.</summary>
+        public void ClearPad() { padHeld.Clear(); runHeld = false; }
 
         private void OnApplicationFocus(bool focus) { if (!focus) ClearPad(); }
 

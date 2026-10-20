@@ -311,6 +311,9 @@ namespace ParcelFactory.Game
             staminaFill = UiKit.PanelBox("Fill", bar, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(StaminaBarWidth, 0f), UiKit.Good);
         }
 
+        /// <summary>달리는 중(Worker.IsRunning)이면 상태줄 앞에 붙는다.</summary>
+        public const string RunningPrefix = "달리는 중 · ";
+
         /// <summary>체력 바 색: 50 초과 초록, 20 초과 노랑, 그 외 빨강.</summary>
         public static Color StaminaColor(float stamina) => stamina > 50f ? UiKit.Good : stamina > 20f ? UiKit.Warn : UiKit.Bad;
 
@@ -337,8 +340,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 228f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 244f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 ×2.5 소모)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -356,6 +359,11 @@ namespace ParcelFactory.Game
             var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.Demolish(); }, new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
             var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.RotateTool(); }, null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
             touchRotateLabel = r.GetComponentInChildren<Text>();
+            // 달리기: 해체 버튼 왼쪽, 누르고 있는 동안만 달린다(PointerUp/Exit로 해제).
+            var run = UiKit.Button("TouchRun", touchButtons, "달리기", new Vector2(62f, 62f), null, null, null, 14, new Vector2(1f, 0f)); run.GetComponent<RectTransform>().anchoredPosition = new Vector2(-212f, 40f);
+            var ret = run.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+            void OnRun(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => input.SetRun(held)); ret.triggers.Add(entry); }
+            OnRun(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); OnRun(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); OnRun(UnityEngine.EventSystems.EventTriggerType.PointerExit, false);
             RefreshTouchLabels();
             hotbar.anchoredPosition = new Vector2(0f, 14f);
         }
@@ -522,11 +530,12 @@ namespace ParcelFactory.Game
             badgeText.color = UiKit.AccentFg;
         }
 
-        private void UpdateStamina(float stamina)
+        private void UpdateStamina(float stamina, bool running)
         {
             float st = Mathf.Clamp(stamina, 0f, WorkerService.MaxStamina);
             staminaFill.rectTransform.sizeDelta = new Vector2(StaminaBarWidth * st / WorkerService.MaxStamina, 0f);
             var col = StaminaColor(st);
+            if (running) { float a = col.a; col = Color.Lerp(col, Color.white, 0.35f); col.a = a; } // 달리는 중: 조금 밝게
             if (st < StaminaPulseBelow) col.a = 0.35f + 0.65f * (0.5f + 0.5f * Mathf.Cos(Time.unscaledTime * 8f));
             staminaFill.color = col;
         }
@@ -547,11 +556,11 @@ namespace ParcelFactory.Game
 
             var w = s.Worker.Worker;
             UpdateClock(s.Clock);
-            UpdateStamina(w.Stamina);
+            UpdateStamina(w.Stamina, s.Worker.IsRunning);
             var tool = input.SelectedTool;
-            workerText.text = w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
+            workerText.text = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R로 " + (tool.Value.Type == CellType.Pallet ? "색" : "방향"))
-                : "빈손 · 1~6으로 도구 선택";
+                : "빈손 · 1~6으로 도구 선택");
 
             // 프롬프트: Preview 결과로 문구를 만들고 바라보는 칸 위에 띄운다.
             var r = s.Worker.Preview(tool);
