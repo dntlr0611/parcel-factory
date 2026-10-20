@@ -135,9 +135,10 @@
     </div>
     <div class="panel help" id="help" hidden>
       <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
-      <div><span class="k"><span class="key">1</span>~<span class="key">5</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
-      <div>검사대 위 택배는 검사 전까지 멈춥니다. <b>정상은 출고구</b>, <b>불량은 반품구</b>로 보내세요.</div>
-      <div>입고 3초마다 1개 · 배송 +15 · 해체 2초 후 설치비 80% 환불</div>
+      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
+      <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
+      <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
+      <div>입고 3초마다 1개 · 배송 +15 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
     <div class="panel drawer" id="shop" hidden></div>
@@ -165,7 +166,7 @@
           <div class="row"><span>배송 방법</span><b id="iMethod"></b></div>
           <div class="row scale"><span>저울 실측</span><b id="iScale"></b></div>
         </div>
-        <div class="sub">표기와 실측이 다르면 거부하세요. 거부한 택배는 반품구로 보내야 합니다.</div>
+        <div class="sub">표기와 실측이 다르면 거부하세요. 거부한 택배는 빨강 반품 트럭으로 보내야 합니다.</div>
         <div class="row-btns"><button class="btn danger" id="iReject">거부</button><button class="btn ok" id="iApprove">승인</button></div>
       </div>
     </div>
@@ -190,13 +191,16 @@
   // ---------------- 게임 로직 (코어와 동일 규칙) ----------------
   const DX = { N: 0, E: 1, S: 0, W: -1 }, DY = { N: 1, E: 0, S: -1, W: 0 }, ORDER = ['N', 'E', 'S', 'W'];
   const turnR = d => ORDER[(ORDER.indexOf(d) + 1) % 4], turnL = d => ORDER[(ORDER.indexOf(d) + 3) % 4], opp = d => ORDER[(ORDER.indexOf(d) + 2) % 4];
-  const COST = { conveyor: 10, fast: 25, splitter: 60, table: 40, scanner: 120 };
-  const NAMES = { conveyor: '레일', fast: '고속 레일', splitter: '분배기', table: '검사대', scanner: '자동 검사기', inlet: '입고구', outlet: '출고구', rdock: '반품구', empty: '빈 칸', locked: '잠긴 칸' };
+  const COST = { conveyor: 10, fast: 25, pallet: 20, splitter: 60, table: 40, scanner: 120 };
+  const NAMES = { conveyor: '레일', fast: '고속 레일', pallet: '팔레트', splitter: '분배기', table: '검사대', scanner: '자동 검사기', inlet: '입고구', outlet: '출고 트럭', rdock: '반품 트럭', empty: '빈 칸', locked: '잠긴 칸' };
   const ARROWS = { N: '↑', E: '→', S: '↓', W: '←' };
-  const SLOTS = ['conveyor', 'fast', 'table', 'splitter', 'scanner'];
-  const SW = { conveyor: '#3fa3a3', fast: '#c25a66', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
+  const SLOTS = ['conveyor', 'fast', 'pallet', 'table', 'splitter', 'scanner'];
+  const SW = { conveyor: '#3fa3a3', fast: '#c25a66', pallet: '#9a6b40', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
+  const PALLET_CAP = 6, OUTLET_X = 11, RDOCK_X = 11; // 스펙 10.1·10.2
+  const KIND_OF_DIR = { E: 'blue', W: 'red' }, KIND_LABEL = { blue: '파랑', red: '빨강' }; // 팔레트 도구: East = 파랑, West = 빨강
+  const dirLabel = (type, dir) => type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[dir]] : ARROWS[dir];
   const isTrack = c => ['conveyor', 'fast', 'splitter', 'inlet', 'table', 'scanner'].includes(c.type);
-  const isBuilding = c => ['conveyor', 'fast', 'splitter', 'table', 'scanner'].includes(c.type);
+  const isBuilding = c => ['conveyor', 'fast', 'splitter', 'table', 'scanner', 'pallet'].includes(c.type);
   const isDock = t => t === 'outlet' || t === 'rdock';
   const inBounds = (x, y) => x >= 0 && y >= 0 && x < 12 && y < 12;
   const CATALOG = [
@@ -207,16 +211,19 @@
     { id: 'splitter', name: '분배기', sub: '좌·우로 번갈아 보냅니다 · 4방향', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향', price: 250, scanner: true },
   ];
   function cell(type, dir) { return { type, dir: dir || 'E', demolishing: false, remain: 0, toggle: false, occ: -1 }; }
+  function palletCell(kind) { const c = cell('pallet', kind === 'red' ? 'W' : 'E'); c.kind = kind; c.pile = []; return c; } // 더미: 맨 위 = 배열 끝
   function newGame() {
     const cells = [];
     for (let y = 0; y < 12; y++) { cells.push([]); for (let x = 0; x < 12; x++) cells[y].push(cell((x < 6 && y < 6) ? 'empty' : 'locked')); }
-    cells[2][0] = cell('inlet'); cells[2][5] = cell('outlet'); cells[4][5] = cell('rdock');
+    cells[2][0] = cell('inlet'); cells[2][OUTLET_X] = cell('outlet'); cells[4][RDOCK_X] = cell('rdock'); // 트럭 도크는 동쪽 벽 바로 안쪽, 잠겨 있어도 처음부터 존재
+    cells[2][5] = palletCell('blue'); cells[4][5] = palletCell('red'); // 시작 팔레트 (옛 출고구·반품구 자리)
     return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, worker: { x: 2.5, y: 4, facing: 'S', carrying: null } };
   }
-  function demoLayout(g) { // #demo — 시안 확인용 샘플 배치
+  function demoLayout(g) { // #demo — 시안 확인용 샘플 배치 (Unity 데모 장면과 같은 구성)
     g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
-    g.cells[3][3] = cell('conveyor', 'N'); g.cells[4][3] = cell('conveyor', 'E'); g.cells[4][4] = cell('conveyor', 'E');
-    g.worker = { x: 2.6, y: 1.2, facing: 'N', carrying: null }; g.money = 240; return g;
+    const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, label: makeLabel(bad) });
+    g.cells[2][5].pile.push(pkg(true, false), pkg(true, false), pkg(true, true));
+    g.worker = { x: 8.0, y: 2.0, facing: 'E', carrying: pkg(true, false) }; g.money = 240; return g;
   }
   let S = location.hash === '#demo' ? demoLayout(newGame()) : newGame();
   const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null };
@@ -269,6 +276,10 @@
       if (!inBounds(nx, ny)) { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       const next = S.cells[ny][nx];
       if (isDock(next.type)) { deliver(p, next.type); remove(i, true); i--; continue; }
+      if (next.type === 'pallet') { // 흐름에서 빠져 더미에 쌓인다(검사 상태 유지). 가득 차거나 해체 중이면 대기
+        if (next.demolishing || next.pile.length >= PALLET_CAP) continue;
+        c.occ = -1; S.packages.splice(i, 1); i--; p.progress = 0; next.pile.push(p); continue;
+      }
       if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       if (next.occ >= 0 || next.demolishing) continue;
       c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading);
@@ -283,8 +294,8 @@
     }
   }
   const WALK_SPEED = 3.4, WORKER_R = 0.28; // 칸/초, 충돌 반지름(칸)
-  const walkableCell = c => c.type !== 'locked' && c.type !== 'table' && c.type !== 'scanner' && c.type !== 'splitter'; // 레일·도크 위는 걸어 다닐 수 있다
-  const walkableAt = (px, py) => { const n = S.unlocked; if (px < -0.5 + WORKER_R || py < -0.5 + WORKER_R || px > n - 0.5 - WORKER_R || py > n - 0.5 - WORKER_R) return false; for (const dx of [-WORKER_R, WORKER_R]) for (const dy of [-WORKER_R, WORKER_R]) { const cx = Math.round(px + dx), cy = Math.round(py + dy); if (!inBounds(cx, cy) || !walkableCell(S.cells[cy][cx])) return false; } return true; };
+  const walkableCell = c => c.type !== 'table' && c.type !== 'scanner' && c.type !== 'splitter' && c.type !== 'pallet'; // 레일·도크·잠긴 바닥 위는 걸어 다닐 수 있다 (스펙 10.3)
+  const walkableAt = (px, py) => { const n = 12; /* 경계 = 건물 안 격자 전체 */ if (px < -0.5 + WORKER_R || py < -0.5 + WORKER_R || px > n - 0.5 - WORKER_R || py > n - 0.5 - WORKER_R) return false; for (const dx of [-WORKER_R, WORKER_R]) for (const dy of [-WORKER_R, WORKER_R]) { const cx = Math.round(px + dx), cy = Math.round(py + dy); if (!inBounds(cx, cy) || !walkableCell(S.cells[cy][cx])) return false; } return true; };
   function moveWorker(vx, vy, dt) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리
     const w = S.worker; const len = Math.hypot(vx, vy); if (len < 1e-6) return false;
     vx /= len; vy /= len; const step = WALK_SPEED * dt;
@@ -302,7 +313,12 @@
     const w = S.worker, f = facingTile();
     if (!inBounds(f.x, f.y)) return 'nofloor';
     const fc = S.cells[f.y][f.x];
-    if (w.carrying) { if (isDock(fc.type)) return 'deliver'; if (isTrack(fc) && fc.occ < 0 && !fc.demolishing) return 'put'; return 'cannotput'; }
+    if (w.carrying) {
+      if (isDock(fc.type)) return 'deliver';
+      if (fc.type === 'pallet' && !fc.demolishing) return fc.pile.length < PALLET_CAP ? 'palletput' : 'palletfull';
+      if (isTrack(fc) && fc.occ < 0 && !fc.demolishing) return 'put'; return 'cannotput';
+    }
+    if (fc.type === 'pallet' && fc.pile.length > 0) return 'palletpick';
     const pi = packageAt(f.x, f.y);
     if (pi >= 0) return (fc.type === 'table' && !S.packages[pi].inspected) ? 'inspect' : 'pick';
     if (!UI.tool) return 'notool';
@@ -321,10 +337,13 @@
       case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; } break; }
       case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
       case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
-      case 'place': S.money -= COST[UI.tool.type]; S.cells[f.y][f.x] = cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
+      case 'palletpick': w.carrying = fc.pile.pop(); break;
+      case 'palletput': { const p = w.carrying; p.progress = 0; fc.pile.push(p); w.carrying = null; break; }
+      case 'palletfull': toast('팔레트가 가득 찼습니다'); break;
+      case 'place': S.money -= COST[UI.tool.type]; S.cells[f.y][f.x] = UI.tool.type === 'pallet' ? palletCell(KIND_OF_DIR[UI.tool.dir]) : cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
       case 'nofloor': toast('바닥이 없는 곳입니다'); break;
       case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
-      case 'notool': toast('도구를 고르세요 (1~5)'); break;
+      case 'notool': toast('도구를 고르세요 (1~6)'); break;
       case 'standing': toast('서 있는 자리에는 놓을 수 없습니다'); break;
       case 'locked': toast('아직 사지 않은 부지입니다 · 상점에서 확장'); break;
       case 'occupied': toast('이미 무언가 있습니다'); break;
@@ -336,8 +355,9 @@
     const c = S.cells[f.y][f.x];
     if (!isBuilding(c)) return toast('해체할 수 있는 부품이 아닙니다');
     if (c.demolishing) return toast('이미 해체 중입니다');
+    if (c.type === 'pallet' && c.pile.length > 0) return toast('팔레트를 먼저 비우세요');
     UI.pending = { x: f.x, y: f.y };
-    $('dText').textContent = NAMES[c.type] + ' ' + ARROWS[c.dir] + ' 를 해체합니다.';
+    $('dText').textContent = NAMES[c.type] + ' ' + (c.type === 'pallet' ? KIND_LABEL[c.kind] : ARROWS[c.dir]) + ' 를 해체합니다.';
     $('dRefund').textContent = '+' + Math.round(COST[c.type] * 0.8);
     $('demolish').hidden = false;
   }
@@ -354,6 +374,7 @@
     if (type === 'table') return S.table ? ORDER.slice() : [];
     if (type === 'splitter') return S.splitter ? ORDER.slice() : [];
     if (type === 'scanner') return S.scanner ? ORDER.slice() : [];
+    if (type === 'pallet') return ['E', 'W']; // 시작부터 보유: 파랑(E)·빨강(W)
     return ORDER.filter(d => S.owned[type + ':' + d]);
   }
   const availableSlots = () => SLOTS.filter(t => ownedDirs(t).length > 0);
@@ -377,6 +398,7 @@
     conveyor: '<svg viewBox="0 0 16 16"><path d="M2 8h9M8 4l4 4-4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     fast: '<svg viewBox="0 0 16 16"><path d="M1 8h6M6 4l4 4-4 4M8 4l4 4-4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     table: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="9" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 6.5h6M5 9h4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    pallet: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="5" rx="1" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M2 13.5h12" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><rect x="5" y="3" width="6" height="4" rx="0.8" fill="#fff"/></svg>',
     splitter: '<svg viewBox="0 0 16 16"><path d="M2 8h5l4-4M7 8l4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     scanner: '<svg viewBox="0 0 16 16"><path d="M3 12V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M5 8h6" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round"/></svg>',
   };
@@ -388,8 +410,8 @@
       const on = UI.slot === i && UI.tool;
       const b = document.createElement('button'); b.className = 'slot' + (on ? ' on' : '');
       const dirs = ownedDirs(type);
-      b.innerHTML = '<span class="k">' + (i + 1) + '</span><span class="c">' + COST[type] + '</span><span class="ico" style="background:' + SW[type] + '">' + ICONS[type] + '</span><span>' + NAMES[type] + '</span><span class="d">' + (on ? ARROWS[UI.tool.dir] : (dirs.length > 1 ? 'R' : ARROWS[dirs[0]])) + '</span>';
-      b.title = NAMES[type] + ' · ' + (dirs.length > 1 ? 'R로 방향 전환' : '방향 ' + ARROWS[dirs[0]]);
+      b.innerHTML = '<span class="k">' + (i + 1) + '</span><span class="c">' + COST[type] + '</span><span class="ico" style="background:' + SW[type] + '">' + ICONS[type] + '</span><span>' + NAMES[type] + '</span><span class="d">' + (on ? dirLabel(type, UI.tool.dir) : (dirs.length > 1 ? 'R' : dirLabel(type, dirs[0]))) + '</span>';
+      b.title = NAMES[type] + ' · ' + (type === 'pallet' ? 'R로 파랑/빨강 전환' : dirs.length > 1 ? 'R로 방향 전환' : '방향 ' + ARROWS[dirs[0]]);
       b.addEventListener('click', () => selectSlot(i)); bar.appendChild(b);
     });
   }
@@ -409,7 +431,7 @@
   $('iApprove').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = false; } UI.inspect = null; $('inspect').hidden = true; });
   $('iReject').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = true; } UI.inspect = null; $('inspect').hidden = true; });
   $('dCancel').addEventListener('click', () => { UI.pending = null; $('demolish').hidden = true; });
-  $('dConfirm').addEventListener('click', () => { if (UI.pending) { const c = S.cells[UI.pending.y][UI.pending.x]; if (isBuilding(c)) { c.demolishing = true; c.remain = 2; UI.dirty.add(UI.pending.x + ',' + UI.pending.y); } } UI.pending = null; $('demolish').hidden = true; });
+  $('dConfirm').addEventListener('click', () => { if (UI.pending) { const c = S.cells[UI.pending.y][UI.pending.x]; if (isBuilding(c) && !(c.type === 'pallet' && c.pile.length)) { c.demolishing = true; c.remain = 2; UI.dirty.add(UI.pending.x + ',' + UI.pending.y); } } UI.pending = null; $('demolish').hidden = true; });
   $('pauseBtn').addEventListener('click', () => { S.paused = !S.paused; });
   $('speedBtn').addEventListener('click', () => { S.speed = S.speed === 1 ? 2 : 1; });
   $('shopBtn').addEventListener('click', () => { $('shop').hidden = !$('shop').hidden; $('help').hidden = true; renderShop(); });
@@ -431,7 +453,7 @@
     if (KEYDIR[k]) { e.preventDefault(); held.add(k); return; }
     if (k === 'e') act(); else if (k === 'x') askDemolish(); else if (k === 'q') clearTool(); else if (k === 'r') rotateTool();
     else if (k === 'p') $('pauseBtn').click(); else if (k === 't') $('speedBtn').click(); else if (k === 'b') $('shopBtn').click(); else if (k === 'o') $('helpBtn').click();
-    else if (/^[1-5]$/.test(k)) selectSlot(parseInt(k, 10) - 1);
+    else if (/^[1-6]$/.test(k)) selectSlot(parseInt(k, 10) - 1);
   });
 
   // ---------------- 3D ----------------
@@ -446,10 +468,10 @@
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1d2127); scene.fog = new THREE.Fog(0x1d2127, 24, 46);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   const camDir = new THREE.Vector3(0, 14.5, -10.5).normalize(), camPos = new THREE.Vector3(), camTarget = new THREE.Vector3(), camLook = new THREE.Vector3();
-  function frameLot(snap) { // 해금된 부지 + 도크 차량이 화면에 들어오도록 카메라를 잡는다
-    const n = S.unlocked, a = camera.aspect || 1, t = Math.tan(camera.fov * Math.PI / 360);
-    const hw = n / 2 + 5.0, hv = n / 2 + 2.8, dist = Math.max(hw / (t * a), hv / t) * 1.04;
-    camTarget.set((W(0) + W(n - 1)) / 2 * 0.2, 0, (Z(0) + Z(n - 1)) / 2 + 0.5); camPos.copy(camTarget).addScaledVector(camDir, dist);
+  function frameLot(snap) { // 건물 안 12×12 전체(작업자는 잠긴 구역도 걷는다) + 양쪽 벽 밖 차량이 화면에 들어오도록 카메라를 잡는다
+    const n = 12, a = camera.aspect || 1, t = Math.tan(camera.fov * Math.PI / 360);
+    const hw = n / 2 + 3.4, hv = n / 2 + 1.2, dist = Math.max(hw / (t * a), hv / t) * 1.04;
+    camTarget.set(0, 0, 0.2); camPos.copy(camTarget).addScaledVector(camDir, dist);
     scene.fog.near = dist + 6; scene.fog.far = dist + 30;
     if (snap) { camera.position.copy(camPos); camLook.copy(camTarget); camera.lookAt(camLook); }
   }
@@ -458,6 +480,7 @@
   sun.shadow.mapSize.set(4096, 4096); sun.shadow.camera.left = -15; sun.shadow.camera.right = 15; sun.shadow.camera.top = 15; sun.shadow.camera.bottom = -15; sun.shadow.camera.near = 1; sun.shadow.camera.far = 50; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 2;
   scene.add(sun);
   const W = gx => 5.5 - gx, Z = gy => gy - 5.5;   // 격자 → 월드. 카메라가 -z에서 +z를 보므로 화면 오른쪽 = -x. 동쪽(gx+)이 오른쪽이 되도록 x를 뒤집는다. 북쪽(gy+) = +z = 화면 위
+  const srgb = hex => new THREE.Color(hex).convertSRGBToLinear(); // 스펙 색(sRGB hex)을 그대로 보이게
   const lit = (color, o) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9, metalness: 0 }, o || {}));
   const PALETTE = { grass: 0x5f9c48, leafsGreen: 0x4e9640, leafsDark: 0x3c7d4b, wood: 0xb98a5c, woodDark: 0x8c5f40, woodBark: 0x8a5a3c, woodBarkDark: 0x7d5238, dirt: 0xa27c5a, woodInner: 0xe6d0ad, _defaultMat: 0xd8d3c6 }; // nature-kit 민트 팔레트를 공장 톤에 맞게 재채색
   function shadowify(obj) { obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.isMeshBasicMaterial) { const b = o.material, c = PALETTE[b.name]; o.material = new THREE.MeshStandardMaterial({ color: c !== undefined ? c : b.color, map: b.map, vertexColors: c !== undefined ? false : b.vertexColors, roughness: 0.95, metalness: 0 }); } if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } }); return obj; }
@@ -524,24 +547,38 @@
     prop('screen-hanging-wide', 1.0, Math.PI, 5.6, HALF - 0.5).position.y = 1.0;
     // 임대 전 구역에 쌓인 재고 (12×12 밖 여백·잠긴 영역 느낌)
     let seed = 7; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-    for (const [x, z] of [[-6.2, 5.6], [-5.2, 5.7], [-6.1, 4.6], [6.1, 5.5], [6.2, 4.4], [5.1, 5.6]]) { const k = ['box-large', 'box-wide', 'box-long'][Math.floor(rnd() * 3)]; prop(k, 0.9, rnd() * 0.6 - 0.3, x, z); if (rnd() < 0.5) prop('box-small', 0.9, rnd() * 1.5, x, z).position.y = 0.5; }
+    for (const [x, z] of [[-6.4, 6.1], [-6.4, 4.9], [-6.4, 3.7], [6.4, 6.1], [6.4, 4.9], [6.4, 3.7]]) { const k = ['box-large', 'box-wide', 'box-long'][Math.floor(rnd() * 3)]; prop(k, 0.9, rnd() * 0.6 - 0.3, x, z); if (rnd() < 0.5) prop('box-small', 0.9, rnd() * 1.5, x, z).position.y = 0.5; }
     // 야드: 컨테이너, 급수탑, 굴뚝, 멀리 건물 실루엣
     prop('shipping-container-a', 3.0, 0, -11.5, 4.0); prop('shipping-container-b', 3.0, 0, -11.5, 7.5); prop('shipping-container-c', 3.0, 0.08, -13.2, 1.2);
     prop('water-tower', 2.6, 0, 10.5, 9.5); prop('detail-tank', 3.0, 0, 11.5, 6.0); prop('chimney-medium', 2.6, 0, -9.0, 10.5);
     prop('building-a', 5.0, 0, -2.0, 13.5); prop('building-c', 5.0, 0, 8.0, 14.2); prop('building-h', 5.0, 0, -10.0, 14.0);
     for (let i = 0; i < 6; i++) prop('cone-flat', 0.9, 0, HALF + 1.2 + i * 0.0, -HALF + 1 + i * 1.6).visible = i % 2 === 0;
-    // 도크: 슬래브 + 출입구 밖에 세워 둔 차량 + 도크→출입구 차선
-    dock(0, 2, 0x3fa35a, 'van', HALF + 1.5, Z(2), Math.PI / 2);
-    dock(5, 2, 0x3d7be0, 'delivery', -HALF - 1.6, Z(2), -Math.PI / 2);
-    dock(5, 4, 0xd95a4a, 'truck', -HALF - 1.6, Z(4), -Math.PI / 2);
+    // 도크: 슬래브 + 출입구 밖에 세워 둔 차량(차체 색 = 도크 색). 입고구만 출입구까지 차선, 트럭 도크는 서쪽 가장자리에 흰 정지선
+    dock(0, 2, 0x3fa35a, 'van', HALF + 1.5, Z(2), Math.PI / 2, true);
+    dock(OUTLET_X, 2, 0x3d7be0, 'delivery', -HALF - 1.6, Z(2), -Math.PI / 2, false);
+    dock(RDOCK_X, 4, 0xd95a4a, 'truck', -HALF - 1.6, Z(4), -Math.PI / 2, false);
   }
-  function dock(gx, gy, color, vehicle, vx, vz, vyaw) {
-    const slab = box(1, 0.22, 1, lit(color, { roughness: 0.6 }), W(gx), 0.11, Z(gy)); scene.add(slab);
+  function tintVehicle(v, color) { // 가장 큰 메시(차체)의 재질을 복제해 도크 색을 입힌다
+    let best = null, bestN = -1;
+    v.traverse(o => { if (o.isMesh && o.geometry && o.geometry.attributes.position) { const n = o.geometry.attributes.position.count; if (n > bestN) { bestN = n; best = o; } } });
+    if (!best) return; const m = best.material.clone(); m.color = srgb(color);
+    const img = m.map && m.map.image; // 색 지도를 흑백으로 바꿔야 원래 차체 색과 섞이지 않는다
+    if (img && img.width) { try {
+      const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height; const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, cv.width, cv.height), a = d.data;
+      for (let i = 0; i < a.length; i += 4) { const l = Math.min(255, (0.299 * a[i] + 0.587 * a[i + 1] + 0.114 * a[i + 2]) * 1.5); a[i] = a[i + 1] = a[i + 2] = l; }
+      g.putImageData(d, 0, 0); const t = new THREE.CanvasTexture(cv); t.flipY = m.map.flipY; t.wrapS = m.map.wrapS; t.wrapT = m.map.wrapT; t.encoding = THREE.sRGBEncoding; t.magFilter = m.map.magFilter; t.minFilter = m.map.minFilter; m.map = t;
+    } catch (e) { console.warn('tint texture', e); } }
+    best.material = m;
+  }
+  function dock(gx, gy, color, vehicle, vx, vz, vyaw, lanes) {
+    const slab = box(1, 0.22, 1, lit(srgb(color), { roughness: 0.6 }), W(gx), 0.11, Z(gy)); scene.add(slab);
     const mark = box(0.72, 0.02, 0.72, lit(0xf5f0e6, { roughness: 0.8 }), W(gx), 0.23, Z(gy)); scene.add(mark);
-    const v = make(vehicle, 0.64, vyaw); v.position.set(vx, 0, vz); scene.add(v);
-    const cone = make('warning-traffic', 0.6, 0); cone.position.set(W(gx), 0, Z(gy) + 0.62); scene.add(cone);
-    const doorX = vx > 0 ? HALF : -HALF, x0 = W(gx) + (vx > 0 ? 0.5 : -0.5); // 도크 칸 가장자리 → 출입구까지 바닥 차선
-    if (Math.abs(doorX - x0) > 0.2) { const len = Math.abs(doorX - x0), cx = (doorX + x0) / 2; scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) - 0.42)); scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) + 0.42)); }
+    const v = make(vehicle, 0.64, vyaw); v.position.set(vx, 0, vz); tintVehicle(v, color); scene.add(v);
+    const cone = make('warning-traffic', 0.6, 0); cone.position.set(W(gx) + (vx > 0 ? 0 : 0.62), 0, Z(gy) + 0.62); scene.add(cone);
+    const doorX = vx > 0 ? HALF : -HALF, x0 = W(gx) + (vx > 0 ? 0.5 : -0.5);
+    if (lanes && Math.abs(doorX - x0) > 0.2) { const len = Math.abs(doorX - x0), cx = (doorX + x0) / 2; scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) - 0.42)); scene.add(box(len, 0.012, 0.06, laneMat, cx, 0.0, Z(gy) + 0.42)); }
+    if (!lanes) scene.add(box(0.08, 0.014, 1.0, lit(0xf5f3ee, { roughness: 0.7 }), W(gx) + 0.58, 0.0, Z(gy))); // 서쪽(+x) 가장자리 정지선
   }
   let lotGroup = null;
   function rebuildLot() {
@@ -557,6 +594,7 @@
   }
   const cellObjs = new Map(), objLayer = new THREE.Group(); scene.add(objLayer);
   const arrows = [];
+  const palletWood = lit(srgb(0xb98a5c), { roughness: 0.95 }), palletSlat = lit(srgb(0x6b4a2e), { roughness: 1 }), palletBlue = lit(srgb(0x3d7be0), { roughness: 0.6 }), palletRed = lit(srgb(0xd95a4a), { roughness: 0.6 });
   function cellMesh(c) {
     if (!isBuilding(c)) return null;
     const g = new THREE.Group(); const yaw = yawOf(c.dir);
@@ -570,6 +608,12 @@
       g.add(make('conveyor-junction-t', 1, yaw + JUNCTION_YAW));
     } else if (c.type === 'table') {
       g.add(box(0.96, 0.08, 0.96, concreteMat, 0, 0.08, 0)); const t = make('screen-panel-flat', 0.8, yaw); g.add(t);
+    } else if (c.type === 'pallet') { // 나무 팔레트 + 종류 색 테두리. 쌓인 상자는 매 프레임 더미에서 그린다
+      g.add(box(0.9, 0.12, 0.9, palletWood, 0, 0.06, 0));
+      for (const dz of [-0.3, 0, 0.3]) { const gap = box(0.9, 0.006, 0.025, palletSlat, 0, 0.123, dz + 0.15); gap.castShadow = false; g.add(gap); }
+      const band = c.kind === 'red' ? palletRed : palletBlue, t = 0.04;
+      g.add(box(0.98, 0.13, t, band, 0, 0.065, 0.47)); g.add(box(0.98, 0.13, t, band, 0, 0.065, -0.47));
+      g.add(box(t, 0.13, 0.9, band, 0.47, 0.065, 0)); g.add(box(t, 0.13, 0.9, band, -0.47, 0.065, 0));
     }
     return g;
   }
@@ -581,7 +625,8 @@
   }
   function rebuildAll() { rebuildLot(); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rebuildCell(x, y); }
   const parcelObjs = new Map(), parcelLayer = new THREE.Group(); scene.add(parcelLayer);
-  function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(0xc9472f, { emissive: 0xc9472f, emissiveIntensity: 0.8 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); return g; }
+  const pileObjs = new Map(), PILE_Y = [0.12, 0.52, 0.92];
+  function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(srgb(0xc9472f), { emissive: srgb(0xc9472f), emissiveIntensity: 0.5 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); return g; }
   const surface = t => t === 'table' ? 0.6 : t === 'inlet' ? 0.22 : 0.4;
   const worker = new THREE.Group(); scene.add(worker);
   let carried, cursor, mixer = null, actions = {}, curAction = null;
@@ -637,6 +682,14 @@
       m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); m.getObjectByName('stamp').visible = p.inspected && p.rejected;
     }
     for (const [id, m] of parcelObjs) if (!seen.has(id)) { parcelLayer.remove(m); parcelObjs.delete(id); }
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { // 팔레트 더미: 층당 2개, 최대 3층 (레일 위 상자와 같은 크기)
+      const c = S.cells[y][x], key = x + ',' + y, pile = c.type === 'pallet' ? c.pile : null; let arr = pileObjs.get(key);
+      if (!pile || !pile.length) { if (arr) { arr.forEach(m => parcelLayer.remove(m)); pileObjs.delete(key); } continue; }
+      if (!arr) { arr = []; pileObjs.set(key, arr); }
+      while (arr.length < pile.length) { const m = parcelMesh(); parcelLayer.add(m); arr.push(m); }
+      while (arr.length > pile.length) parcelLayer.remove(arr.pop());
+      pile.forEach((p, i) => { const m = arr[i]; m.position.set(W(x) + (i % 2 ? -0.22 : 0.22), PILE_Y[Math.floor(i / 2)], Z(y)); m.rotation.y = Math.PI / 2; /* 좁은 면(0.4)이 x축 → 2개가 겹치지 않음 */ m.getObjectByName('stamp').visible = p.inspected && p.rejected; });
+    }
     const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden;
     const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt);
     worker.position.set(W(w.x), 0, Z(w.y));
@@ -644,16 +697,16 @@
     if (mixer) { playAnim(moving ? 'walk' : (w.carrying ? 'holding-both' : 'idle')); mixer.update(dt); } else { bob = moving ? bob + dt * 14 : 0; if (worker.children[0]) worker.children[0].position.y = moving ? Math.abs(Math.sin(bob)) * 0.05 : 0; }
     carried.visible = !!w.carrying; if (w.carrying) carried.getObjectByName('stamp').visible = w.carrying.inspected && w.carrying.rejected;
     const f = facingTile(); const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
-    cursor.visible = !!fc && fc.type !== 'locked';
-    if (cursor.visible) { const h = (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.22 + 0.14 * Math.sin(now / 170); }
+    cursor.visible = !!fc;
+    if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
     const r = preview(); let label = null;
-    if (r === 'pick') label = '집기'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = fc.type === 'outlet' ? '출고' : '반품'; else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
+    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = fc.type === 'outlet' ? '출고' : '반품'; else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
     const pr = $('prompt'); pr.hidden = !label;
-    if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
+    if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
     $('money').textContent = S.money; $('delivered').textContent = S.delivered; $('lost').textContent = S.lost; $('waiting').textContent = S.packages.filter(p => !p.inspected && S.cells[p.y][p.x].type === 'table').length;
     $('pauseBtn').classList.toggle('on', S.paused); $('speedLbl').textContent = S.speed + 'x'; $('speedBtn').classList.toggle('on', S.speed === 2);
-    $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일이나 도크를 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + ARROWS[UI.tool.dir] + ' · E로 설치 · R로 방향' : '빈손 · 1~5로 도구를 고르세요');
+    $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요');
     renderer.render(scene, camera);
   }
   loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
