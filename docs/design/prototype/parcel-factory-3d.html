@@ -185,7 +185,7 @@
     </div>
     <div class="panel help" id="help" hidden>
       <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
-      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
+      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>취소·닫기·빈손 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div><span class="k"><span class="key">R</span></span><b>R → 화살표: 방향 설정</b> (설치된 부품도 바라보고 R) · 분배기/팔레트: <b>R → 1 파랑 / 2 빨강</b></div>
       <div><b>분배기</b>: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배 (빨간 출구는 R → 2 → 화살표로 지정)</div>
@@ -329,8 +329,8 @@
   const KEYDIR = { KeyW: 'N', ArrowUp: 'N', KeyS: 'S', ArrowDown: 'S', KeyA: 'W', ArrowLeft: 'W', KeyD: 'E', ArrowRight: 'E', padN: 'N', padS: 'S', padW: 'W', padE: 'E' }; // e.code 기준 — 한글 IME 상태에서도 동작
   function inputVector() { let vx = 0, vy = 0; if (UI.cfg) return [0, 0]; for (const k of held) { const d = KEYDIR[k]; if (d && !UI.cfgHold.has(k)) { vx += DX[d]; vy += DY[d]; } } return [vx, vy]; }
   function keyUp(code) { held.delete(code); UI.cfgHold.delete(code); }
-  function pressDir(code) { // 방향 키/패드 눌림. 설정 중이면 첫 눌림(edge)이 입력이 되고, 그 키는 뗄 때까지 이동에 쓰지 않는다
-    const edge = !held.has(code); held.add(code);
+  function pressDir(code, repeat) { // 방향 키/패드 눌림. 설정 중이면 첫 눌림(edge)이 입력이 되고, 그 키는 뗄 때까지 이동에 쓰지 않는다. repeat(키 반복)를 알면 held가 아니라 그걸로 edge를 판단한다 — keyup을 놓쳐 held에 남은 키가 새 눌림을 삼키지 않도록
+    const edge = repeat === undefined ? !held.has(code) : !repeat; held.add(code);
     if (UI.cfg) { UI.cfgHold.add(code); if (edge) cfgKey(code); }
     return edge;
   }
@@ -489,6 +489,18 @@
     return 'place';
   }
 
+  function toolCell() { // 지금 도구로 설치될 칸 (act와 설치 미리보기가 같이 쓴다)
+    const t = UI.tool, nc = t.type === 'pallet' ? palletCell(KIND_OF_DIR[t.dir]) : cell(t.type, t.dir);
+    if (nc.type === 'splitter' && t.red && t.red !== t.dir) nc.red = t.red; return nc;
+  }
+  function ghostSpec() { // 설치 미리보기 (스펙 11.9): 도구를 들고(택배 없이) 바닥이 있는 칸을 보고 있을 때만. key가 같으면 다시 만들지 않는다
+    const w = S.worker; if (!UI.tool || w.carrying) return null;
+    const f = facingTile(); if (!inBounds(f.x, f.y)) return null;
+    const ok = preview() === 'place', t = UI.tool; let nb = '';
+    if (t.type === 'splitter') for (const d of ORDER) { const ax = f.x + DX[d], ay = f.y + DY[d]; nb += inBounds(ax, ay) ? S.cells[ay][ax].type[0] + S.cells[ay][ax].type.length : '-'; } // 이웃이 바뀌면 출구 화살표도 바뀐다
+    return { x: f.x, y: f.y, ok, key: [f.x, f.y, t.type, t.dir, t.type === 'splitter' ? t.red || '' : '', ok ? 'ok' : 'no', nb].join('|') };
+  }
+
   function act() {
     const w = S.worker, f = facingTile(), r = preview();
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
@@ -501,7 +513,7 @@
       case 'palletput': { const p = w.carrying; p.progress = 0; fc.pile.push(p); w.carrying = null; break; }
       case 'palletfull': toast('팔레트가 가득 찼습니다'); break;
       case 'exhausted': toast('지쳤습니다. 잠시 쉬세요', 'bad'); break;
-      case 'place': { S.money -= COST[UI.tool.type]; pushFx(f.x, f.y, -COST[UI.tool.type]); const nc = UI.tool.type === 'pallet' ? palletCell(KIND_OF_DIR[UI.tool.dir]) : cell(UI.tool.type, UI.tool.dir); if (nc.type === 'splitter' && UI.tool.red && UI.tool.red !== UI.tool.dir) nc.red = UI.tool.red; S.cells[f.y][f.x] = nc; UI.dirty.add(f.x + ',' + f.y); break; }
+      case 'place': { S.money -= COST[UI.tool.type]; pushFx(f.x, f.y, -COST[UI.tool.type]); S.cells[f.y][f.x] = toolCell(); UI.dirty.add(f.x + ',' + f.y); break; }
       case 'nofloor': toast('바닥이 없는 곳입니다'); break;
       case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
       case 'notool': toast('도구를 고르세요 (1~6)'); break;
@@ -567,6 +579,16 @@
     UI.slot = i; UI.tool = { type, dir }; renderHotbar();
   }
   function clearTool() { UI.cfg = null; UI.slot = -1; UI.tool = null; renderHotbar(); }
+  function dropTool() { if (!UI.tool) return false; clearTool(); toast('빈손'); return true; } // Q / Esc: 손에 든 도구 내려놓기
+  function handleEscape() { // 스펙 11.9: ① 설정 모드 취소 → ② 열린 패널 닫기(하루 요약 제외) → ③ 도구 내려놓기. 한 번에 한 단계만
+    if (UI.cfg) { cancelConfig(); return 'cfg'; }
+    let closed = false;
+    for (const id of PANELS) if (!$(id).hidden) { $(id).hidden = true; closed = true; }
+    if (!$('demolish').hidden || UI.pending) { $('demolish').hidden = true; UI.pending = null; closed = true; }
+    if (!$('inspect').hidden || UI.inspect) { $('inspect').hidden = true; UI.inspect = null; closed = true; }
+    if (closed) return 'panel';
+    return dropTool() ? 'tool' : null;
+  }
 
   // ---- 방향 설정 (스펙 11.8): R → [1/2] → 화살표. 방향은 순환하지 않고 직접 입력한다
   const CONFIGURABLE = ['conveyor', 'fast', 'table', 'scanner', 'splitter', 'pallet'];
@@ -605,11 +627,13 @@
     if ((type === 'conveyor' || type === 'fast') && !ownedDirs(type).includes(d)) return toast('해금되지 않은 방향입니다');
     cl.dir = d; rehead(c.x, c.y); toast('방향 변경 ' + ARROWS[d]);
   }
-  const CFG_CANCEL = ['Escape', 'KeyE', 'KeyX', 'KeyQ', 'KeyR', 'KeyB', 'KeyC', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
+  const CFG_CANCEL = ['Escape', 'KeyE', 'KeyX', 'KeyQ', 'KeyR', 'KeyB', 'KeyC'];
   function cfgKey(code) { // 설정 중 키 처리. 소비했으면 true (P·T·O 같은 키는 통과)
     const c = UI.cfg; if (!c) return false;
     if (KEYDIR[code]) { if (c.mode === 'dir') cfgDir(KEYDIR[code]); return true; }
-    if (code === 'Digit1' || code === 'Digit2') { if (c.mode === 'slot') cfgSlot(code === 'Digit1' ? 'primary' : 'secondary'); return true; }
+    const dg = /^Digit([1-6])$/.exec(code);
+    if (dg && +dg[1] <= 2 && c.mode === 'slot') { cfgSlot(dg[1] === '1' ? 'primary' : 'secondary'); return true; } // 1/2 = 파랑/빨강 선택
+    if (dg) { cancelConfig(); if (+dg[1] - 1 !== UI.slot) selectSlot(+dg[1] - 1); return true; } // 그 외 숫자 = 취소하고 그 슬롯으로 (예전엔 삼켜져서 첫 슬롯에 고정된 것처럼 보였다)
     if (CFG_CANCEL.includes(code)) { cancelConfig(); return true; }
     return false;
   }
@@ -704,18 +728,20 @@
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   { const b = $('touchRun'), on = e => { e.preventDefault(); held.add('padRun'); }, off = () => held.delete('padRun'); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); b.addEventListener('contextmenu', e => e.preventDefault()); }
   document.querySelectorAll('[data-move]').forEach(b => { const d = b.dataset.move; const on = e => { e.preventDefault(); pressDir('pad' + d); }, off = () => keyUp('pad' + d); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
-  window.addEventListener('keyup', e => { if (e.code === 'Space') e.preventDefault(); keyUp(e.code); }); window.addEventListener('blur', () => { held.clear(); UI.cfgHold.clear(); });
+  window.addEventListener('keyup', e => { if (e.code === 'Space') e.preventDefault(); keyUp(e.code); }); window.addEventListener('blur', () => { held.clear(); UI.cfgHold.clear(); }); document.addEventListener('visibilitychange', () => { held.clear(); UI.cfgHold.clear(); });
   const wantsRun = () => held.has('Space') || held.has('padRun');
   $('touchAct').addEventListener('click', () => { if (UI.cfg) cancelConfig(); else act(); }); $('touchDemolish').addEventListener('click', () => { if (UI.cfg) cancelConfig(); else askDemolish(); }); $('touchRotate').addEventListener('click', () => { if (UI.cfg) cancelConfig(); else enterConfig(); });
   window.addEventListener('keydown', e => {
     const k = e.code;
+    if (k === 'MetaLeft' || k === 'MetaRight') { held.clear(); UI.cfgHold.clear(); return; } // Mac: Cmd를 누르면 다른 키의 keyup이 오지 않는다 → 눌림 상태 초기화
+    if (e.metaKey || e.ctrlKey || e.altKey) return; // 브라우저 단축키(Cmd+R 등)는 게임 입력이 아니다
     if (k === 'Space') { e.preventDefault(); held.add(k); return; } // 달리기: 누르고 있는 동안. 페이지 스크롤·버튼 활성화 방지
     if (!$('summary').hidden) { if (KEYDIR[k]) e.preventDefault(); return; } // 하루 요약은 "다음 날" 버튼으로만 닫힌다 (Esc 무시)
-    if (k === 'Escape') { if (UI.cfg) { cancelConfig(); return; } for (const p of PANELS) $(p).hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
+    if (k === 'Escape') { handleEscape(); return; }
     if (!$('inspect').hidden || !$('demolish').hidden) return;
-    if (KEYDIR[k]) { e.preventDefault(); pressDir(k); return; }
+    if (KEYDIR[k]) { e.preventDefault(); pressDir(k, e.repeat); return; }
     if (UI.cfg && cfgKey(k)) { e.preventDefault(); return; }
-    if (k === 'KeyE') act(); else if (k === 'KeyX') askDemolish(); else if (k === 'KeyQ') clearTool(); else if (k === 'KeyR') enterConfig();
+    if (k === 'KeyE') act(); else if (k === 'KeyX') askDemolish(); else if (k === 'KeyQ') dropTool(); else if (k === 'KeyR') enterConfig();
     else if (k === 'KeyP') $('pauseBtn').click(); else if (k === 'KeyT') $('speedBtn').click(); else if (k === 'KeyB') $('shopBtn').click(); else if (k === 'KeyC') $('statusBtn').click(); else if (k === 'KeyO') $('helpBtn').click();
     else if (/^Digit[1-6]$/.test(k)) selectSlot(parseInt(k.slice(5), 10) - 1);
   });
@@ -894,6 +920,34 @@
     const m = cellMesh(S.cells[y][x], x, y); if (!m) return;
     m.position.set(W(x), 0.0, Z(y)); objLayer.add(m); cellObjs.set(key, m);
   }
+  // 설치 미리보기 (스펙 11.9): cellMesh와 같은 빌더로 만든 반투명 복제본. 초록 = 설치 가능, 빨강 = 불가
+  const ghost = new THREE.Group(); ghost.visible = false; scene.add(ghost); let ghostKey = null, ghostMesh = null;
+  const GHOST_OK = new THREE.Color(0x3FA35A), GHOST_NO = new THREE.Color(0xD95A4A);
+  function disposeGhost() {
+    if (!ghostMesh) return;
+    for (let i = arrows.length - 1; i >= 0; i--) if (ghostMesh.children.includes(arrows[i].pivot)) arrows.splice(i, 1);
+    ghostMesh.traverse(o => { if (o.isMesh && o.material) for (const m of [].concat(o.material)) m.dispose(); });
+    ghost.remove(ghostMesh); ghostMesh = null;
+  }
+  function buildGhost(sp) {
+    disposeGhost();
+    const real = S.cells[sp.y][sp.x]; S.cells[sp.y][sp.x] = toolCell(); // 분배기 출구가 이웃을 보고 정해지므로 임시로 그 칸에 도구 부품을 둔다
+    let m; try { m = cellMesh(S.cells[sp.y][sp.x], sp.x, sp.y); } finally { S.cells[sp.y][sp.x] = real; }
+    if (!m) return;
+    const tint = sp.ok ? GHOST_OK : GHOST_NO;
+    m.traverse(o => {
+      if (!o.isMesh) return; o.castShadow = false; o.receiveShadow = false; o.renderOrder = 5;
+      const tn = mt => { const c = mt.clone(); c.transparent = true; c.opacity = 0.45; c.depthWrite = false; c.polygonOffset = true; c.polygonOffsetFactor = -1; if (c.color) c.color.lerp(tint, 0.7); if (c.emissive) { c.emissive.copy(tint); c.emissiveIntensity = 0.3; } return c; };
+      o.material = Array.isArray(o.material) ? o.material.map(tn) : tn(o.material);
+    });
+    m.position.set(W(sp.x), 0.03, Z(sp.y)); ghost.add(m); ghostMesh = m;
+  }
+  function updateGhost() {
+    const sp = ghostSpec();
+    if (!sp) { ghost.visible = false; return; }
+    if (sp.key !== ghostKey) { ghostKey = sp.key; buildGhost(sp); }
+    ghost.visible = !!ghostMesh;
+  }
   function rebuildAll() { rebuildLot(); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rebuildCell(x, y); }
   const parcelObjs = new Map(), parcelLayer = new THREE.Group(); scene.add(parcelLayer);
   const pileObjs = new Map(), PILE_Y = [0.12, 0.52, 0.92];
@@ -1005,6 +1059,7 @@
     const f = facingTile(); const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     cursor.visible = !!fc;
     if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
+    updateGhost();
     const r = preview(); let label = null;
     if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = promptLabel(S.worker.carrying, fc.type); else if (r === 'inspect') label = '검사'; else if (r === 'exhausted') label = '집기 (지침)'; else if (r === 'place' || r === 'nomoney') { const tt = UI.tool.type, nm = tt === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[tt]; label = nm + ' 설치' + (tt === 'splitter' ? ' (파랑 ' + ARROWS[UI.tool.dir] + (UI.tool.red && UI.tool.red !== UI.tool.dir ? ' · 빨강 ' + ARROWS[UI.tool.red] : '') + ')' : '') + ' · ₩' + COST[tt] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
     const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney' || r === 'exhausted');
@@ -1024,6 +1079,6 @@
     $('workerText').textContent = (UI.running ? '달리는 중 · ' : '') + (w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + (UI.tool.type === 'splitter' ? ' (파랑 ' + dirLabel('splitter', UI.tool.dir) + (UI.tool.red && UI.tool.red !== UI.tool.dir ? ' · 빨강 ' + ARROWS[UI.tool.red] : '') + ')' : ' ' + dirLabel(UI.tool.type, UI.tool.dir)) + ' 들고 있음 · E로 설치, R 설정' : '빈손 · 1~6으로 도구를 고르세요'));
     renderer.render(scene, camera);
   }
-  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch' || location.hash === '#status' || location.hash === '#config') selectSlot(0); if (location.hash === '#config') UI.cfg = { mode: 'slot', target: 'cell', x: 3, y: 3, which: 'primary' }; if (location.hash === '#status') togglePanel('statusPanel'); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
+  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch' || location.hash === '#status' || location.hash === '#config') selectSlot(0); if (location.hash === '#config') UI.cfg = { mode: 'slot', target: 'cell', x: 3, y: 3, which: 'primary' }; if (location.hash === '#status') togglePanel('statusPanel'); /* #ghost: 빈 칸 = 초록, #ghostred: 점유된 칸 = 빨강 (설치 미리보기 확인용) */ if (location.hash === '#ghost' || location.hash === '#ghostred') { selectSlot(0); S.worker = location.hash === '#ghost' ? { x: 2.0, y: 3.0, facing: 'E', carrying: null, stamina: BASE_STAMINA } : { x: 4.0, y: 2.0, facing: 'E', carrying: null, stamina: BASE_STAMINA }; } UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
 })();
 </script>
