@@ -90,6 +90,7 @@ namespace ParcelFactory.Game.Tests
                 var demoPrompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
                 Debug.Log($"[Screenshot] demo prompt '{demoPrompt.text}'");
                 StringAssert.Contains("출고 +30", demoPrompt.text);
+                s.Clock.Set(1, 640f); // 시계가 보이게 10:40
                 yield return Capture(boot, "unity-demo.png", Width, Height);
 
                 // (c) 터치 모드
@@ -111,6 +112,18 @@ namespace ParcelFactory.Game.Tests
                 Debug.Log($"[Screenshot] place prompt '{placePrompt.text}'");
                 StringAssert.Contains("레일 설치 · ₩10", placePrompt.text);
                 yield return Capture(boot, "unity-place.png", Width, Height);
+
+                // (c3) 점심시간 12:20: 시계 옆 노란 "점심시간" 배지, 체력 15라 바가 빨갛다.
+                //      점심에는 체력이 초당 20 회복되므로 일시정지해 캡처 동안 값을 고정한다(일시정지 버튼이 켜져 보인다).
+                s.Paused = true;
+                s.Clock.Set(1, 12 * 60 + 20);
+                s.Worker.Worker.Stamina = 15f;
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Assert.AreEqual(DayPhase.Lunch, s.Clock.Phase);
+                Assert.IsTrue(boot.Hud.Root.Find("Clock/Badge").gameObject.activeSelf, "lunch badge hidden");
+                yield return Capture(boot, "unity-lunch.png", Width, Height);
+                s.Paused = false;
             }
             finally
             {

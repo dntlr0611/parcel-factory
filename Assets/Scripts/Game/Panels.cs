@@ -4,32 +4,47 @@ using UnityEngine.UI;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>상점, 검사 카드, 해체 확인. 열려 있으면 월드 입력을 막는다.</summary>
+    /// <summary>상점, 검사 카드, 해체 확인, 하루 요약. 열려 있으면 월드 입력을 막는다.
+    /// 하루 요약은 모달이다: Escape·CloseAll로 닫히지 않고 "다음 날" 버튼(Session.NextDay)으로만 닫힌다.</summary>
     [DefaultExecutionOrder(10)]
     public sealed class Panels : MonoBehaviour
     {
-        private RectTransform shop, inspect, demolish, shopList;
-        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney;
+        private RectTransform shop, inspect, demolish, summary, shopList;
+        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, sTitle, sDelivered, sLost, sInspected, sMoney;
         private (int x, int y)? pendingDemolish;
         private InputController input;
         private HudController hud;
 
-        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf);
+        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen;
         /// <summary>상점만 열려 있는가. 이때는 B 키·상점 버튼이 상점을 닫는 토글로 동작한다.</summary>
-        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf;
+        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen;
+        /// <summary>하루 요약 패널이 떠 있는가.</summary>
+        public bool SummaryOpen => summary != null && summary.gameObject.activeSelf;
         private bool lastAnyOpen;
         private Economy watchedEconomy;
+        private GameSession watchedSession;
 
         private void Start()
         {
             var boot = GameBootstrap.Instance;
             input = boot.Input; hud = boot.Hud;
-            BuildShop(); BuildInspect(); BuildDemolish();
-            input.ToggleShop += () => { if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf) return; shop.gameObject.SetActive(!shop.gameObject.activeSelf); RefreshShop(); Sync(); };
+            BuildShop(); BuildInspect(); BuildDemolish(); BuildSummary();
+            input.ToggleShop += () => { if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return; shop.gameObject.SetActive(!shop.gameObject.activeSelf); RefreshShop(); Sync(); };
             input.Escape += CloseAll;
             input.Interacted += r => { if (r == InteractResult.InspectionRequired) OpenInspect(); };
             WatchEconomy(boot.Session);
-            boot.SessionReplaced += s => { WatchEconomy(s); CloseAll(); };
+            WatchSession(boot.Session);
+            boot.SessionReplaced += s => { WatchEconomy(s); WatchSession(s); CloseAll(); };
+        }
+
+        /// <summary>DayEnded를 받을 세션을 바꾼다. 이미 퇴근 상태로 불러온 세션이면 요약을 바로 띄우고, 아니면 요약을 닫는다.</summary>
+        private void WatchSession(GameSession s)
+        {
+            if (watchedSession != null) watchedSession.DayEnded -= ShowSummary;
+            watchedSession = s;
+            watchedSession.DayEnded += ShowSummary;
+            if (!s.Clock.IsOpen) ShowSummary(s.BuildSummary());
+            else { summary.gameObject.SetActive(false); Sync(); }
         }
 
         private void WatchEconomy(GameSession s)
@@ -41,7 +56,11 @@ namespace ParcelFactory.Game
 
         private void OnMoneyChanged(int _) { if (shop != null && shop.gameObject.activeSelf) RefreshShop(); }
 
-        private void OnDestroy() { if (watchedEconomy != null) watchedEconomy.MoneyChanged -= OnMoneyChanged; }
+        private void OnDestroy()
+        {
+            if (watchedEconomy != null) watchedEconomy.MoneyChanged -= OnMoneyChanged;
+            if (watchedSession != null) watchedSession.DayEnded -= ShowSummary;
+        }
 
         /// <summary>패널 열림 상태를 입력 차단에 즉시 반영한다. 열고 닫는 같은 프레임에 InputController.Update가 낡은 상태를 보지 않게 한다.</summary>
         private void Sync()
@@ -55,10 +74,13 @@ namespace ParcelFactory.Game
 
         private void Update()
         {
-            if (inspect.gameObject.activeSelf && GameBootstrap.Instance.Session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
+            var session = GameBootstrap.Instance.Session;
+            if (inspect.gameObject.activeSelf && session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
+            if (SummaryOpen && session.Clock.IsOpen) summary.gameObject.SetActive(false); // 다른 경로로 다음 날이 시작됐다
             Sync();
         }
 
+        /// <summary>닫을 수 있는 패널을 모두 닫는다. 하루 요약은 모달이라 그대로 둔다.</summary>
         public void CloseAll()
         {
             shop.gameObject.SetActive(false);
@@ -160,6 +182,52 @@ namespace ParcelFactory.Game
             cancel.GetComponent<RectTransform>().anchoredPosition = new Vector2(-60f, -62f);
             var ok = UiKit.Button("Confirm", card, "해체", new Vector2(100f, 36f), () => { if (pendingDemolish.HasValue) { var r = GameBootstrap.Instance.Session.Build.BeginDemolish(pendingDemolish.Value.x, pendingDemolish.Value.y); if (r != BuildResult.Ok) hud.Toast(HudController.DemolishMessage(r)); } pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, new Color(0.79f, 0.28f, 0.18f, 1f));
             ok.GetComponent<RectTransform>().anchoredPosition = new Vector2(60f, -62f);
+        }
+
+        private void BuildSummary()
+        {
+            summary = Card("DaySummary", new Vector2(360f, 268f), "1일차 마감");
+            var card = summary.Find("Card");
+            sTitle = card.Find("Title").GetComponent<Text>();
+            sTitle.fontSize = 20;
+            Text Row(string n, string lbl, float y, Color c)
+            {
+                var l = UiKit.Label(n + "L", card, lbl, 14, UiKit.Muted, TextAnchor.MiddleLeft); l.rectTransform.anchorMin = new Vector2(0f, 1f); l.rectTransform.anchorMax = new Vector2(1f, 1f); l.rectTransform.pivot = new Vector2(0.5f, 1f); l.rectTransform.anchoredPosition = new Vector2(0f, y); l.rectTransform.sizeDelta = new Vector2(-48f, 28f);
+                var v = UiKit.Label(n, card, "", 16, c, TextAnchor.MiddleRight, FontStyle.Bold); v.rectTransform.anchorMin = new Vector2(0f, 1f); v.rectTransform.anchorMax = new Vector2(1f, 1f); v.rectTransform.pivot = new Vector2(0.5f, 1f); v.rectTransform.anchoredPosition = new Vector2(0f, y); v.rectTransform.sizeDelta = new Vector2(-48f, 28f);
+                return v;
+            }
+            sDelivered = Row("Delivered", "배송", -54f, UiKit.Good);
+            sLost = Row("Lost", "소실", -84f, UiKit.Bad);
+            sInspected = Row("Inspected", "검사", -114f, UiKit.Fg);
+            sMoney = Row("Money", "잔액 변화", -144f, UiKit.Accent);
+            var next = UiKit.Button("NextDay", card, "다음 날", new Vector2(150f, 40f), NextDay, UiKit.Accent, UiKit.AccentFg, 16, new Vector2(0.5f, 0f));
+            next.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 36f);
+        }
+
+        /// <summary>하루 요약을 채워 띄운다(DayEnded, 또는 퇴근 상태로 불러온 세션).</summary>
+        private void ShowSummary(DaySummary d)
+        {
+            shop.gameObject.SetActive(false);
+            demolish.gameObject.SetActive(false); pendingDemolish = null;
+            if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
+            sTitle.text = d.Day + "일차 마감";
+            sDelivered.text = d.Delivered + "건";
+            sLost.text = d.Lost + "건";
+            sInspected.text = d.Inspected + "건";
+            sMoney.text = d.StartMoney + " → " + d.EndMoney + " (" + HudController.Signed(d.EndMoney - d.StartMoney) + ")";
+            sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
+            summary.gameObject.SetActive(true);
+            input.ClearPad();
+            Sync();
+        }
+
+        /// <summary>"다음 날": 다음 날 09:00으로 넘기고(체력 회복) 요약을 닫는다.</summary>
+        private void NextDay()
+        {
+            var s = GameBootstrap.Instance.Session;
+            s.NextDay();
+            if (s.Clock.IsOpen) summary.gameObject.SetActive(false);
+            Sync();
         }
 
         /// <summary>해체 확인 창을 연다. InputController.Demolish가 직접 BeginDemolish 하지 않고 이쪽을 거친다.</summary>

@@ -116,6 +116,7 @@ namespace ParcelFactory.Game
 
             var v = move.ReadValue<Vector2>();
             foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
+            if (!S.Clock.IsOpen) return; // 퇴근 후에는 걷지 않는다(일시정지 중에는 걸을 수 있다: 일시정지 중 건설 허용)
             if (v.sqrMagnitude > 0.04f) for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep)); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection을 처리한다
         }
 

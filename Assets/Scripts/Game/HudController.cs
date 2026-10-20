@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>상단 바, 핫바, 프롬프트, 작업자 상태, 토스트, 조작 설명, 터치 컨트롤.</summary>
+    /// <summary>상단 바, 근무 시계, 핫바, 프롬프트, 작업자 상태·체력, 토스트, 조작 설명, 터치 컨트롤.</summary>
     public sealed class HudController : MonoBehaviour
     {
         public RectTransform Root { get; private set; }
@@ -44,6 +44,14 @@ namespace ParcelFactory.Game
         public enum ToastKind { Info, Good, Bad }
         private Text touchRotateLabel;
         private InputController input;
+        // 근무 시계(스펙 11.1): 상단 중앙 "1일차 09:00", 점심이면 옆에 노란 "점심시간", 퇴근이면 "퇴근" 배지.
+        private Text clockText, badgeText;
+        private Image badgeBg, staminaFill;
+        public const string LunchBadgeText = "점심시간", ClosedBadgeText = "퇴근";
+        // 체력 바(스펙 11.3): 상태줄 왼쪽 140×10. 50 초과 초록, 20 초과 노랑, 그 외 빨강. 20 아래면 깜빡인다.
+        public const float StaminaBarWidth = 140f, StaminaBarHeight = 10f, StaminaPulseBelow = 20f;
+        public const string ExhaustedToast = "지쳤습니다. 잠시 쉬세요", ExhaustedPrompt = "집기 (지침)";
+        private const float StatusWidth = 560f, StatusY = SlotH + 16f + 14f + 8f;
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
@@ -67,7 +75,7 @@ namespace ParcelFactory.Game
             canvas.transform.SetParent(transform, false);
             Root = canvas.GetComponent<RectTransform>();
             rootCanvas = canvas;
-            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildToast(); BuildHelp();
+            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildStamina(); BuildClock(); BuildToast(); BuildHelp();
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
             input.ToolChanged += RefreshTouchLabels;
@@ -288,8 +296,36 @@ namespace ParcelFactory.Game
 
         private void BuildStatus()
         {
-            var box = UiKit.PanelBox("Status", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, SlotH + 16f + 14f + 8f), new Vector2(560f, 32f));
+            var box = UiKit.PanelBox("Status", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, StatusY), new Vector2(StatusWidth, 32f));
             workerText = UiKit.Label("Text", box.transform, "", 16, UiKit.Fg, TextAnchor.MiddleCenter);
+        }
+
+        /// <summary>상태줄 왼쪽에 붙는 체력 바: 라벨 "체력"(12) + 140×10 바. 채움 폭은 Update에서 체력/100.</summary>
+        private void BuildStamina()
+        {
+            const float w = 10f + 28f + 6f + StaminaBarWidth + 12f;
+            var box = UiKit.PanelBox("Stamina", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(1f, 0f), new Vector2(-StatusWidth * 0.5f - 8f, StatusY), new Vector2(w, 32f));
+            var lbl = UiKit.Label("Label", box.transform, "체력", 12, UiKit.Muted, TextAnchor.MiddleLeft, FontStyle.Bold);
+            lbl.rectTransform.offsetMin = new Vector2(10f, 0f); lbl.rectTransform.offsetMax = new Vector2(-(w - 38f), 0f);
+            var bar = UiKit.PanelBox("Bar", box.transform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(44f, 0f), new Vector2(StaminaBarWidth, StaminaBarHeight), new Color(1f, 1f, 1f, 0.12f)).rectTransform;
+            staminaFill = UiKit.PanelBox("Fill", bar, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(StaminaBarWidth, 0f), UiKit.Good);
+        }
+
+        /// <summary>체력 바 색: 50 초과 초록, 20 초과 노랑, 그 외 빨강.</summary>
+        public static Color StaminaColor(float stamina) => stamina > 50f ? UiKit.Good : stamina > 20f ? UiKit.Warn : UiKit.Bad;
+
+        /// <summary>시계 문구: "1일차 09:00".</summary>
+        public static string ClockLabel(Clock c) => c.Day + "일차 " + c.TimeText;
+
+        /// <summary>상단 중앙 시계. 상단 버튼 줄과 겹치지 않게 그 아래 줄(-64)에 둔다. 배지는 시계 패널 오른쪽 바깥에 붙는다.</summary>
+        private void BuildClock()
+        {
+            var box = UiKit.PanelBox("Clock", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -64f), new Vector2(150f, 36f));
+            clockText = UiKit.Label("Text", box.transform, "1일차 09:00", 18, UiKit.Fg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            clockText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            badgeBg = UiKit.PanelBox("Badge", box.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 0.5f), new Vector2(8f, 0f), new Vector2(84f, 28f), UiKit.Warn);
+            badgeText = UiKit.Label("Text", badgeBg.transform, LunchBadgeText, 14, UiKit.AccentFg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            badgeBg.gameObject.SetActive(false);
         }
 
         private void BuildToast()
@@ -369,6 +405,7 @@ namespace ParcelFactory.Game
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다"); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
+                case InteractResult.Exhausted: Toast(ExhaustedToast, ToastKind.Bad); break;
                 case InteractResult.Placed:
                     var tool = input.SelectedTool;
                     var s = GameBootstrap.Instance.Session;
@@ -472,6 +509,28 @@ namespace ParcelFactory.Game
             money.color = Time.unscaledTime < moneyFlashUntil ? moneyFlashColor : UiKit.Accent;
         }
 
+        private void UpdateClock(Clock c)
+        {
+            clockText.text = ClockLabel(c);
+            var phase = c.Phase;
+            bool show = phase != DayPhase.Working;
+            if (badgeBg.gameObject.activeSelf != show) badgeBg.gameObject.SetActive(show);
+            if (!show) return;
+            bool lunch = phase == DayPhase.Lunch;
+            badgeText.text = lunch ? LunchBadgeText : ClosedBadgeText;
+            badgeBg.color = lunch ? UiKit.Warn : UiKit.Bad;
+            badgeText.color = UiKit.AccentFg;
+        }
+
+        private void UpdateStamina(float stamina)
+        {
+            float st = Mathf.Clamp(stamina, 0f, WorkerService.MaxStamina);
+            staminaFill.rectTransform.sizeDelta = new Vector2(StaminaBarWidth * st / WorkerService.MaxStamina, 0f);
+            var col = StaminaColor(st);
+            if (st < StaminaPulseBelow) col.a = 0.35f + 0.65f * (0.5f + 0.5f * Mathf.Cos(Time.unscaledTime * 8f));
+            staminaFill.color = col;
+        }
+
         private void Update()
         {
             var boot = GameBootstrap.Instance;
@@ -487,6 +546,8 @@ namespace ParcelFactory.Game
             UiKit.SetButtonLook(speedBtn, s.Speed >= 2f);
 
             var w = s.Worker.Worker;
+            UpdateClock(s.Clock);
+            UpdateStamina(w.Stamina);
             var tool = input.SelectedTool;
             workerText.text = w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R로 " + (tool.Value.Type == CellType.Pallet ? "색" : "방향"))
@@ -508,6 +569,7 @@ namespace ParcelFactory.Game
                     textColor = ExpectedDelta(toOutlet, w.Carrying.Inspected, w.Carrying.Rejected) >= 0 ? UiKit.Good : UiKit.Bad;
                     break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
+                case InteractResult.Exhausted: label = ExhaustedPrompt; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Placed: label = PlaceLabel(tool.Value, true); break;
                 case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false); canAct = false; textColor = UiKit.Bad; break;
             }

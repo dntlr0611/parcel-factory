@@ -338,6 +338,103 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
+        public IEnumerator Clock_Lunch_DaySummary_NextDay_AndStaminaBar()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                var clockText = boot.Hud.Root.Find("Clock/Text").GetComponent<UnityEngine.UI.Text>();
+                var badge = boot.Hud.Root.Find("Clock/Badge");
+                Assert.AreEqual("1일차 09:00", clockText.text);
+                Assert.IsFalse(badge.gameObject.activeSelf, "no badge while working");
+
+                // 12:05 → 점심 배지.
+                s.Clock.Set(1, 12 * 60 + 5);
+                yield return null;
+                Assert.IsTrue(badge.gameObject.activeSelf, "lunch badge should show");
+                Assert.AreEqual(HudController.LunchBadgeText, badge.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
+                StringAssert.StartsWith("1일차 12:0", clockText.text);
+
+                // 17:59:30에서 1초 진행 → 18:00 퇴근, DayEnded → 요약 패널(모달).
+                var summary = boot.Hud.Root.Find("DaySummary");
+                Assert.IsNotNull(summary, "day summary panel missing");
+                Assert.IsFalse(summary.gameObject.activeSelf);
+                s.Economy.Earn(40);
+                s.Clock.Set(1, 1079.5f);
+                s.Tick(1f);
+                Assert.IsFalse(s.Clock.IsOpen);
+                Assert.IsTrue(summary.gameObject.activeSelf, "summary should open on DayEnded");
+                Assert.IsTrue(boot.Panels.SummaryOpen);
+                Assert.IsTrue(boot.Input.UiBlocksInput, "summary must block input in the same frame");
+                Assert.AreEqual("1일차 마감", summary.Find("Card/Title").GetComponent<UnityEngine.UI.Text>().text);
+                StringAssert.Contains("+40", summary.Find("Card/Money").GetComponent<UnityEngine.UI.Text>().text);
+                yield return null;
+                Assert.AreEqual(HudController.ClosedBadgeText, badge.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
+                // Escape(CloseAll)로는 닫히지 않는다.
+                boot.Panels.CloseAll();
+                yield return null;
+                Assert.IsTrue(summary.gameObject.activeSelf, "summary must ignore Escape");
+                Assert.IsTrue(boot.Input.UiBlocksInput);
+
+                // "다음 날" → 2일차 09:00, 체력 가득, 패널 닫힘.
+                s.Worker.Worker.Stamina = 10f;
+                summary.Find("Card/NextDay").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+                Assert.IsFalse(summary.gameObject.activeSelf, "summary should close");
+                Assert.AreEqual(2, s.Clock.Day);
+                Assert.IsTrue(s.Clock.IsOpen);
+                Assert.AreEqual(100f, s.Worker.Worker.Stamina);
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+                yield return null;
+                Assert.AreEqual("2일차 09:00", clockText.text);
+                Assert.IsFalse(badge.gameObject.activeSelf);
+
+                // 체력 바: 40이면 폭 56, 노랑. 15면 빨강.
+                s.Paused = true;
+                var fill = boot.Hud.Root.Find("Stamina/Bar/Fill").GetComponent<UnityEngine.UI.Image>();
+                Assert.AreEqual(HudController.StaminaBarWidth, fill.rectTransform.sizeDelta.x, 0.01f);
+                s.Worker.Worker.Stamina = 40f;
+                yield return null;
+                Assert.AreEqual(HudController.StaminaBarWidth * 0.4f, fill.rectTransform.sizeDelta.x, 0.01f);
+                Assert.AreEqual(UiKit.Warn, fill.color);
+                Assert.AreEqual(UiKit.Good, HudController.StaminaColor(51f));
+                Assert.AreEqual(UiKit.Warn, HudController.StaminaColor(21f));
+                Assert.AreEqual(UiKit.Bad, HudController.StaminaColor(20f));
+
+                // 지친 상태로 택배를 바라보면 빨간 "집기 (지침)", E는 토스트.
+                s.Worker.Worker.Stamina = 0f;
+                s.Sim.TrySpawn(ParcelFactory.Core.FactoryGrid.InletX, ParcelFactory.Core.FactoryGrid.InletY, ParcelFactory.Core.PackageKind.Normal, out _);
+                Assert.IsNotNull(s.Sim.PackageAt(ParcelFactory.Core.FactoryGrid.InletX, ParcelFactory.Core.FactoryGrid.InletY), "need a package at the inlet");
+                s.Worker.Worker.X = ParcelFactory.Core.FactoryGrid.InletX + 1; s.Worker.Worker.Y = ParcelFactory.Core.FactoryGrid.InletY; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.West;
+                yield return null;
+                var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
+                Assert.AreEqual(HudController.ExhaustedPrompt, promptText.text);
+                Assert.AreEqual(UiKit.Bad, promptText.color);
+                boot.Input.Interact();
+                Assert.AreEqual(HudController.ExhaustedToast, boot.Hud.LastToast);
+                Assert.IsNull(s.Worker.Worker.Carrying);
+
+                // 퇴근 상태로 저장된 세션을 불러오면 요약이 바로 뜬다.
+                var closed = new ParcelFactory.Core.GameSession();
+                closed.Clock.Set(3, ParcelFactory.Core.Clock.CloseMinute);
+                boot.ReplaceSession(closed);
+                Assert.IsTrue(summary.gameObject.activeSelf, "loaded closed session should show summary");
+                Assert.AreEqual("3일차 마감", summary.Find("Card/Title").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.IsTrue(boot.Input.UiBlocksInput);
+                summary.Find("Card/NextDay").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+                Assert.AreEqual(4, closed.Clock.Day);
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator InspectionCard_BlocksInputInSameFrame_AndSurvivesHeldPad()
         {
             var boot = GameBootstrap.Ensure();
