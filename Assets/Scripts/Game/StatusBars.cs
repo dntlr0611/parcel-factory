@@ -7,15 +7,15 @@ namespace ParcelFactory.Game
 {
     /// <summary>
     /// 미니 상태바(스펙 11.8): 설치된 부품마다 작은 반투명 검은 알약(11px)을 HUD 캔버스에 띄운다.
-    /// 위치는 매 프레임 PackageViews.TopHeight(칸) + 0.45, 카메라 쪽으로 0.15를 화면에 투영한다(금액 팝업과 같은 방식).
+    /// 위치는 매 프레임 PackageViews.TopHeight(칸) + 0.45, 카메라 반대쪽(+z)으로 0.35를 화면에 투영한다(금액 팝업과 같은 방식).
     /// 부품 집합은 CellChanged 때 다시 모으고, 문구는 매 프레임 계산하되 바뀌었을 때만 대입한다.
     /// 작업자가 바라보는 부품은 밝은 알약 + 강조색 글자에 " · R 설정"이 붙는다.
     /// </summary>
     public sealed class StatusBars : MonoBehaviour
     {
         public const int FontSize = 11;
-        /// <summary>칸 윗면 위로 Lift, 카메라 쪽(−z)으로 TowardCamera만큼 옮겨 띄운다. 분배기 허브의 화살표를 가리지 않게.</summary>
-        public const float Lift = 0.45f, TowardCamera = 0.15f, Height = 18f, PadX = 12f;
+        /// <summary>칸 윗면 위로 Lift, 카메라 반대쪽(+z, 북)으로 AwayFromCamera만큼 옮겨 띄운다. 화면에서는 칸의 먼 가장자리 위에 놓여 분배기 허브의 화살표를 가리지 않는다.</summary>
+        public const float Lift = 0.45f, AwayFromCamera = 0.35f, Height = 18f, PadX = 12f;
         public const string FocusSuffix = " · R 설정";
         private const string DimOpen = "<color=#8E959C>", DimClose = "</color>";
         private static readonly Color PillBg = new Color(0f, 0f, 0f, 0.6f);
@@ -95,7 +95,7 @@ namespace ParcelFactory.Game
                     b.Rect.sizeDelta = new Vector2(b.Label.preferredWidth + PadX, Height);
                     if (focus) b.Rect.SetAsLastSibling(); // 겹치면 바라보는 것이 위
                 }
-                if (boot.Hud.TryWorldToCanvas(Grid3D.Tile(b.X, b.Y) + new Vector3(0f, PackageViews.TopHeight(c) + Lift, -TowardCamera), out var pos))
+                if (boot.Hud.TryWorldToCanvas(Grid3D.Tile(b.X, b.Y) + new Vector3(0f, PackageViews.TopHeight(c) + Lift, AwayFromCamera), out var pos))
                     b.Rect.anchoredPosition = pos;
             }
         }
