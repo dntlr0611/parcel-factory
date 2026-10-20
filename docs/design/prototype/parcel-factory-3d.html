@@ -177,6 +177,7 @@
       <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
       <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
+      <div><b>분배기</b>: 연결된 출구로 번갈아 보냅니다</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
       <div>09:00~18:00 근무 · 12시 점심(입고 정지, 체력 회복) · 18시 퇴근 요약 · 체력이 0이면 집을 수 없음</div>
@@ -278,9 +279,9 @@
     { id: 'plot2', name: '부지 확장 2', sub: '12×12로 넓힙니다 · 확장 1 필요', price: 500, plot: 12, req: 'plot1' },
     { id: 'railS', name: '레일 ↓', sub: '남쪽으로 흐르는 레일', price: 50, tool: 'conveyor:S' }, { id: 'railW', name: '레일 ←', sub: '서쪽으로 흐르는 레일', price: 50, tool: 'conveyor:W' }, { id: 'railN', name: '레일 ↑', sub: '북쪽으로 흐르는 레일', price: 50, tool: 'conveyor:N' },
     { id: 'fastE', name: '고속 레일 →', sub: '2배 속도', price: 100, tool: 'fast:E' }, { id: 'fastS', name: '고속 레일 ↓', sub: '2배 속도', price: 100, tool: 'fast:S' }, { id: 'fastW', name: '고속 레일 ←', sub: '2배 속도', price: 100, tool: 'fast:W' }, { id: 'fastN', name: '고속 레일 ↑', sub: '2배 속도', price: 100, tool: 'fast:N' },
-    { id: 'splitter', name: '분배기', sub: '좌·우로 번갈아 보냅니다 · 4방향', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향', price: 250, scanner: true },
+    { id: 'splitter', name: '분배기', sub: '연결된 출구로 번갈아 보냅니다 · 4방향', price: 300, splitter: true }, { id: 'scanner', name: '자동 검사기', sub: '지나가면 바로 판정 · 4방향', price: 250, scanner: true },
   ];
-  function cell(type, dir) { return { type, dir: dir || 'E', demolishing: false, remain: 0, toggle: false, occ: -1 }; }
+  function cell(type, dir) { return { type, dir: dir || 'E', demolishing: false, remain: 0, idx: 0, occ: -1 }; }
   function palletCell(kind) { const c = cell('pallet', kind === 'red' ? 'W' : 'E'); c.kind = kind; c.pile = []; return c; } // 더미: 맨 위 = 배열 끝
   function newGame() {
     const cells = [];
@@ -306,12 +307,16 @@
   let S = location.hash === '#status' ? statusLayout(newGame()) : location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
   const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, running: false, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
 
-  function headingFor(c, incoming) {
+  const accepts = (x, y) => { if (!inBounds(x, y)) return false; const n = S.cells[y][x]; return (isTrack(n) && n.type !== 'inlet') || n.type === 'pallet' || isDock(n.type); }; // 택배를 받는 칸 (입고구는 받지 않는다)
+  function splitterOutputs(x, y, incoming) { // 분배기 출구 후보: 분배기 방향 기준 왼쪽 → 앞 → 오른쪽 → 뒤 (스펙 11.6). incoming을 주면 들어온 쪽(opp(incoming))은 제외
+    const c = S.cells[y][x];
+    return [turnL(c.dir), c.dir, turnR(c.dir), opp(c.dir)].filter(d => d !== (incoming ? opp(incoming) : null) && accepts(x + DX[d], y + DY[d]));
+  }
+  function headingFor(c, incoming, x, y) {
     if (c.type !== 'splitter') return c.dir;
-    const left = turnL(c.dir), right = turnR(c.dir);
-    let chosen = c.toggle ? right : left; const other = c.toggle ? left : right;
-    if (chosen === opp(incoming)) chosen = other;
-    c.toggle = !c.toggle; return chosen;
+    const cands = splitterOutputs(x, y, incoming);
+    if (!cands.length) return c.dir;
+    const h = cands[(c.idx || 0) % cands.length]; c.idx = (c.idx || 0) + 1; return h;
   }
   function makeLabel(bad) {
     const dests = ['서울', '부산', '대구', '광주', '인천'], methods = ['일반', '익일', '당일'];
@@ -321,7 +326,7 @@
   function spawn(x, y) {
     const c = S.cells[y][x];
     if (!isTrack(c) || c.occ >= 0 || c.demolishing) return false;
-    const h = headingFor(c, c.dir), bad = Math.random() < 0.3;
+    const h = headingFor(c, c.dir, x, y), bad = Math.random() < 0.3;
     const p = { id: S.nextId++, x, y, progress: 0, heading: h, entry: h, bad, inspected: false, rejected: false, label: makeLabel(bad) };
     c.occ = p.id; S.packages.push(p); return true;
   }
@@ -390,7 +395,7 @@
       }
       if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       if (next.occ >= 0 || next.demolishing) continue;
-      c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading);
+      c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading, nx, ny);
       if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); }
     }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
@@ -453,7 +458,7 @@
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     switch (r) {
       case 'deliver': deliver(w.carrying, fc.type, f.x, f.y); w.carrying = null; break;
-      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); } break; }
+      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir, f.x, f.y); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); } break; }
       case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
       case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
       case 'palletpick': w.carrying = fc.pile.pop(); break;
@@ -758,8 +763,9 @@
   }
   const cellObjs = new Map(), objLayer = new THREE.Group(); scene.add(objLayer);
   const arrows = [];
+  const splitterHub = lit(srgb(0x7A5CC9), { roughness: 0.6 }), splitterPlate = lit(srgb(0x2a2540), { roughness: 0.7 });
   const palletWood = lit(srgb(0xb98a5c), { roughness: 0.95 }), palletSlat = lit(srgb(0x6b4a2e), { roughness: 1 }), palletBlue = lit(srgb(0x3d7be0), { roughness: 0.6 }), palletRed = lit(srgb(0xd95a4a), { roughness: 0.6 });
-  function cellMesh(c) {
+  function cellMesh(c, x, y) {
     if (!isBuilding(c)) return null;
     const g = new THREE.Group(); const yaw = yawOf(c.dir);
     if (c.type === 'conveyor' || c.type === 'fast' || c.type === 'scanner') {
@@ -769,7 +775,10 @@
       if (c.type === 'fast') { const s = box(0.9, 0.02, 0.07, lit(0xff5a4a, { emissive: 0xff5a4a, emissiveIntensity: 1.6 }), 0, 0.41, 0); s.rotation.y = yaw; g.add(s); }
       if (c.type === 'scanner') { const sc = make('scanner-low', 0.58, yaw + Math.PI / 2); sc.position.y = 0.02; g.add(sc); const laser = box(0.8, 0.5, 0.02, new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.35 }), 0, 0.6, 0); laser.rotation.y = yaw; laser.castShadow = false; g.add(laser); }
     } else if (c.type === 'splitter') {
-      g.add(make('conveyor-junction-t', 1, yaw + JUNCTION_YAW));
+      g.add(box(0.9, 0.4, 0.9, splitterHub, 0, 0.2, 0)); g.add(box(0.74, 0.02, 0.74, splitterPlate, 0, 0.41, 0));
+      for (const d of splitterOutputs(x, y)) { // 연결된 출구마다 바깥을 향한 고정 화살표 (이웃이 바뀌면 다시 그린다)
+        const pivot = new THREE.Group(); pivot.rotation.y = yawOf(d); pivot.position.set(-DX[d] * 0.3, 0.435, DY[d] * 0.3); pivot.add(chevron()); g.add(pivot);
+      }
     } else if (c.type === 'table') {
       g.add(box(0.96, 0.08, 0.96, concreteMat, 0, 0.08, 0)); const t = make('screen-panel-flat', 0.8, yaw); g.add(t);
     } else if (c.type === 'pallet') { // 나무 팔레트 + 종류 색 테두리. 쌓인 상자는 매 프레임 더미에서 그린다
@@ -784,7 +793,7 @@
   function rebuildCell(x, y) {
     const key = x + ',' + y; const old = cellObjs.get(key);
     if (old) { objLayer.remove(old); cellObjs.delete(key); for (let i = arrows.length - 1; i >= 0; i--) if (old.children.includes(arrows[i].pivot)) arrows.splice(i, 1); }
-    const m = cellMesh(S.cells[y][x]); if (!m) return;
+    const m = cellMesh(S.cells[y][x], x, y); if (!m) return;
     m.position.set(W(x), 0.0, Z(y)); objLayer.add(m); cellObjs.set(key, m);
   }
   function rebuildAll() { rebuildLot(); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rebuildCell(x, y); }
@@ -856,7 +865,7 @@
     resize();
     if (UI.rebuildAll) { rebuildAll(); frameLot(false); UI.rebuildAll = false; UI.dirty.clear(); }
     { const k = 1 - Math.pow(0.02, dt); camera.position.lerp(camPos, k); camLook.lerp(camTarget, k); camera.lookAt(camLook); }
-    for (const k of UI.dirty) { const [x, y] = k.split(',').map(Number); rebuildCell(x, y); } UI.dirty.clear();
+    for (const k of UI.dirty) { const [x, y] = k.split(',').map(Number); rebuildCell(x, y); for (const d of ORDER) { const ax = x + DX[d], ay = y + DY[d]; if (inBounds(ax, ay) && S.cells[ay][ax].type === 'splitter') rebuildCell(ax, ay); } } UI.dirty.clear(); // 이웃이 바뀌면 분배기 출구 화살표도 다시 그린다
     if (!S.paused && S.minute < DAY_CLOSE) for (const a of arrows) { a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); }
     const seen = new Set();
     for (const p of S.packages) {
