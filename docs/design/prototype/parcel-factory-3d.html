@@ -5,7 +5,7 @@
   /* 디자인 플랜 — 해질녘 숲속 물류 야드. 전체 화면 3D 위에 8px 그리드의 반투명 슬레이트 패널, 앰버 하나만 강조색. */
   :root {
     --bg: #1b2417; --panel: rgba(15, 19, 22, 0.66); --panel-2: rgba(15, 19, 22, 0.9); --line: rgba(255,255,255,0.12); --line-2: rgba(255,255,255,0.22);
-    --fg: #f4f3ee; --muted: #a9b0a5; --accent: #f2a33a; --accent-fg: #1f1402; --good: #6fd68a; --bad: #ff6f62; --info: #7cb5ff;
+    --fg: #f4f3ee; --muted: #a9b0a5; --accent: #f2a33a; --accent-fg: #1f1402; --good: #6fd68a; --bad: #ff6f62; --info: #7cb5ff; --warn: #ffd638;
     --font-body: 'Noto Sans KR', system-ui, -apple-system, sans-serif; --font-num: 'Sora', 'Noto Sans KR', system-ui, sans-serif;
     --r: 12px; --r-s: 8px; --shadow: 0 10px 30px rgba(0,0,0,0.35);
     color-scheme: dark;
@@ -56,6 +56,22 @@
   .pop { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; font: 700 18px var(--font-num); font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6); white-space: nowrap; will-change: transform, opacity; }
   .pop.good { color: var(--good); } .pop.bad { color: var(--bad); }
   .status { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(104px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--muted); padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+  /* 체력 바: 상태줄 왼쪽에 붙는다 (스펙 11.3). 라벨 + 140×10 바 */
+  .stamina { position: absolute; right: calc(100% + 8px); top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .stamina .lbl { font: 700 12px var(--font-body); color: var(--muted); white-space: nowrap; flex: none; }
+  .stamina .track { width: 140px; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.12); overflow: hidden; }
+  .stamina .fill { display: block; height: 100%; width: 100%; border-radius: 5px; background: var(--good); transition: width .12s linear; }
+  .stamina .fill.mid { background: var(--warn); } .stamina .fill.low { background: var(--bad); }
+  .stamina .fill.pulse { animation: staPulse .78s ease-in-out infinite; }
+  @keyframes staPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  /* 근무 시계: 상단 버튼 줄 아래 중앙, 배지는 시계 오른쪽 바깥 (스펙 11.1) */
+  .clock { position: absolute; left: 50%; transform: translateX(-50%); top: calc(62px + env(safe-area-inset-top, 0px)); width: 150px; height: 36px; display: flex; align-items: center; justify-content: center; font: 700 17px var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; border-radius: 10px; }
+  .clock .badge { position: absolute; left: calc(100% + 8px); top: 4px; height: 28px; padding: 0 12px; display: flex; align-items: center; border-radius: 8px; background: var(--warn); color: var(--accent-fg); font: 700 13px var(--font-body); white-space: nowrap; box-shadow: var(--shadow); }
+  .clock .badge.closed { background: var(--bad); color: #2a0a06; }
+  .sum { display: flex; flex-direction: column; }
+  .sum .srow { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); } .sum .srow:first-child { border-top: 0; }
+  .sum .srow b { font: 700 16px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); }
+  .sum .srow b.good { color: var(--good); } .sum .srow b.bad { color: var(--bad); } .sum .srow b.acc { color: var(--accent); }
   .toast { position: absolute; left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 14px 9px 10px; font-size: 13px; box-shadow: var(--shadow); animation: drop .18s ease-out; }
   .toast .bar { width: 4px; height: 18px; border-radius: 2px; background: var(--info); }
   .toast.good .bar { background: var(--good); } .toast.bad .bar { background: var(--bad); }
@@ -107,11 +123,15 @@
     .topright .btn { height: 30px; padding: 0 8px; } .topright .btn .key { display: none; } .topright .btn svg { width: 14px; height: 14px; }
     .hotbar { gap: 6px; padding: 6px; } .slot { width: 60px; height: 60px; font-size: 10px; } .slot .ico { width: 22px; height: 22px; }
     .status { font-size: 11px; max-width: calc(100% - 32px); white-space: normal; text-align: center; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+    .stamina { right: auto; left: 50%; top: auto; bottom: calc(100% + 6px); transform: translateX(-50%); height: 26px; }
+    .clock { top: calc(54px + env(safe-area-inset-top, 0px)); width: 112px; height: 30px; font-size: 14px; }
+    .clock .badge { top: 3px; height: 24px; padding: 0 9px; font-size: 12px; }
     .drawer, .help { top: calc(54px + env(safe-area-inset-top, 0px)); }
     .prompt { font-size: 12px; padding: 6px 9px 6px 12px; }
   }
   @media (max-width: 480px) {
     .chips { flex-wrap: wrap; } .topright { max-width: 40%; }
+    .clock { top: calc(100px + env(safe-area-inset-top, 0px)); }
     .slot { width: 52px; height: 52px; } .slot .ico { width: 20px; height: 20px; } .slot .c { display: none; }
     .touch { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
     .touch2 .big { width: 72px; height: 72px; } .touch2 .mid { width: 52px; height: 52px; }
@@ -146,12 +166,14 @@
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
+      <div>09:00~18:00 근무 · 12시 점심(입고 정지, 체력 회복) · 18시 퇴근 요약 · 체력이 0이면 집을 수 없음</div>
       <div>입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
     <div class="panel drawer" id="shop" hidden></div>
     <div class="prompt" id="prompt" hidden><span id="promptText">집기</span><span class="key">E</span><span class="pin"></span></div>
-    <div class="panel status" id="workerText">빈손</div>
+    <div class="panel clock" id="clock"><span id="clockText">1일차 09:00</span><span class="badge" id="phaseBadge" hidden>점심시간</span></div>
+    <div class="panel status" id="statusBox"><div class="stamina" id="stamina"><span class="lbl">체력</span><span class="track"><i class="fill" id="staminaFill"></i></span></div><span id="workerText">빈손</span></div>
     <div class="panel hotbar" id="hotbar"></div>
     <div class="touch">
       <button class="btn" data-move="N" style="grid-column:2;grid-row:1" aria-label="위로 이동">↑</button>
@@ -176,6 +198,18 @@
         </div>
         <div class="sub">표기와 실측이 다르면 거부하세요. 거부한 택배는 빨강 반품 트럭으로 보내야 합니다.</div>
         <div class="row-btns"><button class="btn danger" id="iReject">거부</button><button class="btn ok" id="iApprove">승인</button></div>
+      </div>
+    </div>
+    <div class="modal" id="summary" hidden>
+      <div class="card">
+        <h2 id="sumTitle">1일차 마감</h2>
+        <div class="sum">
+          <div class="srow"><span>배송</span><b class="good" id="sumDelivered">0건</b></div>
+          <div class="srow"><span>소실</span><b class="bad" id="sumLost">0건</b></div>
+          <div class="srow"><span>검사</span><b id="sumInspected">0건</b></div>
+          <div class="srow"><span>잔액 변화</span><b class="acc" id="sumMoney"></b></div>
+        </div>
+        <div class="row-btns" style="justify-content:center"><button class="btn primary" id="sumNext" style="min-width:150px;height:40px;justify-content:center;font-size:15px">다음 날</button></div>
       </div>
     </div>
     <div class="modal" id="demolish" hidden>
@@ -205,6 +239,12 @@
   const SLOTS = ['conveyor', 'fast', 'pallet', 'table', 'splitter', 'scanner'];
   const SW = { conveyor: '#3fa3a3', fast: '#c25a66', pallet: '#9a6b40', table: '#b07a44', splitter: '#7a62c0', scanner: '#4e86e8' };
   const PALLET_CAP = 6, OUTLET_X = 11, RDOCK_X = 11; // 스펙 10.1·10.2
+  // 근무 시계·스태미나 (스펙 11): 시각은 하루 중 분(540..1080), 1게임분 = 1실제초(배속 전)
+  const DAY_OPEN = 540, LUNCH_START = 720, LUNCH_END = 780, DAY_CLOSE = 1080;
+  const MAX_STAMINA = 100, WALK_DRAIN = 1.2, CARRY_DRAIN = 2.2, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30;
+  const phaseAt = m => m >= DAY_CLOSE ? 'closed' : (m >= LUNCH_START && m < LUNCH_END) ? 'lunch' : 'working';
+  const timeText = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
+  const signed = d => d >= 0 ? '+' + d : '−' + (-d);
   const KIND_OF_DIR = { E: 'blue', W: 'red' }, KIND_LABEL = { blue: '파랑', red: '빨강' }; // 팔레트 도구: East = 파랑, West = 빨강
   const dirLabel = (type, dir) => type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[dir]] : ARROWS[dir];
   const isTrack = c => ['conveyor', 'fast', 'splitter', 'inlet', 'table', 'scanner'].includes(c.type);
@@ -225,15 +265,20 @@
     for (let y = 0; y < 12; y++) { cells.push([]); for (let x = 0; x < 12; x++) cells[y].push(cell((x < 6 && y < 6) ? 'empty' : 'locked')); }
     cells[2][0] = cell('inlet'); cells[2][OUTLET_X] = cell('outlet'); cells[4][RDOCK_X] = cell('rdock'); // 트럭 도크는 동쪽 벽 바로 안쪽, 잠겨 있어도 처음부터 존재
     cells[2][5] = palletCell('blue'); cells[4][5] = palletCell('red'); // 시작 팔레트 (옛 출고구·반품구 자리)
-    return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, worker: { x: 2.5, y: 4, facing: 'S', carrying: null } };
+    return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, inspected: 0, day: 1, minute: DAY_OPEN, dayStart: { money: 100, delivered: 0, lost: 0, inspected: 0 }, worker: { x: 2.5, y: 4, facing: 'S', carrying: null, stamina: MAX_STAMINA } };
   }
   function demoLayout(g) { // #demo — 시안 확인용 샘플 배치 (Unity 데모 장면과 같은 구성)
     g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
     const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, label: makeLabel(bad) });
     g.cells[2][5].pile.push(pkg(true, false), pkg(true, false), pkg(true, true));
-    g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false) }; g.money = 240; return g;
+    g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false), stamina: MAX_STAMINA }; g.money = 240; g.minute = 640; // 10:40
+    g.dayStart.money = g.money; return g;
   }
-  let S = location.hash === '#demo' ? demoLayout(newGame()) : newGame();
+  function lunchLayout(g) { // #lunch — Unity 점심 장면: 12:20, 체력 낮음, 일시정지, 레일 도구로 설치 대기
+    demoLayout(g); g.minute = 740; g.paused = true; g.money = 530; g.dayStart.money = 530;
+    g.worker = { x: 3.0, y: 4.0, facing: 'N', carrying: null, stamina: 15 }; return g;
+  }
+  let S = location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
   const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
 
   function headingFor(c, incoming) {
@@ -284,10 +329,24 @@
     S.money += r.delta; toast(r.msg, r.kind); pushFx(x, y, r.delta);
   }
   function remove(i, delivered) { const p = S.packages[i]; S.cells[p.y][p.x].occ = -1; S.packages.splice(i, 1); if (!delivered) S.lost++; }
+  // 시계 진행: 일시정지·퇴근이면 아무것도 안 한다. 단계 경계(12:00·13:00·18:00)에서 시간을 나눠
+  // 입고는 근무 구간에서만, 레일·해체는 18:00까지 항상 돌린다. 18:00에 닿으면 하루 요약을 띄운다.
+  let movedSinceRest = false;
   function tick(dt) {
-    if (S.paused) return;
-    const d = dt * S.speed;
-    const iv = Math.max(3, 8 - 0.5 * Math.floor(S.delivered / 5)); S.timer += d; while (S.timer >= iv) { S.timer -= iv; spawn(0, 2); } // 입고 주기: 8초에서 배송 5건마다 0.5초씩, 최소 3초
+    if (S.paused || !(dt > 0) || S.minute >= DAY_CLOSE) return;
+    let remaining = dt * S.speed, work = 0, lunch = 0;
+    while (remaining > 1e-9 && S.minute < DAY_CLOSE) {
+      const boundary = S.minute < LUNCH_START ? LUNCH_START : S.minute < LUNCH_END ? LUNCH_END : DAY_CLOSE;
+      const toB = boundary - S.minute, seg = Math.min(remaining, toB), phase = phaseAt(S.minute);
+      if (phase === 'working') { spawnTick(seg); work += seg; } else lunch += seg;
+      simTick(seg);
+      S.minute = remaining >= toB ? boundary : S.minute + seg; remaining -= seg;
+    }
+    if (work > 0) rest(work, 'working'); if (lunch > 0) rest(lunch, 'lunch'); // 이동 플래그는 근무 회복이 먼저 소비한다
+    if (S.minute >= DAY_CLOSE) endDay();
+  }
+  function spawnTick(d) { const iv = Math.max(3, 8 - 0.5 * Math.floor(S.delivered / 5)); S.timer += d; while (S.timer >= iv) { S.timer -= iv; spawn(0, 2); } } // 입고 주기: 8초에서 배송 5건마다 0.5초씩, 최소 3초
+  function simTick(d) {
     for (let i = 0; i < S.packages.length; i++) {
       const p = S.packages[i], c = S.cells[p.y][p.x];
       p.progress = Math.min(1, p.progress + (c.type === 'fast' ? 2 : 1) * d);
@@ -305,7 +364,7 @@
       if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       if (next.occ >= 0 || next.demolishing) continue;
       c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading);
-      if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; }
+      if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; S.inspected++; }
     }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
       const c = S.cells[y][x]; if (!c.demolishing) continue;
@@ -318,11 +377,20 @@
   const WALK_SPEED = 3.4, WORKER_R = 0.28; // 칸/초, 충돌 반지름(칸)
   const walkableCell = c => c.type !== 'table' && c.type !== 'scanner' && c.type !== 'splitter' && c.type !== 'pallet'; // 레일·도크·잠긴 바닥 위는 걸어 다닐 수 있다 (스펙 10.3)
   const walkableAt = (px, py) => { const n = 12; /* 경계 = 건물 안 격자 전체 */ if (px < -0.5 + WORKER_R || py < -0.5 + WORKER_R || px > n - 0.5 - WORKER_R || py > n - 0.5 - WORKER_R) return false; for (const dx of [-WORKER_R, WORKER_R]) for (const dy of [-WORKER_R, WORKER_R]) { const cx = Math.round(px + dx), cy = Math.round(py + dy); if (!inBounds(cx, cy) || !walkableCell(S.cells[cy][cx])) return false; } return true; };
-  function moveWorker(vx, vy, dt) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리
-    const w = S.worker; const len = Math.hypot(vx, vy); if (len < 1e-6) return false;
-    vx /= len; vy /= len; const step = WALK_SPEED * dt;
-    const nx = w.x + vx * step; if (walkableAt(nx, w.y)) w.x = nx;
-    const ny = w.y + vy * step; if (walkableAt(w.x, ny)) w.y = ny;
+  const clampSta = v => v < 0 ? 0 : v > MAX_STAMINA ? MAX_STAMINA : v;
+  const speedFactor = () => { const st = Math.max(0, S.worker.stamina); return st < SLOW_BELOW ? 0.5 + 0.5 * (st / SLOW_BELOW) : 1; }; // 30 아래면 0.5..1로 줄어든다
+  function rest(dt, phase) { // 스태미나 회복: 점심은 항상 +20/초, 근무 중에는 지난 호출 이후 움직이지 않았을 때만 +0.8/초
+    const moved = movedSinceRest; movedSinceRest = false;
+    if (!(dt > 0)) return;
+    if (phase === 'lunch') S.worker.stamina = clampSta(S.worker.stamina + LUNCH_REGEN * dt);
+    else if (phase === 'working' && !moved) S.worker.stamina = clampSta(S.worker.stamina + STAND_REGEN * dt);
+  }
+  function moveWorker(vx, vy, dt) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리. 퇴근 후에는 걷지 않는다 (일시정지 중에는 걸을 수 있다)
+    const w = S.worker; const len = Math.hypot(vx, vy); if (len < 1e-6 || S.minute >= DAY_CLOSE) return false;
+    vx /= len; vy /= len; const step = WALK_SPEED * speedFactor() * dt; let moved = false;
+    const nx = w.x + vx * step; if (walkableAt(nx, w.y)) { w.x = nx; moved = true; }
+    const ny = w.y + vy * step; if (walkableAt(w.x, ny)) { w.y = ny; moved = true; }
+    if (moved) { movedSinceRest = true; w.stamina = clampSta(w.stamina - (w.carrying ? CARRY_DRAIN : WALK_DRAIN) * dt); } // 움직인 프레임만 소모
     w.facing = Math.abs(vx) >= Math.abs(vy) ? (vx > 0 ? 'E' : 'W') : (vy > 0 ? 'N' : 'S');
     if (UI.inspect) { UI.inspect = null; $('inspect').hidden = true; }
     return true;
@@ -340,9 +408,10 @@
       if (fc.type === 'pallet' && !fc.demolishing) return fc.pile.length < PALLET_CAP ? 'palletput' : 'palletfull';
       if (isTrack(fc) && fc.occ < 0 && !fc.demolishing) return 'put'; return 'cannotput';
     }
-    if (fc.type === 'pallet' && fc.pile.length > 0) return 'palletpick';
+    const tired = S.worker.stamina <= 0; // 스태미나 0이면 집을 수 없다 (놓기·출고·설치는 가능)
+    if (fc.type === 'pallet' && fc.pile.length > 0) return tired ? 'exhausted' : 'palletpick';
     const pi = packageAt(f.x, f.y);
-    if (pi >= 0) return (fc.type === 'table' && !S.packages[pi].inspected) ? 'inspect' : 'pick';
+    if (pi >= 0) return (fc.type === 'table' && !S.packages[pi].inspected) ? 'inspect' : tired ? 'exhausted' : 'pick';
     if (!UI.tool) return 'notool';
     if (!(f.x < S.unlocked && f.y < S.unlocked)) return 'locked';
     if (fc.type !== 'empty') return 'occupied';
@@ -356,12 +425,13 @@
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     switch (r) {
       case 'deliver': deliver(w.carrying, fc.type, f.x, f.y); w.carrying = null; break;
-      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; } break; }
+      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; S.inspected++; } break; }
       case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
       case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
       case 'palletpick': w.carrying = fc.pile.pop(); break;
       case 'palletput': { const p = w.carrying; p.progress = 0; fc.pile.push(p); w.carrying = null; break; }
       case 'palletfull': toast('팔레트가 가득 찼습니다'); break;
+      case 'exhausted': toast('지쳤습니다. 잠시 쉬세요', 'bad'); break;
       case 'place': S.money -= COST[UI.tool.type]; pushFx(f.x, f.y, -COST[UI.tool.type]); S.cells[f.y][f.x] = UI.tool.type === 'pallet' ? palletCell(KIND_OF_DIR[UI.tool.dir]) : cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
       case 'nofloor': toast('바닥이 없는 곳입니다'); break;
       case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
@@ -372,7 +442,15 @@
       case 'nomoney': toast('잔액이 부족합니다', 'bad'); break;
     }
   }
+  function buildSummary() { const d = S.dayStart; return { day: S.day, delivered: S.delivered - d.delivered, lost: S.lost - d.lost, inspected: S.inspected - d.inspected, startMoney: d.money, endMoney: S.money }; }
+  function captureDayStart() { S.dayStart = { money: S.money, delivered: S.delivered, lost: S.lost, inspected: S.inspected }; }
+  function endDay() { UI.inspect = null; UI.pending = null; showSummary(buildSummary()); } // 18:00: 열린 창을 닫고 하루 요약 모달
+  function nextDay() { // 퇴근 상태에서만: 다음 날 09:00, 체력 가득, 그날 시작 값 기록. 레일·팔레트 위 택배는 그대로
+    if (S.minute < DAY_CLOSE) return false;
+    S.day++; S.minute = DAY_OPEN; S.worker.stamina = MAX_STAMINA; movedSinceRest = false; captureDayStart(); return true;
+  }
   function askDemolish() {
+    if (S.minute >= DAY_CLOSE) return;
     const f = facingTile(); if (!inBounds(f.x, f.y)) return toast('해체할 수 있는 부품이 아닙니다');
     const c = S.cells[f.y][f.x];
     if (!isBuilding(c)) return toast('해체할 수 있는 부품이 아닙니다');
@@ -447,11 +525,18 @@
       b.addEventListener('click', () => buy(def)); row.appendChild(b); el.appendChild(row);
     });
   }
+  function showSummary(d) {
+    for (const id of ['shop', 'help', 'demolish', 'inspect']) $(id).hidden = true; held.clear();
+    $('sumTitle').textContent = d.day + '일차 마감'; $('sumDelivered').textContent = d.delivered + '건'; $('sumLost').textContent = d.lost + '건'; $('sumInspected').textContent = d.inspected + '건';
+    const diff = d.endMoney - d.startMoney, sm = $('sumMoney'); sm.textContent = d.startMoney + ' → ' + d.endMoney + ' (' + signed(diff) + ')'; sm.className = diff >= 0 ? 'good' : 'bad';
+    $('summary').hidden = false;
+  }
+  $('sumNext').addEventListener('click', () => { if (nextDay()) $('summary').hidden = true; });
   function showInspect() {
     const p = UI.inspect; $('inspectId').textContent = '#' + p.id; $('iDest').textContent = p.label.dest; $('iWeight').textContent = p.label.weight + ' kg'; $('iMethod').textContent = p.label.method; $('iScale').textContent = p.label.scale + ' kg'; $('inspect').hidden = false;
   }
-  $('iApprove').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = false; } UI.inspect = null; $('inspect').hidden = true; });
-  $('iReject').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = true; } UI.inspect = null; $('inspect').hidden = true; });
+  $('iApprove').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = false; S.inspected++; } UI.inspect = null; $('inspect').hidden = true; });
+  $('iReject').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = true; S.inspected++; } UI.inspect = null; $('inspect').hidden = true; });
   $('dCancel').addEventListener('click', () => { UI.pending = null; $('demolish').hidden = true; });
   $('dConfirm').addEventListener('click', () => { if (UI.pending) { const c = S.cells[UI.pending.y][UI.pending.x]; if (isBuilding(c) && !(c.type === 'pallet' && c.pile.length)) { c.demolishing = true; c.remain = 2; UI.dirty.add(UI.pending.x + ',' + UI.pending.y); } } UI.pending = null; $('demolish').hidden = true; });
   $('pauseBtn').addEventListener('click', () => { S.paused = !S.paused; });
@@ -459,8 +544,8 @@
   $('shopBtn').addEventListener('click', () => { $('shop').hidden = !$('shop').hidden; $('help').hidden = true; renderShop(); });
   $('helpBtn').addEventListener('click', () => { $('help').hidden = !$('help').hidden; $('shop').hidden = true; });
   $('saveBtn').addEventListener('click', () => { UI.saved = JSON.stringify(S); toast('저장했습니다', 'good'); });
-  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; toast('불러왔습니다', 'good'); });
-  $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; toast('새 게임'); });
+  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; movedSinceRest = false; if (S.minute >= DAY_CLOSE) showSummary(buildSummary()); else $('summary').hidden = true; toast('불러왔습니다', 'good'); });
+  $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; movedSinceRest = false; $('summary').hidden = true; toast('새 게임'); });
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   const held = new Set();
   document.querySelectorAll('[data-move]').forEach(b => { const d = b.dataset.move; const on = e => { e.preventDefault(); held.add('pad' + d); }, off = () => held.delete('pad' + d); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
@@ -470,6 +555,7 @@
   $('touchAct').addEventListener('click', act); $('touchDemolish').addEventListener('click', askDemolish); $('touchRotate').addEventListener('click', rotateTool);
   window.addEventListener('keydown', e => {
     const k = e.code;
+    if (!$('summary').hidden) { if (KEYDIR[k]) e.preventDefault(); return; } // 하루 요약은 "다음 날" 버튼으로만 닫힌다 (Esc 무시)
     if (k === 'Escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
     if (!$('inspect').hidden || !$('demolish').hidden) return;
     if (KEYDIR[k]) { e.preventDefault(); held.add(k); return; }
@@ -715,7 +801,7 @@
     if (UI.rebuildAll) { rebuildAll(); frameLot(false); UI.rebuildAll = false; UI.dirty.clear(); }
     { const k = 1 - Math.pow(0.02, dt); camera.position.lerp(camPos, k); camLook.lerp(camTarget, k); camera.lookAt(camLook); }
     for (const k of UI.dirty) { const [x, y] = k.split(',').map(Number); rebuildCell(x, y); } UI.dirty.clear();
-    if (!S.paused) for (const a of arrows) { a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); }
+    if (!S.paused && S.minute < DAY_CLOSE) for (const a of arrows) { a.t = (a.t + dt * a.speed * S.speed) % 1; a.ar.position.set(0, 0.43, -0.32 + a.t * 0.64); }
     const seen = new Set();
     for (const p of S.packages) {
       seen.add(p.id); let m = parcelObjs.get(p.id); if (!m) { m = parcelMesh(); parcelLayer.add(m); parcelObjs.set(p.id, m); }
@@ -731,7 +817,7 @@
       while (arr.length > pile.length) parcelLayer.remove(arr.pop());
       pile.forEach((p, i) => { const m = arr[i]; m.position.set(W(x) + (i % 2 ? -0.22 : 0.22), PILE_Y[Math.floor(i / 2)], Z(y)); m.rotation.y = Math.PI / 2; /* 좁은 면(0.4)이 x축 → 2개가 겹치지 않음 */ markState(m, p); });
     }
-    const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden;
+    const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden || !$('summary').hidden;
     const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt);
     worker.position.set(W(w.x), 0, Z(w.y));
     const ty = yawFacing[w.facing]; let dy = ty - worker.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); worker.rotation.y += dy * (1 - Math.pow(0.0005, dt));
@@ -741,17 +827,20 @@
     cursor.visible = !!fc;
     if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
     const r = preview(); let label = null;
-    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = promptLabel(S.worker.carrying, fc.type); else if (r === 'inspect') label = '검사'; else if (r === 'place' || r === 'nomoney') { const nm = UI.tool.type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[UI.tool.type]; label = nm + ' 설치 · ₩' + COST[UI.tool.type] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
-    const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney');
+    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = promptLabel(S.worker.carrying, fc.type); else if (r === 'inspect') label = '검사'; else if (r === 'exhausted') label = '집기 (지침)'; else if (r === 'place' || r === 'nomoney') { const nm = UI.tool.type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[UI.tool.type]; label = nm + ' 설치 · ₩' + COST[UI.tool.type] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
+    const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney' || r === 'exhausted');
     if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
     updateFx(now);
     if (S.money !== lastMoney) { const mv = $('money'); if (lastMoney !== null) { mv.classList.remove('up', 'down'); void mv.offsetWidth; mv.classList.add(S.money > lastMoney ? 'up' : 'down'); } lastMoney = S.money; }
     $('money').textContent = S.money; $('delivered').textContent = S.delivered; $('lost').textContent = S.lost; $('waiting').textContent = S.packages.filter(p => !p.inspected && S.cells[p.y][p.x].type === 'table').length;
     $('pauseBtn').classList.toggle('on', S.paused); $('speedLbl').textContent = S.speed + 'x'; $('speedBtn').classList.toggle('on', S.speed === 2);
+    { const ph = phaseAt(S.minute), st = Math.max(0, Math.min(MAX_STAMINA, w.stamina)); $('clockText').textContent = S.day + '일차 ' + timeText(S.minute);
+      const bd = $('phaseBadge'); bd.hidden = ph === 'working'; bd.textContent = ph === 'lunch' ? '점심시간' : '퇴근'; bd.classList.toggle('closed', ph === 'closed');
+      const fl = $('staminaFill'); fl.style.width = st + '%'; fl.className = 'fill' + (st > 50 ? '' : st > 20 ? ' mid' : ' low') + (st < 20 ? ' pulse' : ''); }
     $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요');
     renderer.render(scene, camera);
   }
-  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
+  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch') selectSlot(0); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
 })();
 </script>
