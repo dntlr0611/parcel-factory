@@ -138,6 +138,24 @@ namespace ParcelFactory.Game.Tests
                 input.ApplyConfigDirection(ParcelFactory.Core.Direction.North);
                 Assert.AreEqual(ParcelFactory.Core.Direction.North, input.SelectedTool.Value.Direction);
                 Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                input.BeginConfig();
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.East);
+                Assert.AreEqual(ParcelFactory.Core.Direction.East, input.SelectedTool.Value.Direction);
+                // 이미 동쪽을 누른 채 설정 모드에 들어가면 그 방향은 입력이 아니고, 북쪽을 더 누르면 북쪽이 입력된다.
+                input.SetPad(ParcelFactory.Core.Direction.East, true);
+                yield return null;
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                yield return null;
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode, "held direction must not apply");
+                input.SetPad(ParcelFactory.Core.Direction.North, true);
+                yield return null;
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(ParcelFactory.Core.Direction.North, input.SelectedTool.Value.Direction, "newly added direction should apply");
+                input.ClearPad();
+                yield return null;
+                w.X = 2f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.South;
                 // 빈손 + 빈 칸 → 대상 없음
                 input.ClearTool();
                 input.BeginConfig();
@@ -208,6 +226,24 @@ namespace ParcelFactory.Game.Tests
                 input.ApplyConfigDirection(ParcelFactory.Core.Direction.East);
                 Assert.AreEqual("파란 출구와 같은 방향입니다", boot.Hud.LastToast);
                 Assert.AreEqual(ParcelFactory.Core.Direction.South, s.Grid.Get(2, 2).RedDirection);
+
+                // 분배기 도구의 빨간 출구는 다른 종류를 고르면 버린다.
+                w.X = 2f; w.Y = 5f; w.Facing = ParcelFactory.Core.Direction.North; // (2,4) 빈 칸
+                int splitterSlot = input.AvailableSlots().IndexOf(ParcelFactory.Core.CellType.Splitter);
+                Assert.GreaterOrEqual(splitterSlot, 0);
+                input.SelectSlot(splitterSlot);
+                input.BeginConfig();
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                input.ApplyConfigSlot(2);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.South);
+                Assert.AreEqual(ParcelFactory.Core.Direction.South, input.ToolSplitterRed);
+                input.SelectSlot(0);
+                Assert.IsNull(input.ToolSplitterRed, "red must reset when another type is selected");
+                input.SelectSlot(splitterSlot);
+                Assert.IsNull(input.ToolSplitterRed);
+                input.BeginConfig(); input.ApplyConfigSlot(2); input.ApplyConfigDirection(ParcelFactory.Core.Direction.South);
+                input.ClearTool();
+                Assert.IsNull(input.ToolSplitterRed, "red must reset on ClearTool");
 
                 // 팔레트 (5,2): R → 2 = 빨강, 곧바로 적용.
                 w.X = 5f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South;

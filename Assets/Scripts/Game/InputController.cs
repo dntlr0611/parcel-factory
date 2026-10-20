@@ -33,7 +33,7 @@ namespace ParcelFactory.Game
         public event Action<BuildResult> DemolishRequested;
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleStatus, ToggleHelp, Escape, ToolChanged;
 
-        private InputAction move, dirInput, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
+        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
@@ -52,7 +52,8 @@ namespace ParcelFactory.Game
         /// <summary>분배기 도구로 설치할 때 함께 적용할 빨간 출구(없으면 자동 규칙).</summary>
         public Direction? ToolSplitterRed { get; private set; }
         public event Action ConfigChanged;
-        private bool moveWasActive;    // 지난 프레임에 이동 입력(키·스틱·D-패드)이 있었는가
+        private readonly HashSet<Direction> prevDirs = new HashSet<Direction>(); // 지난 프레임에 눌려 있던 방향(키·스틱·D-패드 합산 벡터의 축별)
+        private readonly HashSet<Direction> curDirs = new HashSet<Direction>();
         private bool holdUntilRelease; // 화살표로 설정을 끝낸 뒤 그 키를 뗄 때까지 걷지 않는다
 
         private void Awake()
@@ -65,14 +66,6 @@ namespace ParcelFactory.Game
                 .With("Right", "<Keyboard>/d").With("Right", "<Keyboard>/rightArrow");
             move.AddBinding("<Gamepad>/leftStick");
             move.AddBinding("<Gamepad>/dpad");
-            // 설정 모드의 방향 입력: 이동과 같은 키지만 "이번 프레임에 눌렸는가"만 본다.
-            dirInput = new InputAction("Dir", InputActionType.Value, expectedControlType: "Vector2");
-            dirInput.AddCompositeBinding("2DVector")
-                .With("Up", "<Keyboard>/w").With("Up", "<Keyboard>/upArrow")
-                .With("Down", "<Keyboard>/s").With("Down", "<Keyboard>/downArrow")
-                .With("Left", "<Keyboard>/a").With("Left", "<Keyboard>/leftArrow")
-                .With("Right", "<Keyboard>/d").With("Right", "<Keyboard>/rightArrow");
-            dirInput.AddBinding("<Gamepad>/dpad");
             interact = Button("Interact", "<Keyboard>/e", "<Gamepad>/buttonSouth");
             demolish = Button("Demolish", "<Keyboard>/x", "<Gamepad>/buttonWest");
             rotate = Button("Rotate", "<Keyboard>/r", "<Gamepad>/buttonNorth");
@@ -126,7 +119,7 @@ namespace ParcelFactory.Game
 
         private IEnumerable<InputAction> All()
         {
-            yield return move; yield return dirInput; yield return interact; yield return demolish; yield return rotate; yield return clear;
+            yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
             yield return pause; yield return speed; yield return shop; yield return status; yield return help; yield return escape; yield return runAction;
             foreach (var s in slots) yield return s;
         }
@@ -149,7 +142,7 @@ namespace ParcelFactory.Game
             bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
             if (shop.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleShop?.Invoke(); }
             else if (status.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleStatus?.Invoke(); }
-            if (UiBlocksInput) { CancelConfig(); StopMoving(); moveWasActive = false; return; }
+            if (UiBlocksInput) { CancelConfig(); StopMoving(); prevDirs.Clear(); return; }
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
@@ -157,10 +150,16 @@ namespace ParcelFactory.Game
             var v = move.ReadValue<Vector2>();
             foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
             bool moveActive = v.sqrMagnitude > 0.04f;
+            // 이번 프레임에 새로 눌린 방향(지난 프레임에 없던 축 방향). 설정 모드의 방향 입력에 쓴다.
+            curDirs.Clear();
+            if (v.x > AxisPress) curDirs.Add(Direction.East); else if (v.x < -AxisPress) curDirs.Add(Direction.West);
+            if (v.y > AxisPress) curDirs.Add(Direction.North); else if (v.y < -AxisPress) curDirs.Add(Direction.South);
+            Direction? pressed = null;
+            foreach (var d in curDirs) if (!prevDirs.Contains(d)) { pressed = d; break; }
+            prevDirs.Clear(); prevDirs.UnionWith(curDirs);
 
-            if (ConfigMode != ConfigMode.None) { UpdateConfig(v, moveActive); return; }
+            if (ConfigMode != ConfigMode.None) { UpdateConfig(pressed); return; }
             if (!moveActive) holdUntilRelease = false;
-            moveWasActive = moveActive;
 
             for (int i = 0; i < slots.Length; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
             if (rotate.WasPressedThisFrame()) BeginConfig();
@@ -175,31 +174,22 @@ namespace ParcelFactory.Game
             for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep), run); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection·달리기 판정을 처리한다
         }
 
-        /// <summary>설정 모드의 한 프레임: 이동은 막고, 화살표(또는 새로 들어온 이동 입력의 주축)로 방향을, 1/2로 설정을 고른다.
+        /// <summary>합산 이동 벡터의 축 성분이 이 값을 넘으면 그 방향이 눌린 것으로 본다.</summary>
+        private const float AxisPress = 0.3f;
+
+        /// <summary>설정 모드의 한 프레임: 이동은 막고, 새로 눌린 방향(이미 다른 방향을 누르고 있어도 새로 더해진 쪽)으로 방향을, 1/2로 설정을 고른다.
         /// Esc·E·X·Q·숫자(PickSlot의 1/2 제외)는 취소.</summary>
-        private void UpdateConfig(Vector2 v, bool moveActive)
+        private void UpdateConfig(Direction? pressed)
         {
             StopMoving();
-            bool newlyMoved = moveActive && !moveWasActive;
-            moveWasActive = moveActive;
             if (interact.WasPressedThisFrame() || demolish.WasPressedThisFrame() || clear.WasPressedThisFrame()) { CancelConfig(); return; } // 취소만 한다(설치·해체·빈손은 하지 않음)
             for (int i = 0; i < slots.Length; i++)
                 if (slots[i].WasPressedThisFrame()) { SelectSlot(i); return; }
             if (rotate.WasPressedThisFrame()) { CancelConfig(); return; } // R을 다시 누르면 취소
-            if (ConfigMode != ConfigMode.PickDirection) return;
-            Vector2 dv;
-            if (dirInput.WasPressedThisFrame()) dv = dirInput.ReadValue<Vector2>();
-            else if (newlyMoved) dv = v;
-            else return;
-            if (dv.sqrMagnitude <= 0.04f) dv = v;
-            if (dv.sqrMagnitude <= 0.04f) return;
+            if (ConfigMode != ConfigMode.PickDirection || !pressed.HasValue) return;
             holdUntilRelease = true; // 입력한 화살표를 누른 채라도 걸어가지 않게
-            ApplyConfigDirection(DominantDirection(dv));
+            ApplyConfigDirection(pressed.Value);
         }
-
-        /// <summary>벡터의 주축 방향. x가 크거나 같으면 동/서, 아니면 북/남(+y = 북).</summary>
-        public static Direction DominantDirection(Vector2 v) =>
-            Mathf.Abs(v.x) >= Mathf.Abs(v.y) ? (v.x >= 0f ? Direction.East : Direction.West) : (v.y >= 0f ? Direction.North : Direction.South);
 
         /// <summary>이동하지 않는 프레임: 영벡터 Move로 코어의 IsRunning만 끈다(멈추면 달리기 즉시 해제, 스펙 11.4). 위치·방향·체력은 바뀌지 않는다.</summary>
         private void StopMoving() => S.Worker.Move(0f, 0f, 0f);
@@ -278,6 +268,7 @@ namespace ParcelFactory.Game
             if (i < 0 || i >= available.Count) return;
             var type = available[i];
             if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { BeginConfig(); return; }
+            ToolSplitterRed = null; // 다른 종류를 고르면 분배기 도구의 빨간 출구 설정은 버린다
             var dir = PreferredDirection(type);
             SelectedTool = new Tool(type, dir);
             ToolChanged?.Invoke();
@@ -287,6 +278,7 @@ namespace ParcelFactory.Game
         {
             CancelConfig();
             SelectedTool = null;
+            ToolSplitterRed = null;
             ToolChanged?.Invoke();
         }
 
@@ -314,7 +306,6 @@ namespace ParcelFactory.Game
                 ConfigType = SelectedTool.Value.Type;
             }
             else { Feedback("설정할 대상이 없습니다"); return; }
-            ClearPad(); // 누르고 있던 화면 D-패드가 곧바로 방향으로 읽히지 않게
             ConfigWhich = ConfigWhich.Primary;
             ConfigMode = HasTwoSettings(ConfigType) ? ConfigMode.PickSlot : ConfigMode.PickDirection;
             ConfigChanged?.Invoke();
