@@ -284,3 +284,8 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 - 강화는 즉시 적용되고 되돌릴 수 없다. 체력 강화 시 현재 체력도 같은 양만큼 오른다.
 - 코어: `Progression { Exp, Level(Stat), MaxLevel(Stat), Cost(Stat), TryUpgrade(Stat) → UpgradeResult { Ok, MaxLevel, NotEnoughExp }, MaxStamina, SpeedMultiplier, RegenMultiplier; event ExpChanged, Upgraded }`, `GameSession.Progression`; `WorkerService`가 `MaxStamina/SpeedMultiplier/RegenMultiplier`를 Progression에서 읽는다. EXP 적립은 `ConveyorSim.PackageDelivered`(성공 판정)와 `NoteInspected`에서. 저장 v6(Exp, 레벨 3개).
 - 하루 요약에 "획득 EXP"를 추가한다.
+
+### 11.6 분배기 규칙 개정 (2026-10-20)
+- 분배기는 **연결된 출구**로 번갈아 보낸다. 출구 후보 = 분배기 칸의 4방향 이웃 중 (a) 택배가 들어온 방향의 정반대가 아니고 (b) 트랙(레일·고속·검사대·자동 검사기·분배기)이거나 팔레트·트럭 도크인 칸. 후보 순서는 분배기 방향 기준 왼쪽 → 앞 → 오른쪽이고, 라운드로빈 인덱스를 돌린다(후보 수가 바뀌어도 인덱스는 나머지 연산).
+- 후보가 하나면 항상 그쪽, 후보가 없으면 분배기 방향으로 내보낸다(그 앞이 비어 있으면 기존대로 소실).
+- 뷰: 분배기 허브(보라색) 위에 연결된 출구마다 화살표를 그린다. 이웃 칸이 바뀌면 분배기 뷰도 다시 그린다. 방향 설정은 후보 순서와 모델 방향에만 영향을 준다.
