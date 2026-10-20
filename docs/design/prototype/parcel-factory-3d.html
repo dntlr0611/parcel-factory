@@ -48,6 +48,13 @@
   .slot.on .d { display: inline-flex; background: var(--accent); color: var(--accent-fg); }
   .prompt { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 10px; align-items: center; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 10px 7px 14px; font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow); }
   .prompt .pin { position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; background: var(--panel-2); border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); transform: translateX(-50%) rotate(45deg); }
+  .prompt.warn { border-color: var(--bad); color: var(--bad); }
+  .prompt.warn .pin { border-color: var(--bad); }
+  .money .val.up { animation: flashUp .4s ease-out; } .money .val.down { animation: flashDown .4s ease-out; }
+  @keyframes flashUp { from { color: var(--good); } to { color: var(--fg); } }
+  @keyframes flashDown { from { color: var(--bad); } to { color: var(--fg); } }
+  .pop { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; font: 700 18px var(--font-num); font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6); white-space: nowrap; will-change: transform, opacity; }
+  .pop.good { color: var(--good); } .pop.bad { color: var(--bad); }
   .status { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(104px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--muted); padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
   .toast { position: absolute; left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 14px 9px 10px; font-size: 13px; box-shadow: var(--shadow); animation: drop .18s ease-out; }
   .toast .bar { width: 4px; height: 18px; border-radius: 2px; background: var(--info); }
@@ -139,7 +146,7 @@
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
-      <div>입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 배송 +15 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
+      <div>입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
     <div class="panel drawer" id="shop" hidden></div>
@@ -224,10 +231,10 @@
     g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
     const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, label: makeLabel(bad) });
     g.cells[2][5].pile.push(pkg(true, false), pkg(true, false), pkg(true, true));
-    g.worker = { x: 8.0, y: 2.0, facing: 'E', carrying: pkg(true, false) }; g.money = 240; return g;
+    g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false) }; g.money = 240; return g;
   }
   let S = location.hash === '#demo' ? demoLayout(newGame()) : newGame();
-  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null };
+  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
 
   function headingFor(c, incoming) {
     if (c.type !== 'splitter') return c.dir;
@@ -248,20 +255,26 @@
     const p = { id: S.nextId++, x, y, progress: 0, heading: h, entry: h, bad, inspected: false, rejected: false, label: makeLabel(bad) };
     c.occ = p.id; S.packages.push(p); return true;
   }
-  function deliver(p, dockType) {
-    let delta = 0, msg = '', kind = 'bad';
+  // 점수 규칙 한 곳: 도크 프롬프트(label)와 deliver()가 같은 값을 쓴다 (스펙 3.3, 9.3)
+  function scoreFor(p, dockType) {
+    const o = (delta, msg, label, success) => ({ delta, msg, label, kind: success ? 'good' : 'bad', success });
     if (dockType === 'outlet') {
-      if (!p.inspected) { delta = -10; msg = '검사대를 거치지 않은 택배 · 출고 −10'; }
-      else if (p.rejected) { delta = -10; msg = '거부 택배를 출고 −10'; }
-      else if (p.bad) { delta = -20; msg = '불량을 승인해 출고 −20'; }
-      else { delta = 15; S.delivered++; msg = '정상 출고 +15'; kind = 'good'; }
-    } else {
-      if (!p.inspected) { delta = -5; msg = '검사대를 거치지 않은 택배 · 반품 −5'; }
-      else if (p.rejected && p.bad) { delta = 5; S.delivered++; msg = '불량 반품 +5'; kind = 'good'; }
-      else if (!p.rejected) { delta = -5; msg = '승인 택배를 반품 −5'; }
-      else { delta = -5; msg = '정상 택배를 반품 −5'; }
+      if (!p.inspected) return o(-10, '검사대를 거치지 않은 택배 · 출고 −10', '출고 (미검사 −10)', false);
+      if (p.rejected) return o(-10, '거부 택배를 출고 −10', '출고 (거부 −10)', false);
+      if (p.bad) return o(-30, '불량을 승인해 출고 −30', '출고 (불량 −30)', false);
+      return o(30, '정상 출고 +30', '출고 +30', true);
     }
-    S.money += delta; toast(msg, kind);
+    if (!p.inspected) return o(-5, '검사대를 거치지 않은 택배 · 반품 −5', '반품 (미검사 −5)', false);
+    if (p.rejected && p.bad) return o(10, '불량 반품 +10', '반품 +10', true);
+    if (!p.rejected) return o(-5, '승인 택배를 반품 −5', '반품 (승인 −5)', false);
+    return o(-5, '정상 택배를 반품 −5', '반품 (정상 −5)', false);
+  }
+  // 돈 팝업 이벤트: 렌더 루프가 비운다 (월드 칸 좌표)
+  function pushFx(x, y, delta) { if (UI.fx.length < 32) UI.fx.push({ x, y, delta }); }
+  function deliver(p, dockType, x, y) {
+    const r = scoreFor(p, dockType);
+    if (r.success) S.delivered++;
+    S.money += r.delta; toast(r.msg, r.kind); pushFx(x, y, r.delta);
   }
   function remove(i, delivered) { const p = S.packages[i]; S.cells[p.y][p.x].occ = -1; S.packages.splice(i, 1); if (!delivered) S.lost++; }
   function tick(dt) {
@@ -277,7 +290,7 @@
       const nx = p.x + DX[p.heading], ny = p.y + DY[p.heading];
       if (!inBounds(nx, ny)) { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       const next = S.cells[ny][nx];
-      if (isDock(next.type)) { deliver(p, next.type); remove(i, true); i--; continue; }
+      if (isDock(next.type)) { deliver(p, next.type, nx, ny); remove(i, true); i--; continue; }
       if (next.type === 'pallet') { // 흐름에서 빠져 더미에 쌓인다(검사 상태 유지). 가득 차거나 해체 중이면 대기
         if (next.demolishing || next.pile.length >= PALLET_CAP) continue;
         c.occ = -1; S.packages.splice(i, 1); i--; p.progress = 0; next.pile.push(p); continue;
@@ -292,7 +305,7 @@
       c.remain -= d; if (c.remain > 1e-4) continue;
       const r = Math.round(COST[c.type] * 0.8);
       for (let i = S.packages.length - 1; i >= 0; i--) if (S.packages[i].x === x && S.packages[i].y === y) remove(i, false);
-      S.cells[y][x] = cell('empty'); S.money += r; UI.dirty.add(x + ',' + y); toast('해체 완료 · 환불 +' + r, 'good');
+      S.cells[y][x] = cell('empty'); S.money += r; pushFx(x, y, r); UI.dirty.add(x + ',' + y); toast('해체 완료 · 환불 +' + r, 'good');
     }
   }
   const WALK_SPEED = 3.4, WORKER_R = 0.28; // 칸/초, 충돌 반지름(칸)
@@ -335,14 +348,14 @@
     const w = S.worker, f = facingTile(), r = preview();
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     switch (r) {
-      case 'deliver': deliver(w.carrying, fc.type); w.carrying = null; break;
+      case 'deliver': deliver(w.carrying, fc.type, f.x, f.y); w.carrying = null; break;
       case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; } break; }
       case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
       case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
       case 'palletpick': w.carrying = fc.pile.pop(); break;
       case 'palletput': { const p = w.carrying; p.progress = 0; fc.pile.push(p); w.carrying = null; break; }
       case 'palletfull': toast('팔레트가 가득 찼습니다'); break;
-      case 'place': S.money -= COST[UI.tool.type]; S.cells[f.y][f.x] = UI.tool.type === 'pallet' ? palletCell(KIND_OF_DIR[UI.tool.dir]) : cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
+      case 'place': S.money -= COST[UI.tool.type]; pushFx(f.x, f.y, -COST[UI.tool.type]); S.cells[f.y][f.x] = UI.tool.type === 'pallet' ? palletCell(KIND_OF_DIR[UI.tool.dir]) : cell(UI.tool.type, UI.tool.dir); UI.dirty.add(f.x + ',' + f.y); break;
       case 'nofloor': toast('바닥이 없는 곳입니다'); break;
       case 'cannotput': toast('여기에는 내려놓을 수 없습니다'); break;
       case 'notool': toast('도구를 고르세요 (1~6)'); break;
@@ -668,6 +681,24 @@
   // ---------------- 루프 ----------------
   function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); frameLot(false); } }
   const tmpV = new THREE.Vector3();
+  // 돈 팝업: 풀 8개, 0.9초 동안 40px 떠오르며 사라진다. 월드 위치를 매 프레임 투영한다.
+  const POP_MAX = 8, POP_MS = 900, POP_RISE = 40, pops = [];
+  for (let i = 0; i < POP_MAX; i++) { const el = document.createElement('div'); el.className = 'pop'; el.hidden = true; $('app').appendChild(el); pops.push({ el, t0: 0, x: 0, y: 0, live: false }); }
+  let lastMoney = null;
+  function spawnPop(fx, now) {
+    const pp = pops.find(q => !q.live) || pops.reduce((a, b) => (a.t0 <= b.t0 ? a : b)); // 가득 차면 가장 오래된 것을 재사용
+    pp.live = true; pp.t0 = now; pp.x = fx.x; pp.y = fx.y; pp.el.textContent = (fx.delta > 0 ? '+' : '−') + Math.abs(fx.delta); pp.el.className = 'pop ' + (fx.delta > 0 ? 'good' : 'bad'); pp.el.hidden = false;
+  }
+  function updateFx(now) {
+    while (UI.fx.length) spawnPop(UI.fx.shift(), now);
+    for (const pp of pops) {
+      if (!pp.live) continue;
+      const k = (now - pp.t0) / POP_MS; if (k >= 1) { pp.live = false; pp.el.hidden = true; continue; }
+      tmpV.set(W(pp.x), 0.95, Z(pp.y)).project(camera);
+      const sx = (tmpV.x + 1) / 2 * canvas.clientWidth, sy = (1 - tmpV.y) / 2 * canvas.clientHeight - 14 - k * POP_RISE;
+      pp.el.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) translate(-50%,-100%)'; pp.el.style.opacity = (1 - k * k).toFixed(3);
+    }
+  }
   let acc = 0, last = performance.now(), bob = 0;
   function frame(now) {
     requestAnimationFrame(frame);
@@ -703,10 +734,12 @@
     cursor.visible = !!fc;
     if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
     const r = preview(); let label = null;
-    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = (fc.type === 'outlet' ? '출고' : '반품') + (S.worker.carrying && !S.worker.carrying.inspected ? (fc.type === 'outlet' ? ' (미검사 −10)' : ' (미검사 −5)') : ''); else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
-    const pr = $('prompt'); pr.hidden = !label;
+    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = scoreFor(S.worker.carrying, fc.type).label; else if (r === 'inspect') label = '검사'; else if (r === 'place' || r === 'nomoney') { const nm = UI.tool.type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[UI.tool.type]; label = nm + ' 설치 · ₩' + COST[UI.tool.type] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
+    const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney');
     if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
+    updateFx(now);
+    if (S.money !== lastMoney) { const mv = $('money'); if (lastMoney !== null) { mv.classList.remove('up', 'down'); void mv.offsetWidth; mv.classList.add(S.money > lastMoney ? 'up' : 'down'); } lastMoney = S.money; }
     $('money').textContent = S.money; $('delivered').textContent = S.delivered; $('lost').textContent = S.lost; $('waiting').textContent = S.packages.filter(p => !p.inspected && S.cells[p.y][p.x].type === 'table').length;
     $('pauseBtn').classList.toggle('on', S.paused); $('speedLbl').textContent = S.speed + 'x'; $('speedBtn').classList.toggle('on', S.speed === 2);
     $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요');
