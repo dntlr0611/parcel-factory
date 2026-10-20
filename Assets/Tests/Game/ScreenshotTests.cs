@@ -123,6 +123,18 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual(DayPhase.Lunch, s.Clock.Phase);
                 Assert.IsTrue(boot.Hud.Root.Find("Clock/Badge").gameObject.activeSelf, "lunch badge hidden");
                 yield return Capture(boot, "unity-lunch.png", Width, Height);
+
+                // (c4) 상태창: EXP 120, 체력 Lv 1(최대 120). 근무 중 15:00, 일시정지로 값을 고정한다.
+                s.Clock.Set(1, 15 * 60);
+                s.Progression.Restore(120, 1, 0, 0, 160);
+                s.Worker.Worker.Stamina = 96f;
+                boot.Panels.ToggleStatus();
+                Assert.IsTrue(boot.Panels.StatusIsOnlyOpen, "status panel did not open");
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Assert.AreEqual("EXP 120", boot.Hud.Root.Find("TopLeft/Exp").GetComponent<Text>().text);
+                yield return Capture(boot, "unity-status.png", Width, Height);
+                boot.Panels.CloseAll();
                 s.Paused = false;
             }
             finally

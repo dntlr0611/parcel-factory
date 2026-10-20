@@ -4,20 +4,27 @@ using UnityEngine.UI;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>상점, 검사 카드, 해체 확인, 하루 요약. 열려 있으면 월드 입력을 막는다.
+    /// <summary>상점, 작업자 상태창, 검사 카드, 해체 확인, 하루 요약. 열려 있으면 월드 입력을 막는다.
+    /// 상점과 상태창은 같은 자리에 뜨며 동시에 열리지 않는다(하나를 열면 다른 하나는 닫힌다).
     /// 하루 요약은 모달이다: Escape·CloseAll로 닫히지 않고 "다음 날" 버튼(Session.NextDay)으로만 닫힌다.</summary>
     [DefaultExecutionOrder(10)]
     public sealed class Panels : MonoBehaviour
     {
-        private RectTransform shop, inspect, demolish, summary, shopList;
-        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, sTitle, sDelivered, sLost, sInspected, sMoney;
+        private RectTransform shop, status, inspect, demolish, summary, shopList, statusList;
+        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, statusExp, sTitle, sDelivered, sLost, sInspected, sMoney, sExp;
+        /// <summary>상태창 행 순서.</summary>
+        public static readonly Stat[] StatOrder = { Stat.Stamina, Stat.Speed, Stat.Regen };
         private (int x, int y)? pendingDemolish;
         private InputController input;
         private HudController hud;
 
-        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen;
+        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || StatusOpen || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen;
         /// <summary>상점만 열려 있는가. 이때는 B 키·상점 버튼이 상점을 닫는 토글로 동작한다.</summary>
         public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen;
+        /// <summary>작업자 상태창이 떠 있는가.</summary>
+        public bool StatusOpen => status != null && status.gameObject.activeSelf;
+        /// <summary>상태창만 열려 있는가. 이때는 C 키·상태 버튼이 상태창을 닫는 토글로 동작한다(B는 상점으로 바꾼다).</summary>
+        public bool StatusIsOnlyOpen => StatusOpen && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen;
         /// <summary>하루 요약 패널이 떠 있는가.</summary>
         public bool SummaryOpen => summary != null && summary.gameObject.activeSelf;
         private bool lastAnyOpen;
@@ -28,8 +35,9 @@ namespace ParcelFactory.Game
         {
             var boot = GameBootstrap.Instance;
             input = boot.Input; hud = boot.Hud;
-            BuildShop(); BuildInspect(); BuildDemolish(); BuildSummary();
-            input.ToggleShop += () => { if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return; shop.gameObject.SetActive(!shop.gameObject.activeSelf); RefreshShop(); Sync(); };
+            BuildShop(); BuildStatus(); BuildInspect(); BuildDemolish(); BuildSummary();
+            input.ToggleShop += ToggleShop;
+            input.ToggleStatus += ToggleStatus;
             input.Escape += CloseAll;
             input.Interacted += r => { if (r == InteractResult.InspectionRequired) OpenInspect(); };
             WatchEconomy(boot.Session);
@@ -40,9 +48,10 @@ namespace ParcelFactory.Game
         /// <summary>DayEnded를 받을 세션을 바꾼다. 이미 퇴근 상태로 불러온 세션이면 요약을 바로 띄우고, 아니면 요약을 닫는다.</summary>
         private void WatchSession(GameSession s)
         {
-            if (watchedSession != null) watchedSession.DayEnded -= ShowSummary;
+            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; }
             watchedSession = s;
             watchedSession.DayEnded += ShowSummary;
+            watchedSession.Progression.ExpChanged += OnExpChanged;
             if (!s.Clock.IsOpen) ShowSummary(s.BuildSummary());
             else { summary.gameObject.SetActive(false); Sync(); }
         }
@@ -56,10 +65,12 @@ namespace ParcelFactory.Game
 
         private void OnMoneyChanged(int _) { if (shop != null && shop.gameObject.activeSelf) RefreshShop(); }
 
+        private void OnExpChanged(int _) { if (StatusOpen) RefreshStatus(); }
+
         private void OnDestroy()
         {
             if (watchedEconomy != null) watchedEconomy.MoneyChanged -= OnMoneyChanged;
-            if (watchedSession != null) watchedSession.DayEnded -= ShowSummary;
+            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; }
         }
 
         /// <summary>패널 열림 상태를 입력 차단에 즉시 반영한다. 열고 닫는 같은 프레임에 InputController.Update가 낡은 상태를 보지 않게 한다.</summary>
@@ -84,6 +95,7 @@ namespace ParcelFactory.Game
         public void CloseAll()
         {
             shop.gameObject.SetActive(false);
+            status.gameObject.SetActive(false);
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             demolish.gameObject.SetActive(false); pendingDemolish = null;
             Sync();
@@ -139,6 +151,97 @@ namespace ParcelFactory.Game
             }
         }
 
+        /// <summary>B 키·상점 버튼. 상태창이 열려 있으면 닫고 상점을 연다.</summary>
+        private void ToggleShop()
+        {
+            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return;
+            bool open = !shop.gameObject.activeSelf;
+            status.gameObject.SetActive(false);
+            shop.gameObject.SetActive(open);
+            if (open) RefreshShop();
+            Sync();
+        }
+
+        /// <summary>C 키·상태 버튼. 상점이 열려 있으면 닫고 상태창을 연다. 검사·해체·하루 요약 중에는 무시한다.</summary>
+        public void ToggleStatus()
+        {
+            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return;
+            bool open = !status.gameObject.activeSelf;
+            shop.gameObject.SetActive(false);
+            status.gameObject.SetActive(open);
+            if (open) RefreshStatus();
+            Sync();
+        }
+
+        public static string StatName(Stat st) => st == Stat.Stamina ? "체력" : st == Stat.Speed ? "이동 속도" : "회복력";
+
+        /// <summary>현재 효과: "최대 체력 120", "속도 +8%", "회복 +50%".</summary>
+        public static string StatEffect(Progression p, Stat st) =>
+            st == Stat.Stamina ? "최대 체력 " + Mathf.RoundToInt(p.MaxStamina)
+            : st == Stat.Speed ? "속도 +" + Mathf.RoundToInt(Progression.SpeedPerLevel * 100f * p.Level(st)) + "%"
+            : "회복 +" + Mathf.RoundToInt(Progression.RegenPerLevel * 100f * p.Level(st)) + "%";
+
+        /// <summary>강화 성공 토스트: "체력 강화! 최대 체력 140".</summary>
+        public static string UpgradeToast(Progression p, Stat st) => StatName(st) + " 강화! " + StatEffect(p, st);
+
+        private void BuildStatus()
+        {
+            status = UiKit.PanelBox("WorkerStatus", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(360f, 318f), UiKit.Panel2).rectTransform;
+            var title = UiKit.Label("Title", status, "작업자 상태", 16, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
+            title.rectTransform.offsetMin = new Vector2(16f, 0f); title.rectTransform.offsetMax = new Vector2(-16f, -12f);
+            statusExp = UiKit.Label("Exp", status, "", 14, UiKit.ExpColor, TextAnchor.UpperRight, FontStyle.Bold);
+            statusExp.rectTransform.offsetMin = new Vector2(16f, 0f); statusExp.rectTransform.offsetMax = new Vector2(-92f, -13f);
+            var close = UiKit.Button("Close", status, "닫기", new Vector2(72f, 32f), CloseAll, null, null, 14, new Vector2(1f, 1f));
+            close.GetComponent<RectTransform>().anchoredPosition = new Vector2(-46f, -26f);
+            statusList = UiKit.Rect("List", status, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(-24f, -86f));
+            UiKit.Column(statusList, 6f, new RectOffset(0, 0, 0, 0));
+            foreach (var st in StatOrder)
+            {
+                var stat = st;
+                var row = UiKit.PanelBox("Row_" + st, statusList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, 64f), new Color(1f, 1f, 1f, 0.05f)).rectTransform;
+                UiKit.Size(row, 336f, 64f);
+                var name = UiKit.Label("Name", row, StatName(st), 15, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
+                name.rectTransform.offsetMin = new Vector2(12f, 0f); name.rectTransform.offsetMax = new Vector2(-130f, -9f);
+                var effect = UiKit.Label("Effect", row, "", 13, UiKit.ExpColor, TextAnchor.LowerLeft);
+                effect.rectTransform.offsetMin = new Vector2(12f, 10f); effect.rectTransform.offsetMax = new Vector2(-130f, 0f);
+                var level = UiKit.Label("Level", row, "", 13, UiKit.Muted, TextAnchor.UpperRight, FontStyle.Bold);
+                level.rectTransform.offsetMin = new Vector2(12f, 0f); level.rectTransform.offsetMax = new Vector2(-132f, -10f);
+                var b = UiKit.Button("Upgrade", row, "", new Vector2(116f, 40f), () => Upgrade(stat), fontSize: 14);
+                var brt = b.GetComponent<RectTransform>(); brt.anchorMin = new Vector2(1f, 0.5f); brt.anchorMax = new Vector2(1f, 0.5f); brt.pivot = new Vector2(1f, 0.5f); brt.anchoredPosition = new Vector2(-10f, 0f);
+            }
+            var hint = UiKit.Label("Hint", status, "EXP는 정상 출고 +10 · 불량 반품 +8 · 검사 +2로 모입니다.", 12, UiKit.Muted, TextAnchor.LowerLeft);
+            hint.rectTransform.offsetMin = new Vector2(16f, 12f); hint.rectTransform.offsetMax = new Vector2(-16f, 0f);
+            status.gameObject.SetActive(false);
+        }
+
+        private void Upgrade(Stat st)
+        {
+            var p = GameBootstrap.Instance.Session.Progression;
+            var r = p.TryUpgrade(st);
+            if (r == UpgradeResult.Ok) hud.Toast(UpgradeToast(p, st), HudController.ToastKind.Good);
+            else if (r == UpgradeResult.NotEnoughExp) hud.Toast("EXP가 부족합니다");
+            else hud.Toast("이미 최대 레벨입니다");
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            var p = GameBootstrap.Instance.Session.Progression;
+            statusExp.text = "EXP " + p.Exp;
+            for (int i = 0; i < StatOrder.Length; i++)
+            {
+                var st = StatOrder[i];
+                var row = statusList.GetChild(i);
+                row.Find("Effect").GetComponent<Text>().text = StatEffect(p, st);
+                row.Find("Level").GetComponent<Text>().text = "Lv " + p.Level(st) + "/" + p.MaxLevel(st);
+                var b = row.Find("Upgrade").GetComponent<Button>();
+                bool maxed = p.IsMaxed(st), can = !maxed && p.Exp >= p.Cost(st);
+                b.GetComponentInChildren<Text>().text = maxed ? "MAX" : "강화 " + p.Cost(st) + " EXP";
+                b.interactable = can;
+                UiKit.SetButtonLook(b, can);
+            }
+        }
+
         private void BuildInspect()
         {
             inspect = Card("Inspect", new Vector2(380f, 300f), "택배 검사");
@@ -186,7 +289,7 @@ namespace ParcelFactory.Game
 
         private void BuildSummary()
         {
-            summary = Card("DaySummary", new Vector2(360f, 268f), "1일차 마감");
+            summary = Card("DaySummary", new Vector2(360f, 298f), "1일차 마감");
             var card = summary.Find("Card");
             sTitle = card.Find("Title").GetComponent<Text>();
             sTitle.fontSize = 20;
@@ -200,6 +303,7 @@ namespace ParcelFactory.Game
             sLost = Row("Lost", "소실", -84f, UiKit.Bad);
             sInspected = Row("Inspected", "검사", -114f, UiKit.Fg);
             sMoney = Row("Money", "잔액 변화", -144f, UiKit.Accent);
+            sExp = Row("Exp", "획득 EXP", -174f, UiKit.ExpColor);
             var next = UiKit.Button("NextDay", card, "다음 날", new Vector2(150f, 40f), NextDay, UiKit.Accent, UiKit.AccentFg, 16, new Vector2(0.5f, 0f));
             next.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 36f);
         }
@@ -208,6 +312,7 @@ namespace ParcelFactory.Game
         private void ShowSummary(DaySummary d)
         {
             shop.gameObject.SetActive(false);
+            status.gameObject.SetActive(false);
             demolish.gameObject.SetActive(false); pendingDemolish = null;
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             sTitle.text = d.Day + "일차 마감";
@@ -216,6 +321,7 @@ namespace ParcelFactory.Game
             sInspected.text = d.Inspected + "건";
             sMoney.text = d.StartMoney + " → " + d.EndMoney + " (" + HudController.Signed(d.EndMoney - d.StartMoney) + ")";
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
+            sExp.text = d.Exp.ToString();
             summary.gameObject.SetActive(true);
             input.ClearPad();
             Sync();

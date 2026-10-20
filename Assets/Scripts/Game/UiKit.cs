@@ -17,6 +17,8 @@ namespace ParcelFactory.Game
         public static readonly Color Good = new Color(0.37f, 0.83f, 0.48f);
         public static readonly Color Bad = new Color(1f, 0.42f, 0.36f);
         public static readonly Color Warn = new Color(1f, 0.84f, 0.22f);
+        /// <summary>EXP 강조색(#7FB7FF).</summary>
+        public static readonly Color ExpColor = new Color(127f / 255f, 183f / 255f, 1f);
 
         /// <summary>Resources 아래 UI 폰트 경로(Noto Sans KR, SIL OFL). 파일이 없으면 Unity 내장 LegacyRuntime으로 대신한다.</summary>
         public const string FontResourcePath = "Fonts/NotoSansKR-Regular";

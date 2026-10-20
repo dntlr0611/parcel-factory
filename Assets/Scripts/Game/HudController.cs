@@ -12,8 +12,8 @@ namespace ParcelFactory.Game
         public bool TouchMode { get; private set; }
         public Font Font => UiKit.DefaultFont;
 
-        private Text money, delivered, lost, waiting, workerText, promptText, toastText, helpText;
-        private Button pauseBtn, speedBtn, shopBtn, helpBtn;
+        private Text money, expText, delivered, lost, waiting, workerText, promptText, toastText, helpText;
+        private Button pauseBtn, speedBtn, shopBtn, statusBtn, helpBtn;
         private RectTransform hotbar, prompt, toast, help, touchPad, touchButtons;
         private readonly List<Button> slotButtons = new List<Button>();
         private readonly List<Text> slotArrows = new List<Text>();
@@ -30,6 +30,10 @@ namespace ParcelFactory.Game
         private GameSession moneySession;
         private float moneyFlashUntil;
         private Color moneyFlashColor;
+        // EXP 깜빡임: Progression.ExpChanged마다 잔액과 같은 규칙(증가 초록, 감소 빨강).
+        private int lastExp;
+        private float expFlashUntil;
+        private Color expFlashColor;
         // 월드 금액 팝업 풀. 칸 위에서 0.9초 동안 0.6 올라가며 사라진다.
         public const int PopupPoolSize = 8;
         public const float PopupSeconds = 0.9f, PopupRise = 0.6f, PopupBaseHeight = 0.8f;
@@ -99,13 +103,18 @@ namespace ParcelFactory.Game
             {
                 boundSession.Sim.PackageDelivered -= OnPackageDelivered;
                 boundSession.Build.CellChanged -= OnCellChanged;
+                boundSession.Progression.ExpChanged -= OnExpChanged;
             }
             boundSession = session;
             pendingRefunds.Clear();
             for (int i = 0; i < popups.Count; i++) popups[i].gameObject.SetActive(false);
+            expFlashUntil = 0f;
             if (boundSession == null) return;
             boundSession.Sim.PackageDelivered += OnPackageDelivered;
             boundSession.Build.CellChanged += OnCellChanged;
+            boundSession.Progression.ExpChanged += OnExpChanged;
+            lastExp = boundSession.Progression.Exp;
+            if (expText != null) { expText.text = ExpLabel(lastExp); expText.color = UiKit.ExpColor; }
             // 불러온 저장에 해체 중인 칸이 있으면 완료 때 환불 팝업을 띄울 수 있게 미리 적어 둔다.
             for (int x = 0; x < FactoryGrid.Width; x++)
                 for (int y = 0; y < FactoryGrid.Height; y++)
@@ -116,6 +125,20 @@ namespace ParcelFactory.Game
         }
 
         private void OnDestroy() => BindSession(null);
+
+        /// <summary>좌상단 EXP 줄 문구: "EXP 10".</summary>
+        public static string ExpLabel(int exp) => "EXP " + exp;
+
+        private void OnExpChanged(int exp)
+        {
+            if (exp != lastExp)
+            {
+                expFlashColor = exp > lastExp ? UiKit.Good : UiKit.Bad;
+                expFlashUntil = Time.unscaledTime + MoneyFlashSeconds;
+                lastExp = exp;
+            }
+            if (expText != null) expText.text = ExpLabel(exp); // 색(깜빡임)은 Update에서
+        }
 
         private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
         {
@@ -165,17 +188,20 @@ namespace ParcelFactory.Game
 
         private void BuildTopLeft()
         {
-            var box = UiKit.PanelBox("TopLeft", Root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -12f), new Vector2(340f, 80f));
+            // 잔액(28) · 그 아래 EXP 줄(16, 하늘색) · 맨 아래 배송/소실/검사 대기 줄.
+            var box = UiKit.PanelBox("TopLeft", Root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -12f), new Vector2(340f, 104f));
             money = UiKit.Label("Money", box.transform, "100", 28, UiKit.Accent, TextAnchor.UpperLeft, FontStyle.Bold);
-            money.rectTransform.offsetMin = new Vector2(14f, 30f); money.rectTransform.offsetMax = new Vector2(-14f, -6f);
+            money.rectTransform.offsetMin = new Vector2(14f, 54f); money.rectTransform.offsetMax = new Vector2(-14f, -6f);
             var lbl = UiKit.Label("MoneyLbl", box.transform, "잔액", 14, UiKit.Muted, TextAnchor.UpperRight);
-            lbl.rectTransform.offsetMin = new Vector2(14f, 40f); lbl.rectTransform.offsetMax = new Vector2(-14f, -12f);
+            lbl.rectTransform.offsetMin = new Vector2(14f, 64f); lbl.rectTransform.offsetMax = new Vector2(-14f, -12f);
+            expText = UiKit.Label("Exp", box.transform, ExpLabel(0), 16, UiKit.ExpColor, TextAnchor.MiddleLeft, FontStyle.Bold);
+            expText.rectTransform.offsetMin = new Vector2(14f, 36f); expText.rectTransform.offsetMax = new Vector2(-14f, -44f);
             delivered = UiKit.Label("Delivered", box.transform, "배송 0", 16, UiKit.Good, TextAnchor.LowerLeft);
-            delivered.rectTransform.offsetMin = new Vector2(14f, 8f); delivered.rectTransform.offsetMax = new Vector2(-226f, -44f);
+            delivered.rectTransform.offsetMin = new Vector2(14f, 8f); delivered.rectTransform.offsetMax = new Vector2(-226f, -68f);
             lost = UiKit.Label("Lost", box.transform, "소실 0", 16, UiKit.Bad, TextAnchor.LowerLeft);
-            lost.rectTransform.offsetMin = new Vector2(112f, 8f); lost.rectTransform.offsetMax = new Vector2(-128f, -44f);
+            lost.rectTransform.offsetMin = new Vector2(112f, 8f); lost.rectTransform.offsetMax = new Vector2(-128f, -68f);
             waiting = UiKit.Label("Waiting", box.transform, "검사 대기 0", 16, UiKit.Fg, TextAnchor.LowerLeft);
-            waiting.rectTransform.offsetMin = new Vector2(210f, 8f); waiting.rectTransform.offsetMax = new Vector2(-8f, -44f);
+            waiting.rectTransform.offsetMin = new Vector2(210f, 8f); waiting.rectTransform.offsetMax = new Vector2(-8f, -68f);
         }
 
         /// <summary>상단 버튼 높이. 터치 기준 최소 44px를 항상 지킨다.</summary>
@@ -184,19 +210,22 @@ namespace ParcelFactory.Game
 
         private void BuildTopRight()
         {
-            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(720f, TopButtonHeight));
+            var row = UiKit.Rect("TopRight", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -12f), new Vector2(820f, TopButtonHeight));
             UiKit.Row(row, 6f, new RectOffset(0, 0, 0, 0)).childAlignment = TextAnchor.MiddleRight;
             var boot = GameBootstrap.Instance;
             const float h = TopButtonHeight;
             const int fs = 15;
             pauseBtn = UiKit.Button("Pause", row, "일시정지 P", new Vector2(116f, h), () => boot.Session.Paused = !boot.Session.Paused, fontSize: fs);
             speedBtn = UiKit.Button("Speed", row, "1x T", new Vector2(70f, h), () => boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f, fontSize: fs);
-            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(86f, h), () => { if (input.UiBlocksInput && !boot.Panels.ShopIsOnlyOpen) return; input.RequestShop(); }, fontSize: fs);
+            // 상점·상태창은 서로 바꿔 열 수 있다: 둘 중 하나만 열려 있으면 다른 버튼도 동작한다.
+            bool Toggleable() => !input.UiBlocksInput || boot.Panels.ShopIsOnlyOpen || boot.Panels.StatusIsOnlyOpen;
+            shopBtn = UiKit.Button("Shop", row, "상점 B", new Vector2(86f, h), () => { if (Toggleable()) input.RequestShop(); }, fontSize: fs);
+            statusBtn = UiKit.Button("StatusButton", row, "상태 C", new Vector2(86f, h), () => { if (Toggleable()) input.RequestStatus(); }, fontSize: fs);
             helpBtn = UiKit.Button("Help", row, "조작 O", new Vector2(86f, h), () => SetHelp(!help.gameObject.activeSelf), fontSize: fs);
             var saveBtn = UiKit.Button("Save", row, "저장", new Vector2(66f, h), () => Toast(SaveFile.TrySave(boot.Session, out var e1) ? "저장했습니다" : e1), fontSize: fs);
             var loadBtn = UiKit.Button("Load", row, "불러오기", new Vector2(94f, h), () => { if (SaveFile.TryLoad(out var s2, out var e2)) { boot.ReplaceSession(s2); Toast("불러왔습니다"); } else Toast(e2); }, fontSize: fs);
             var newBtn = UiKit.Button("New", row, "새 게임", new Vector2(84f, h), () => { boot.StartNewGame(); Toast("새 게임"); }, fontSize: fs);
-            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, helpBtn, saveBtn, loadBtn, newBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, h);
+            foreach (var b in new[] { pauseBtn, speedBtn, shopBtn, statusBtn, helpBtn, saveBtn, loadBtn, newBtn }) UiKit.Size(b, b.GetComponent<RectTransform>().sizeDelta.x, h);
         }
 
         private void BuildHotbar()
@@ -300,7 +329,7 @@ namespace ParcelFactory.Game
             workerText = UiKit.Label("Text", box.transform, "", 16, UiKit.Fg, TextAnchor.MiddleCenter);
         }
 
-        /// <summary>상태줄 왼쪽에 붙는 체력 바: 라벨 "체력"(12) + 140×10 바. 채움 폭은 Update에서 체력/100.</summary>
+        /// <summary>상태줄 왼쪽에 붙는 체력 바: 라벨 "체력"(12) + 140×10 바. 채움 폭은 Update에서 체력/최대 체력(강화 반영).</summary>
         private void BuildStamina()
         {
             const float w = 10f + 28f + 6f + StaminaBarWidth + 12f;
@@ -340,8 +369,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 244f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 ×2.5 소모)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 262f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -530,10 +559,10 @@ namespace ParcelFactory.Game
             badgeText.color = UiKit.AccentFg;
         }
 
-        private void UpdateStamina(float stamina, bool running)
+        private void UpdateStamina(float stamina, float max, bool running)
         {
-            float st = Mathf.Clamp(stamina, 0f, WorkerService.MaxStamina);
-            staminaFill.rectTransform.sizeDelta = new Vector2(StaminaBarWidth * st / WorkerService.MaxStamina, 0f);
+            float st = Mathf.Clamp(stamina, 0f, max);
+            staminaFill.rectTransform.sizeDelta = new Vector2(max > 0f ? StaminaBarWidth * st / max : 0f, 0f);
             var col = StaminaColor(st);
             if (running) { float a = col.a; col = Color.Lerp(col, Color.white, 0.35f); col.a = a; } // 달리는 중: 조금 밝게
             if (st < StaminaPulseBelow) col.a = 0.35f + 0.65f * (0.5f + 0.5f * Mathf.Cos(Time.unscaledTime * 8f));
@@ -547,6 +576,8 @@ namespace ParcelFactory.Game
             var s = boot.Session;
             BindSession(s);
             UpdateMoney(s);
+            expText.text = ExpLabel(s.Progression.Exp);
+            expText.color = Time.unscaledTime < expFlashUntil ? expFlashColor : UiKit.ExpColor;
             delivered.text = "배송 " + s.Sim.DeliveredCount;
             lost.text = "소실 " + s.Sim.LostCount;
             waiting.text = "검사 대기 " + s.Sim.AwaitingInspectionCount;
@@ -556,7 +587,7 @@ namespace ParcelFactory.Game
 
             var w = s.Worker.Worker;
             UpdateClock(s.Clock);
-            UpdateStamina(w.Stamina, s.Worker.IsRunning);
+            UpdateStamina(w.Stamina, s.Worker.EffectiveMaxStamina, s.Worker.IsRunning);
             var tool = input.SelectedTool;
             workerText.text = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R로 " + (tool.Value.Type == CellType.Pallet ? "색" : "방향"))

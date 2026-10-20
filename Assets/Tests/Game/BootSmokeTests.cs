@@ -379,6 +379,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNotNull(summary, "day summary panel missing");
                 Assert.IsFalse(summary.gameObject.activeSelf);
                 s.Economy.Earn(40);
+                s.Progression.AddExp(12);
                 s.Clock.Set(1, 1079.5f);
                 s.Tick(1f);
                 Assert.IsFalse(s.Clock.IsOpen);
@@ -387,6 +388,8 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(boot.Input.UiBlocksInput, "summary must block input in the same frame");
                 Assert.AreEqual("1일차 마감", summary.Find("Card/Title").GetComponent<UnityEngine.UI.Text>().text);
                 StringAssert.Contains("+40", summary.Find("Card/Money").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("획득 EXP", summary.Find("Card/ExpL").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("12", summary.Find("Card/Exp").GetComponent<UnityEngine.UI.Text>().text);
                 yield return null;
                 Assert.AreEqual(HudController.ClosedBadgeText, badge.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
                 // Escape(CloseAll)로는 닫히지 않는다.
@@ -526,6 +529,108 @@ namespace ParcelFactory.Game.Tests
             }
             yield return null;
         }
+
+        [UnityTest]
+        public IEnumerator Exp_Label_StatusPanel_Upgrade_AndStaminaBarMax()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 게임 루프가 택배·회복을 진행시키지 않게 한다
+                var expText = boot.Hud.Root.Find("TopLeft/Exp").GetComponent<UnityEngine.UI.Text>();
+                Assert.AreEqual("EXP 0", expText.text);
+
+                // 검사한 정상 택배를 손으로 출고 → EXP +10, 라벨 갱신·초록 깜빡임.
+                var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
+                q.Bad = false; q.Inspect(false);
+                s.Worker.Worker.Carrying = q;
+                s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.East;
+                boot.Input.Interact();
+                Assert.IsNull(s.Worker.Worker.Carrying);
+                yield return null;
+                Assert.AreEqual("EXP 10", expText.text);
+                Assert.AreEqual(UiKit.Good, expText.color, "EXP should flash green after an increase");
+
+                // 상태창(C 키와 같은 경로): 열리면 입력 차단.
+                var status = boot.Hud.Root.Find("WorkerStatus");
+                Assert.IsNotNull(status, "status panel missing");
+                Assert.IsFalse(status.gameObject.activeSelf);
+                boot.Panels.ToggleStatus();
+                Assert.IsTrue(status.gameObject.activeSelf, "status panel should open");
+                Assert.IsTrue(boot.Panels.StatusIsOnlyOpen);
+                Assert.IsTrue(boot.Input.UiBlocksInput, "status panel must block input");
+                Assert.AreEqual("EXP 10", status.Find("Exp").GetComponent<UnityEngine.UI.Text>().text);
+                var row = status.Find("List/Row_Stamina");
+                var up = row.Find("Upgrade").GetComponent<UnityEngine.UI.Button>();
+                Assert.IsFalse(up.interactable, "10 EXP cannot buy a 40 EXP upgrade");
+                Assert.AreEqual("강화 40 EXP", up.GetComponentInChildren<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("Lv 0/5", row.Find("Level").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("최대 체력 100", row.Find("Effect").GetComponent<UnityEngine.UI.Text>().text);
+
+                // EXP 100 추가 → 패널 갱신, 체력 강화 클릭 → 레벨 1, EXP −40, 토스트.
+                s.Progression.AddExp(100);
+                int exp0 = s.Progression.Exp;
+                Assert.IsTrue(up.interactable, "panel should refresh on ExpChanged");
+                up.onClick.Invoke();
+                Assert.AreEqual(1, s.Progression.Level(ParcelFactory.Core.Stat.Stamina));
+                Assert.AreEqual(exp0 - 40, s.Progression.Exp);
+                StringAssert.Contains("체력 강화", boot.Hud.LastToast);
+                Assert.AreEqual("체력 강화! 최대 체력 120", boot.Hud.LastToast);
+                Assert.AreEqual("Lv 1/5", row.Find("Level").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("최대 체력 120", row.Find("Effect").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("강화 80 EXP", up.GetComponentInChildren<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("EXP " + s.Progression.Exp, status.Find("Exp").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("속도 +0%", status.Find("List/Row_Speed/Effect").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual("Lv 0/3", status.Find("List/Row_Regen/Level").GetComponent<UnityEngine.UI.Text>().text);
+                // 70 EXP로는 80짜리 강화를 못 한다.
+                Assert.IsFalse(up.interactable);
+                up.onClick.Invoke();
+                Assert.AreEqual("EXP가 부족합니다", boot.Hud.LastToast);
+                Assert.AreEqual(1, s.Progression.Level(ParcelFactory.Core.Stat.Stamina));
+                Assert.AreEqual("이동 속도 강화! 속도 +8%", Panels.UpgradeToast(Speed1(), ParcelFactory.Core.Stat.Speed));
+                Assert.AreEqual("회복력 강화! 회복 +50%", Panels.UpgradeToast(Regen1(), ParcelFactory.Core.Stat.Regen));
+                yield return null;
+                Assert.AreEqual("EXP " + s.Progression.Exp, expText.text);
+                Assert.AreEqual(UiKit.Bad, expText.color, "EXP should flash red after spending");
+
+                // 체력 바: 최대 120 기준. 60이면 폭 70.
+                var fill = boot.Hud.Root.Find("Stamina/Bar/Fill").GetComponent<UnityEngine.UI.Image>();
+                Assert.AreEqual(120f, s.Worker.EffectiveMaxStamina);
+                s.Worker.Worker.Stamina = 60f;
+                yield return null;
+                Assert.AreEqual(70f, fill.rectTransform.sizeDelta.x, 0.01f);
+
+                // 상점과 상태창은 동시에 열리지 않는다.
+                boot.Input.RequestShop();
+                Assert.IsTrue(boot.Panels.ShopIsOnlyOpen, "shop should replace the status panel");
+                Assert.IsFalse(status.gameObject.activeSelf);
+                boot.Input.RequestStatus();
+                Assert.IsTrue(boot.Panels.StatusIsOnlyOpen, "status panel should replace the shop");
+                Assert.IsFalse(boot.Hud.Root.Find("Shop").gameObject.activeSelf);
+
+                // 닫기 → 차단 해제.
+                status.Find("Close").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+                Assert.IsFalse(status.gameObject.activeSelf);
+                Assert.IsFalse(boot.Panels.AnyOpen);
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+                // 다시 토글하면 열리고, 한 번 더 토글하면 닫힌다(C 키 규칙).
+                boot.Panels.ToggleStatus();
+                Assert.IsTrue(boot.Input.UiBlocksInput);
+                boot.Panels.ToggleStatus();
+                Assert.IsFalse(boot.Input.UiBlocksInput);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        private static ParcelFactory.Core.Progression Speed1() { var p = new ParcelFactory.Core.Progression(); p.Restore(0, 0, 1, 0); return p; }
+        private static ParcelFactory.Core.Progression Regen1() { var p = new ParcelFactory.Core.Progression(); p.Restore(0, 0, 0, 1); return p; }
 
         [UnityTest]
         public IEnumerator InspectionCard_BlocksInputInSameFrame_AndSurvivesHeldPad()

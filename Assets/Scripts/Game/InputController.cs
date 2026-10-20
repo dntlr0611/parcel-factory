@@ -22,9 +22,9 @@ namespace ParcelFactory.Game
 
         public event Action<InteractResult> Interacted;
         public event Action<BuildResult> DemolishRequested;
-        public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleHelp, Escape, ToolChanged;
+        public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleStatus, ToggleHelp, Escape, ToolChanged;
 
-        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, help, escape, runAction;
+        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
@@ -48,6 +48,7 @@ namespace ParcelFactory.Game
             pause = Button("Pause", "<Keyboard>/p", "<Gamepad>/start");
             speed = Button("Speed", "<Keyboard>/t", null);
             shop = Button("Shop", "<Keyboard>/b", "<Gamepad>/select");
+            status = Button("Status", "<Keyboard>/c", null);
             help = Button("Help", "<Keyboard>/o", null);
             escape = Button("Escape", "<Keyboard>/escape", null);
             runAction = Button("Run", "<Keyboard>/space", "<Gamepad>/leftTrigger");
@@ -94,7 +95,7 @@ namespace ParcelFactory.Game
         private IEnumerable<InputAction> All()
         {
             yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
-            yield return pause; yield return speed; yield return shop; yield return help; yield return escape; yield return runAction;
+            yield return pause; yield return speed; yield return shop; yield return status; yield return help; yield return escape; yield return runAction;
             foreach (var s in slots) yield return s;
         }
 
@@ -107,9 +108,11 @@ namespace ParcelFactory.Game
         {
             if (S == null) return;
             if (escape.WasPressedThisFrame()) Escape?.Invoke();
-            // 상점이 유일하게 열려 있으면 B 키가 닫기 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
+            // 상점·상태창이 유일하게 열려 있으면 B·C 키가 닫기(또는 서로 바꾸기) 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
-            if (shop.WasPressedThisFrame() && (!UiBlocksInput || (panels != null && panels.ShopIsOnlyOpen))) ToggleShop?.Invoke();
+            bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
+            if (shop.WasPressedThisFrame() && toggleable) ToggleShop?.Invoke();
+            else if (status.WasPressedThisFrame() && toggleable) ToggleStatus?.Invoke();
             if (UiBlocksInput) { StopMoving(); return; }
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
@@ -138,6 +141,7 @@ namespace ParcelFactory.Game
         }
 
         public void RequestShop() => ToggleShop?.Invoke();
+        public void RequestStatus() => ToggleStatus?.Invoke();
         public void RequestHelp() => ToggleHelp?.Invoke();
 
         /// <summary>화면 D-패드용. 누르는 동안 held=true, 떼면 false. 이동 자체는 Update에서 매 프레임 적용된다.</summary>
