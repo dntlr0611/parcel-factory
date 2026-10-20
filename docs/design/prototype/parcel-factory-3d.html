@@ -5,7 +5,7 @@
   /* 디자인 플랜 — 해질녘 숲속 물류 야드. 전체 화면 3D 위에 8px 그리드의 반투명 슬레이트 패널, 앰버 하나만 강조색. */
   :root {
     --bg: #1b2417; --panel: rgba(15, 19, 22, 0.66); --panel-2: rgba(15, 19, 22, 0.9); --line: rgba(255,255,255,0.12); --line-2: rgba(255,255,255,0.22);
-    --fg: #f4f3ee; --muted: #a9b0a5; --accent: #f2a33a; --accent-fg: #1f1402; --good: #6fd68a; --bad: #ff6f62; --info: #7cb5ff; --warn: #ffd638;
+    --fg: #f4f3ee; --muted: #a9b0a5; --accent: #f2a33a; --accent-fg: #1f1402; --good: #6fd68a; --bad: #ff6f62; --info: #7cb5ff; --exp: #7FB7FF; --warn: #ffd638;
     --font-body: 'Noto Sans KR', system-ui, -apple-system, sans-serif; --font-num: 'Sora', 'Noto Sans KR', system-ui, sans-serif;
     --r: 12px; --r-s: 8px; --shadow: 0 10px 30px rgba(0,0,0,0.35);
     color-scheme: dark;
@@ -27,7 +27,11 @@
   .btn.on .key { background: rgba(0,0,0,0.12); border-color: rgba(0,0,0,0.2); color: var(--accent-fg); }
   .btn svg { width: 15px; height: 15px; }
   .topleft { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 8px; }
-  .money { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 10px; }
+  .money { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px 10px; }
+  .money .mrow { display: flex; align-items: baseline; gap: 10px; }
+  .money .exp { font: 600 13px var(--font-num); color: var(--exp); letter-spacing: 0.02em; } .money .exp b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .money .exp b.up { animation: flashExp .45s ease-out; }
+  @keyframes flashExp { from { color: #fff; text-shadow: 0 0 10px var(--exp); } to { color: var(--exp); text-shadow: none; } }
   .money .cur { font: 600 14px var(--font-num); color: var(--accent); }
   .money .val { font: 700 30px/1 var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
   .money .lbl { font-size: 12px; color: var(--muted); margin-left: 2px; }
@@ -93,6 +97,14 @@
   .it { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; } .it:first-of-type { border-top: 0; }
   .it span { flex: 1; } .it small { display: block; color: var(--muted); font-size: 11px; }
   .buy { min-width: 76px; justify-content: center; height: 30px; font: 600 12px var(--font-num); } .buy[disabled] { opacity: 0.4; cursor: default; }
+  .wpanel { width: min(390px, calc(100% - 32px)); gap: 8px; }
+  .wpanel .hd { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; } .wpanel .hd h3 { flex: 1; margin: 0; font-size: 15px; }
+  .wpanel .hd .xp { font: 700 13px var(--font-num); color: var(--exp); font-variant-numeric: tabular-nums; }
+  .wpanel .hd .btn { height: 30px; padding: 0 12px; font-size: 12px; }
+  .wrow { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+  .wrow .wn { grid-row: 1 / 3; align-self: center; display: flex; flex-direction: column; gap: 3px; font-size: 14px; } .wrow .wn b { font-weight: 700; } .wrow .wn small { font: 500 12px var(--font-body); color: var(--exp); }
+  .wrow .lv { justify-self: end; font: 600 11px var(--font-num); color: var(--muted); } .wrow .buy { min-width: 108px; }
+  .wpanel .hint { font-size: 11px; color: var(--muted); line-height: 1.5; padding: 4px 2px 0; }
   .help { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(62px + env(safe-area-inset-top, 0px)); width: min(320px, calc(100% - 32px)); padding: 14px 16px; font-size: 12px; line-height: 1.8; color: var(--muted); }
   .help b { color: var(--fg); font-weight: 600; }
   .help .k { display: inline-flex; gap: 4px; margin-right: 6px; }
@@ -144,7 +156,7 @@
   <div class="vignette"></div>
   <div class="hud">
     <div class="topleft">
-      <div class="panel money"><span class="cur">₩</span><span class="val" id="money">100</span><span class="lbl">잔액</span></div>
+      <div class="panel money"><div class="mrow"><span class="cur">₩</span><span class="val" id="money">100</span><span class="lbl">잔액</span></div><div class="exp">EXP <b id="exp">0</b></div></div>
       <div class="chips">
         <span class="chip"><span class="dot" style="background:var(--good)"></span>배송 <b id="delivered">0</b></span>
         <span class="chip"><span class="dot" style="background:var(--bad)"></span>소실 <b id="lost">0</b></span>
@@ -155,14 +167,15 @@
       <button class="btn" id="pauseBtn" aria-label="일시정지"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg><span class="key">P</span></button>
       <button class="btn" id="speedBtn"><span id="speedLbl">1x</span><span class="key">T</span></button>
       <button class="btn" id="shopBtn"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11.2L21 8H7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/></svg>상점<span class="key">B</span></button>
+      <button class="btn" id="statusBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>상태<span class="key">C</span></button>
       <button class="btn" id="helpBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="currentColor"/></svg>조작<span class="key">O</span></button>
       <button class="btn" id="saveBtn">저장</button>
       <button class="btn" id="loadBtn">불러오기</button>
       <button class="btn" id="newBtn">새 게임</button>
     </div>
     <div class="panel help" id="help" hidden>
-      <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 ×2.5 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
-      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
+      <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
+      <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기 · <span class="k"><span class="key">C</span></span>상태창(EXP 강화)</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
@@ -171,6 +184,7 @@
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
     </div>
     <div class="panel drawer" id="shop" hidden></div>
+    <div class="panel drawer wpanel" id="statusPanel" hidden></div>
     <div class="prompt" id="prompt" hidden><span id="promptText">집기</span><span class="key">E</span><span class="pin"></span></div>
     <div class="panel clock" id="clock"><span id="clockText">1일차 09:00</span><span class="badge" id="phaseBadge" hidden>점심시간</span></div>
     <div class="panel status" id="statusBox"><div class="stamina" id="stamina"><span class="lbl">체력</span><span class="track"><i class="fill" id="staminaFill"></i></span></div><span id="workerText">빈손</span></div>
@@ -208,6 +222,7 @@
           <div class="srow"><span>배송</span><b class="good" id="sumDelivered">0건</b></div>
           <div class="srow"><span>소실</span><b class="bad" id="sumLost">0건</b></div>
           <div class="srow"><span>검사</span><b id="sumInspected">0건</b></div>
+          <div class="srow"><span>획득 EXP</span><b id="sumExp" style="color:var(--exp)">0</b></div>
           <div class="srow"><span>잔액 변화</span><b class="acc" id="sumMoney"></b></div>
         </div>
         <div class="row-btns" style="justify-content:center"><button class="btn primary" id="sumNext" style="min-width:150px;height:40px;justify-content:center;font-size:15px">다음 날</button></div>
@@ -242,7 +257,13 @@
   const PALLET_CAP = 6, OUTLET_X = 11, RDOCK_X = 11; // 스펙 10.1·10.2
   // 근무 시계·스태미나 (스펙 11): 시각은 하루 중 분(540..1080), 1게임분 = 1실제초(배속 전)
   const DAY_OPEN = 540, LUNCH_START = 720, LUNCH_END = 780, DAY_CLOSE = 1080;
-  const MAX_STAMINA = 100, WALK_DRAIN = 1.2, CARRY_DRAIN = 2.2, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30, RUN_MULT = 1.6, RUN_DRAIN_MULT = 2.5, RUN_MIN_STAMINA = 10;
+  const BASE_STAMINA = 100, RUN_DRAIN = 3.0, RUN_CARRY_DRAIN = 5.5, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30, RUN_MULT = 1.6, RUN_MIN_STAMINA = 10; // 체력은 달리기에만 쓴다 (스펙 11.5)
+  const EXP_DELIVER = 10, EXP_RETURN = 8, EXP_INSPECT = 2; // 정상 출고 / 불량 반품 / 검사 수행
+  const STATS = { // 상태창 강화 (스펙 11.5): 레벨 n으로 올리는 비용 = unit × n
+    stamina: { name: '체력', max: 5, unit: 40, effect: l => '최대 체력 ' + (BASE_STAMINA + 20 * l), done: '체력 강화!' },
+    speed: { name: '이동 속도', max: 5, unit: 50, effect: l => '속도 +' + 8 * l + '%', done: '이동 속도 강화!' },
+    regen: { name: '회복력', max: 3, unit: 40, effect: l => '회복 +' + 50 * l + '%', done: '회복력 강화!' },
+  }, STAT_IDS = ['stamina', 'speed', 'regen'], PANELS = ['shop', 'statusPanel', 'help'];
   const phaseAt = m => m >= DAY_CLOSE ? 'closed' : (m >= LUNCH_START && m < LUNCH_END) ? 'lunch' : 'working';
   const timeText = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
   const signed = d => d >= 0 ? '+' + d : '−' + (-d);
@@ -266,20 +287,23 @@
     for (let y = 0; y < 12; y++) { cells.push([]); for (let x = 0; x < 12; x++) cells[y].push(cell((x < 6 && y < 6) ? 'empty' : 'locked')); }
     cells[2][0] = cell('inlet'); cells[2][OUTLET_X] = cell('outlet'); cells[4][RDOCK_X] = cell('rdock'); // 트럭 도크는 동쪽 벽 바로 안쪽, 잠겨 있어도 처음부터 존재
     cells[2][5] = palletCell('blue'); cells[4][5] = palletCell('red'); // 시작 팔레트 (옛 출고구·반품구 자리)
-    return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, inspected: 0, day: 1, minute: DAY_OPEN, dayStart: { money: 100, delivered: 0, lost: 0, inspected: 0 }, worker: { x: 2.5, y: 4, facing: 'S', carrying: null, stamina: MAX_STAMINA } };
+    return { cells, packages: [], money: 100, unlocked: 6, purchased: {}, owned: { 'conveyor:E': true }, splitter: false, table: true, scanner: false, speed: 1, paused: false, timer: 0, nextId: 1, delivered: 0, lost: 0, inspected: 0, day: 1, minute: DAY_OPEN, exp: 0, totalExp: 0, lvl: { stamina: 0, speed: 0, regen: 0 }, dayStart: { money: 100, delivered: 0, lost: 0, inspected: 0, exp: 0 }, worker: { x: 2.5, y: 4, facing: 'S', carrying: null, stamina: BASE_STAMINA } };
   }
   function demoLayout(g) { // #demo — 시안 확인용 샘플 배치 (Unity 데모 장면과 같은 구성)
     g.cells[2][1] = cell('conveyor', 'E'); g.cells[2][2] = cell('conveyor', 'E'); g.cells[2][3] = cell('table', 'E'); g.cells[2][4] = cell('conveyor', 'E');
     const pkg = (inspected, bad) => ({ id: g.nextId++, x: 0, y: 0, progress: 0, heading: 'E', entry: 'E', bad, inspected, rejected: inspected && bad, label: makeLabel(bad) });
     g.cells[2][5].pile.push(pkg(true, false), pkg(true, false), pkg(true, true));
-    g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false), stamina: MAX_STAMINA }; g.money = 240; g.minute = 640; // 10:40
+    g.worker = { x: 10.0, y: 2.0, facing: 'E', carrying: pkg(true, false), stamina: BASE_STAMINA }; g.money = 240; g.minute = 640; // 10:40
     g.dayStart.money = g.money; return g;
   }
   function lunchLayout(g) { // #lunch — Unity 점심 장면: 12:20, 체력 낮음, 일시정지, 레일 도구로 설치 대기
     demoLayout(g); g.minute = 740; g.paused = true; g.money = 530; g.dayStart.money = 530;
     g.worker = { x: 3.0, y: 4.0, facing: 'N', carrying: null, stamina: 15 }; return g;
   }
-  let S = location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
+  function statusLayout(g) { // #status — Unity 상태창 장면: 15:00, EXP 120, 체력 Lv1(최대 120, 현재 96), 일시정지
+    lunchLayout(g); g.minute = 900; g.exp = 120; g.totalExp = 120; g.lvl.stamina = 1; g.worker.stamina = 96; return g;
+  }
+  let S = location.hash === '#status' ? statusLayout(newGame()) : location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
   const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, running: false, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
 
   function headingFor(c, incoming) {
@@ -324,15 +348,17 @@
   }
   // 돈 팝업 이벤트: 렌더 루프가 비운다 (월드 칸 좌표)
   function pushFx(x, y, delta) { if (UI.fx.length < 32) UI.fx.push({ x, y, delta }); }
+  const addExp = n => { S.exp += n; S.totalExp += n; };
+  const noteInspected = () => { S.inspected++; addExp(EXP_INSPECT); };
+  function resolveInspect(reject) { const p = UI.inspect; if (p) { p.inspected = true; p.rejected = !!reject; noteInspected(); } UI.inspect = null; $('inspect').hidden = true; } // 검사대 승인/거부
   function deliver(p, dockType, x, y) {
     const r = scoreFor(p, dockType);
-    if (r.success) S.delivered++;
+    if (r.success) { S.delivered++; addExp(dockType === 'outlet' ? EXP_DELIVER : EXP_RETURN); } // 벌점 출고/반품은 EXP 없음
     S.money += r.delta; toast(r.msg, r.kind); pushFx(x, y, r.delta);
   }
   function remove(i, delivered) { const p = S.packages[i]; S.cells[p.y][p.x].occ = -1; S.packages.splice(i, 1); if (!delivered) S.lost++; }
   // 시계 진행: 일시정지·퇴근이면 아무것도 안 한다. 단계 경계(12:00·13:00·18:00)에서 시간을 나눠
   // 입고는 근무 구간에서만, 레일·해체는 18:00까지 항상 돌린다. 18:00에 닿으면 하루 요약을 띄운다.
-  let movedSinceRest = false;
   function tick(dt) {
     if (S.paused || !(dt > 0) || S.minute >= DAY_CLOSE) return;
     let remaining = dt * S.speed, work = 0, lunch = 0;
@@ -365,7 +391,7 @@
       if (!isTrack(next) || next.type === 'inlet') { remove(i, false); i--; toast('택배가 레일 밖으로 떨어졌습니다', 'bad'); continue; }
       if (next.occ >= 0 || next.demolishing) continue;
       c.occ = -1; next.occ = p.id; p.x = nx; p.y = ny; p.progress = 0; p.entry = p.heading; p.heading = headingFor(next, p.heading);
-      if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; S.inspected++; }
+      if (next.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); }
     }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
       const c = S.cells[y][x]; if (!c.demolishing) continue;
@@ -378,21 +404,21 @@
   const WALK_SPEED = 3.4, WORKER_R = 0.28; // 칸/초, 충돌 반지름(칸)
   const walkableCell = c => c.type !== 'table' && c.type !== 'scanner' && c.type !== 'splitter' && c.type !== 'pallet'; // 레일·도크·잠긴 바닥 위는 걸어 다닐 수 있다 (스펙 10.3)
   const walkableAt = (px, py) => { const n = 12; /* 경계 = 건물 안 격자 전체 */ if (px < -0.5 + WORKER_R || py < -0.5 + WORKER_R || px > n - 0.5 - WORKER_R || py > n - 0.5 - WORKER_R) return false; for (const dx of [-WORKER_R, WORKER_R]) for (const dy of [-WORKER_R, WORKER_R]) { const cx = Math.round(px + dx), cy = Math.round(py + dy); if (!inBounds(cx, cy) || !walkableCell(S.cells[cy][cx])) return false; } return true; };
-  const clampSta = v => v < 0 ? 0 : v > MAX_STAMINA ? MAX_STAMINA : v;
+  const maxStamina = () => BASE_STAMINA + 20 * S.lvl.stamina, speedMult = () => 1 + 0.08 * S.lvl.speed, regenMult = () => 1 + 0.5 * S.lvl.regen, statCost = id => STATS[id].unit * (S.lvl[id] + 1);
+  const clampSta = v => v < 0 ? 0 : v > maxStamina() ? maxStamina() : v;
   const speedFactor = () => { const st = Math.max(0, S.worker.stamina); return st < SLOW_BELOW ? 0.5 + 0.5 * (st / SLOW_BELOW) : 1; }; // 30 아래면 0.5..1로 줄어든다
-  function rest(dt, phase) { // 스태미나 회복: 점심은 항상 +20/초, 근무 중에는 지난 호출 이후 움직이지 않았을 때만 +0.8/초
-    const moved = movedSinceRest; movedSinceRest = false;
+  function rest(dt, phase) { // 스태미나 회복: 점심은 항상 +20/초, 근무 중에는 걷든 서든 +0.8/초 × 회복력 배율 (스펙 11.5)
     if (!(dt > 0)) return;
     if (phase === 'lunch') S.worker.stamina = clampSta(S.worker.stamina + LUNCH_REGEN * dt);
-    else if (phase === 'working' && !moved) S.worker.stamina = clampSta(S.worker.stamina + STAND_REGEN * dt);
+    else if (phase === 'working') S.worker.stamina = clampSta(S.worker.stamina + STAND_REGEN * regenMult() * dt);
   }
   function moveWorker(vx, vy, dt, run) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리. 퇴근 후에는 걷지 않는다 (일시정지 중에는 걸을 수 있다)
     const w = S.worker; const len = Math.hypot(vx, vy); UI.running = false; if (len < 1e-6 || S.minute >= DAY_CLOSE) return false;
     const sprint = !!run && w.stamina >= RUN_MIN_STAMINA; // 스태미나 10 미만이면 달리기 입력이 있어도 걷는다 (스펙 11.4)
-    vx /= len; vy /= len; const step = WALK_SPEED * (sprint ? RUN_MULT : 1) * speedFactor() * dt; let moved = false;
+    vx /= len; vy /= len; const step = WALK_SPEED * (sprint ? RUN_MULT : 1) * speedMult() * speedFactor() * dt; let moved = false;
     const nx = w.x + vx * step; if (walkableAt(nx, w.y)) { w.x = nx; moved = true; }
     const ny = w.y + vy * step; if (walkableAt(w.x, ny)) { w.y = ny; moved = true; }
-    if (moved) { movedSinceRest = true; UI.running = sprint; w.stamina = clampSta(w.stamina - (w.carrying ? CARRY_DRAIN : WALK_DRAIN) * (sprint ? RUN_DRAIN_MULT : 1) * dt); } // 움직인 프레임만 소모
+    if (moved) { UI.running = sprint; if (sprint) w.stamina = clampSta(w.stamina - (w.carrying ? RUN_CARRY_DRAIN : RUN_DRAIN) * dt); } // 달리는 프레임만 소모. 걷기·집기·놓기는 0
     w.facing = Math.abs(vx) >= Math.abs(vy) ? (vx > 0 ? 'E' : 'W') : (vy > 0 ? 'N' : 'S');
     if (UI.inspect) { UI.inspect = null; $('inspect').hidden = true; }
     return true;
@@ -427,7 +453,7 @@
     const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     switch (r) {
       case 'deliver': deliver(w.carrying, fc.type, f.x, f.y); w.carrying = null; break;
-      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; S.inspected++; } break; }
+      case 'put': { const p = w.carrying; p.x = f.x; p.y = f.y; p.progress = 0; p.heading = headingFor(fc, fc.dir); p.entry = p.heading; fc.occ = p.id; S.packages.push(p); w.carrying = null; if (fc.type === 'scanner' && !p.inspected) { p.inspected = true; p.rejected = p.bad; noteInspected(); } break; }
       case 'inspect': UI.inspect = S.packages[packageAt(f.x, f.y)]; showInspect(); break;
       case 'pick': { const pi = packageAt(f.x, f.y); const p = S.packages[pi]; S.packages.splice(pi, 1); fc.occ = -1; w.carrying = p; break; }
       case 'palletpick': w.carrying = fc.pile.pop(); break;
@@ -444,12 +470,22 @@
       case 'nomoney': toast('잔액이 부족합니다', 'bad'); break;
     }
   }
-  function buildSummary() { const d = S.dayStart; return { day: S.day, delivered: S.delivered - d.delivered, lost: S.lost - d.lost, inspected: S.inspected - d.inspected, startMoney: d.money, endMoney: S.money }; }
-  function captureDayStart() { S.dayStart = { money: S.money, delivered: S.delivered, lost: S.lost, inspected: S.inspected }; }
+  function buildSummary() { const d = S.dayStart; return { day: S.day, delivered: S.delivered - d.delivered, lost: S.lost - d.lost, inspected: S.inspected - d.inspected, startMoney: d.money, endMoney: S.money, exp: S.totalExp - d.exp }; }
+  function captureDayStart() { S.dayStart = { money: S.money, delivered: S.delivered, lost: S.lost, inspected: S.inspected, exp: S.totalExp }; }
   function endDay() { UI.inspect = null; UI.pending = null; showSummary(buildSummary()); } // 18:00: 열린 창을 닫고 하루 요약 모달
   function nextDay() { // 퇴근 상태에서만: 다음 날 09:00, 체력 가득, 그날 시작 값 기록. 레일·팔레트 위 택배는 그대로
     if (S.minute < DAY_CLOSE) return false;
-    S.day++; S.minute = DAY_OPEN; S.worker.stamina = MAX_STAMINA; movedSinceRest = false; captureDayStart(); return true;
+    S.day++; S.minute = DAY_OPEN; S.worker.stamina = maxStamina(); captureDayStart(); return true;
+  }
+  function upgrade(id) { // 상태창 강화: 'ok' | 'max' | 'notenough'. EXP를 쓰고 되돌릴 수 없다
+    const d = STATS[id], lv = S.lvl[id]; if (lv >= d.max) return 'max';
+    const cost = statCost(id); if (S.exp < cost) { toast('EXP가 부족합니다', 'bad'); return 'notenough'; }
+    S.exp -= cost; S.lvl[id] = lv + 1; if (id === 'stamina') S.worker.stamina = clampSta(S.worker.stamina + 20); // 체력 강화는 현재 체력도 같은 양 오른다
+    toast(d.done + ' ' + d.effect(lv + 1), 'good'); return 'ok';
+  }
+  function togglePanel(id) { // 상점·상태창·조작은 같은 자리를 쓰므로 하나만 열린다. 이미 열려 있으면 닫는다
+    const wasOpen = !$(id).hidden; for (const p of PANELS) $(p).hidden = true;
+    if (!wasOpen) { $(id).hidden = false; if (id === 'shop') renderShop(); else if (id === 'statusPanel') renderStatus(); }
   }
   function askDemolish() {
     if (S.minute >= DAY_CLOSE) return;
@@ -528,8 +564,8 @@
     });
   }
   function showSummary(d) {
-    for (const id of ['shop', 'help', 'demolish', 'inspect']) $(id).hidden = true; held.clear();
-    $('sumTitle').textContent = d.day + '일차 마감'; $('sumDelivered').textContent = d.delivered + '건'; $('sumLost').textContent = d.lost + '건'; $('sumInspected').textContent = d.inspected + '건';
+    for (const id of [...PANELS, 'demolish', 'inspect']) $(id).hidden = true; held.clear();
+    $('sumTitle').textContent = d.day + '일차 마감'; $('sumDelivered').textContent = d.delivered + '건'; $('sumLost').textContent = d.lost + '건'; $('sumInspected').textContent = d.inspected + '건'; $('sumExp').textContent = d.exp;
     const diff = d.endMoney - d.startMoney, sm = $('sumMoney'); sm.textContent = d.startMoney + ' → ' + d.endMoney + ' (' + signed(diff) + ')'; sm.className = diff >= 0 ? 'good' : 'bad';
     $('summary').hidden = false;
   }
@@ -537,17 +573,32 @@
   function showInspect() {
     const p = UI.inspect; $('inspectId').textContent = '#' + p.id; $('iDest').textContent = p.label.dest; $('iWeight').textContent = p.label.weight + ' kg'; $('iMethod').textContent = p.label.method; $('iScale').textContent = p.label.scale + ' kg'; $('inspect').hidden = false;
   }
-  $('iApprove').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = false; S.inspected++; } UI.inspect = null; $('inspect').hidden = true; });
-  $('iReject').addEventListener('click', () => { if (UI.inspect) { UI.inspect.inspected = true; UI.inspect.rejected = true; S.inspected++; } UI.inspect = null; $('inspect').hidden = true; });
+  $('iApprove').addEventListener('click', () => resolveInspect(false));
+  $('iReject').addEventListener('click', () => resolveInspect(true));
   $('dCancel').addEventListener('click', () => { UI.pending = null; $('demolish').hidden = true; });
   $('dConfirm').addEventListener('click', () => { if (UI.pending) { const c = S.cells[UI.pending.y][UI.pending.x]; if (isBuilding(c) && !(c.type === 'pallet' && c.pile.length)) { c.demolishing = true; c.remain = 2; UI.dirty.add(UI.pending.x + ',' + UI.pending.y); } } UI.pending = null; $('demolish').hidden = true; });
   $('pauseBtn').addEventListener('click', () => { S.paused = !S.paused; });
   $('speedBtn').addEventListener('click', () => { S.speed = S.speed === 1 ? 2 : 1; });
-  $('shopBtn').addEventListener('click', () => { $('shop').hidden = !$('shop').hidden; $('help').hidden = true; renderShop(); });
-  $('helpBtn').addEventListener('click', () => { $('help').hidden = !$('help').hidden; $('shop').hidden = true; });
+  $('shopBtn').addEventListener('click', () => togglePanel('shop'));
+  $('statusBtn').addEventListener('click', () => togglePanel('statusPanel'));
+  $('helpBtn').addEventListener('click', () => togglePanel('help'));
+  const statusSigNow = () => S.exp + '|' + STAT_IDS.map(i => S.lvl[i]).join(','); let statusSig = '';
+  function renderStatus() { // 작업자 상태 패널 (스펙 11.5)
+    const el = $('statusPanel'); statusSig = statusSigNow();
+    el.innerHTML = '<div class="hd"><h3>작업자 상태</h3><span class="xp">EXP ' + S.exp + '</span><button class="btn" id="statusClose">닫기</button></div>';
+    STAT_IDS.forEach(id => {
+      const d = STATS[id], lv = S.lvl[id], maxed = lv >= d.max, cost = statCost(id), afford = S.exp >= cost;
+      const row = document.createElement('div'); row.className = 'wrow';
+      row.innerHTML = '<div class="wn"><b>' + d.name + '</b><small>' + d.effect(lv) + '</small></div><span class="lv">Lv ' + lv + '/' + d.max + '</span>';
+      const b = document.createElement('button'); b.className = 'btn buy' + (!maxed && afford ? ' primary' : ''); b.textContent = maxed ? 'MAX' : '강화 ' + cost + ' EXP'; b.disabled = maxed || !afford;
+      b.addEventListener('click', () => { upgrade(id); renderStatus(); }); row.appendChild(b); el.appendChild(row);
+    });
+    const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = 'EXP는 정상 출고 +' + EXP_DELIVER + ' · 불량 반품 +' + EXP_RETURN + ' · 검사 +' + EXP_INSPECT + '로 모입니다.'; el.appendChild(hint);
+    $('statusClose').addEventListener('click', () => { el.hidden = true; });
+  }
   $('saveBtn').addEventListener('click', () => { UI.saved = JSON.stringify(S); toast('저장했습니다', 'good'); });
-  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; movedSinceRest = false; if (S.minute >= DAY_CLOSE) showSummary(buildSummary()); else $('summary').hidden = true; toast('불러왔습니다', 'good'); });
-  $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; movedSinceRest = false; $('summary').hidden = true; toast('새 게임'); });
+  $('loadBtn').addEventListener('click', () => { if (!UI.saved) return toast('저장 파일이 없습니다'); S = JSON.parse(UI.saved); clearTool(); UI.rebuildAll = true; if (S.minute >= DAY_CLOSE) showSummary(buildSummary()); else $('summary').hidden = true; toast('불러왔습니다', 'good'); });
+  $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; $('summary').hidden = true; toast('새 게임'); });
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   const held = new Set();
   { const b = $('touchRun'), on = e => { e.preventDefault(); held.add('padRun'); }, off = () => held.delete('padRun'); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); b.addEventListener('contextmenu', e => e.preventDefault()); }
@@ -561,11 +612,11 @@
     const k = e.code;
     if (k === 'Space') { e.preventDefault(); held.add(k); return; } // 달리기: 누르고 있는 동안. 페이지 스크롤·버튼 활성화 방지
     if (!$('summary').hidden) { if (KEYDIR[k]) e.preventDefault(); return; } // 하루 요약은 "다음 날" 버튼으로만 닫힌다 (Esc 무시)
-    if (k === 'Escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
+    if (k === 'Escape') { for (const p of PANELS) $(p).hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
     if (!$('inspect').hidden || !$('demolish').hidden) return;
     if (KEYDIR[k]) { e.preventDefault(); held.add(k); return; }
     if (k === 'KeyE') act(); else if (k === 'KeyX') askDemolish(); else if (k === 'KeyQ') clearTool(); else if (k === 'KeyR') rotateTool();
-    else if (k === 'KeyP') $('pauseBtn').click(); else if (k === 'KeyT') $('speedBtn').click(); else if (k === 'KeyB') $('shopBtn').click(); else if (k === 'KeyO') $('helpBtn').click();
+    else if (k === 'KeyP') $('pauseBtn').click(); else if (k === 'KeyT') $('speedBtn').click(); else if (k === 'KeyB') $('shopBtn').click(); else if (k === 'KeyC') $('statusBtn').click(); else if (k === 'KeyO') $('helpBtn').click();
     else if (/^Digit[1-6]$/.test(k)) selectSlot(parseInt(k.slice(5), 10) - 1);
   });
 
@@ -782,7 +833,7 @@
   // 돈 팝업: 풀 8개, 0.9초 동안 40px 떠오르며 사라진다. 월드 위치를 매 프레임 투영한다.
   const POP_MAX = 8, POP_MS = 900, POP_RISE = 40, pops = [];
   for (let i = 0; i < POP_MAX; i++) { const el = document.createElement('div'); el.className = 'pop'; el.hidden = true; $('app').appendChild(el); pops.push({ el, t0: 0, x: 0, y: 0, live: false }); }
-  let lastMoney = null;
+  let lastMoney = null, lastExp = null;
   function spawnPop(fx, now) {
     const pp = pops.find(q => !q.live) || pops.reduce((a, b) => (a.t0 <= b.t0 ? a : b)); // 가득 차면 가장 오래된 것을 재사용
     pp.live = true; pp.t0 = now; pp.x = fx.x; pp.y = fx.y; pp.el.textContent = (fx.delta > 0 ? '+' : '−') + Math.abs(fx.delta); pp.el.className = 'pop ' + (fx.delta > 0 ? 'good' : 'bad'); pp.el.hidden = false;
@@ -838,14 +889,16 @@
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
     updateFx(now);
     if (S.money !== lastMoney) { const mv = $('money'); if (lastMoney !== null) { mv.classList.remove('up', 'down'); void mv.offsetWidth; mv.classList.add(S.money > lastMoney ? 'up' : 'down'); } lastMoney = S.money; }
+    if (S.exp !== lastExp) { const ev = $('exp'); if (lastExp !== null) { ev.classList.remove('up'); void ev.offsetWidth; ev.classList.add('up'); } lastExp = S.exp; }
+    $('exp').textContent = S.exp; if (!$('statusPanel').hidden && statusSigNow() !== statusSig) renderStatus();
     $('money').textContent = S.money; $('delivered').textContent = S.delivered; $('lost').textContent = S.lost; $('waiting').textContent = S.packages.filter(p => !p.inspected && S.cells[p.y][p.x].type === 'table').length;
     $('pauseBtn').classList.toggle('on', S.paused); $('speedLbl').textContent = S.speed + 'x'; $('speedBtn').classList.toggle('on', S.speed === 2);
-    { const ph = phaseAt(S.minute), st = Math.max(0, Math.min(MAX_STAMINA, w.stamina)); $('clockText').textContent = S.day + '일차 ' + timeText(S.minute);
+    { const ph = phaseAt(S.minute), mx = maxStamina(), st = Math.max(0, Math.min(mx, w.stamina)) / mx * 100; $('clockText').textContent = S.day + '일차 ' + timeText(S.minute);
       const bd = $('phaseBadge'); bd.hidden = ph === 'working'; bd.textContent = ph === 'lunch' ? '점심시간' : '퇴근'; bd.classList.toggle('closed', ph === 'closed');
       const fl = $('staminaFill'); fl.style.width = st + '%'; fl.className = 'fill' + (st > 50 ? '' : st > 20 ? ' mid' : ' low') + (st < 20 ? ' pulse' : ''); }
     $('workerText').textContent = (UI.running ? '달리는 중 · ' : '') + (w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요'));
     renderer.render(scene, camera);
   }
-  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch') selectSlot(0); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
+  loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch' || location.hash === '#status') selectSlot(0); if (location.hash === '#status') togglePanel('statusPanel'); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
 })();
 </script>
