@@ -18,6 +18,7 @@ namespace ParcelFactory.Game
         public WorkerView Worker { get; private set; }
         public InputController Input { get; private set; }
         public HudController Hud { get; private set; }
+        public StatusBars StatusBars { get; private set; }
         public Panels Panels { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
@@ -52,6 +53,7 @@ namespace ParcelFactory.Game
             workerGo.transform.SetParent(WorldRoot, false);
             Worker = workerGo.AddComponent<WorkerView>();
             Hud = gameObject.AddComponent<HudController>();
+            StatusBars = gameObject.AddComponent<StatusBars>();
             Panels = gameObject.AddComponent<Panels>();
             // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);

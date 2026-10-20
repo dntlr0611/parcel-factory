@@ -81,19 +81,178 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual(ParcelFactory.Core.CellType.Pallet, boot.Input.AvailableSlots()[1]);
                 boot.Input.SelectSlot(1);
                 Assert.AreEqual(ParcelFactory.Core.Direction.East, boot.Input.SelectedTool.Value.Direction); // 파랑
-                boot.Input.SelectSlot(1); // 재탭 → 빨강
+                boot.Input.SelectSlot(1); // 재탭 → 설정 모드(= R): 팔레트는 1/2 고르기
+                Assert.AreEqual(ConfigMode.PickSlot, boot.Input.ConfigMode);
+                boot.Input.SelectSlot(1); // 핫바 2 = 빨강
+                Assert.AreEqual(ConfigMode.None, boot.Input.ConfigMode);
                 Assert.AreEqual(ParcelFactory.Core.PalletKind.Red, ParcelFactory.Core.Tool.KindOf(boot.Input.SelectedTool.Value.Direction));
                 boot.Input.SelectSlot(0);
                 Assert.AreEqual(ParcelFactory.Core.CellType.Conveyor, boot.Input.SelectedTool.Value.Type);
                 Assert.AreEqual(0, boot.Input.SelectedSlot);
                 boot.Input.SelectSlot(0);
-                Assert.IsTrue(boot.Input.SelectedTool.HasValue); // re-tap cycles, does not clear
+                Assert.IsTrue(boot.Input.SelectedTool.HasValue); // re-tap enters config, does not clear
+                Assert.AreEqual(ConfigMode.PickDirection, boot.Input.ConfigMode);
+                boot.Input.CancelConfig();
+                Assert.AreEqual(ConfigMode.None, boot.Input.ConfigMode);
                 boot.Input.ClearTool();
                 Assert.AreEqual(-1, boot.Input.SelectedSlot);
                 Assert.IsNotNull(boot.Hud);
                 Assert.IsNotNull(GameObject.Find("HUD"));
                 boot.Hud.Toast("test");
                 yield return null;
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ConfigMode_ToolAndCellTargets_StatusBars_AndMovementSuppressed()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 택배 흐름과 무관하게 칸 상태만 본다
+                s.Economy.Adjust(10000);
+                var w = s.Worker.Worker;
+                var input = boot.Input;
+
+                // 도구 대상: 빈 칸 (2,3)을 바라보고 레일 도구로 R → ↑. 레일 북쪽은 시작 때 미보유 → 토스트, 도구 그대로.
+                w.X = 2f; w.Y = 4f; w.Facing = ParcelFactory.Core.Direction.South;
+                input.SelectSlot(0);
+                Assert.AreEqual(ParcelFactory.Core.Direction.East, input.SelectedTool.Value.Direction);
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.North);
+                Assert.AreEqual("해금되지 않은 방향입니다", boot.Hud.LastToast);
+                Assert.AreEqual(ParcelFactory.Core.Direction.East, input.SelectedTool.Value.Direction);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                s.Toolbar.Add(ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.North);
+                input.BeginConfig();
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.North);
+                Assert.AreEqual(ParcelFactory.Core.Direction.North, input.SelectedTool.Value.Direction);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                // 빈손 + 빈 칸 → 대상 없음
+                input.ClearTool();
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual("설정할 대상이 없습니다", boot.Hud.LastToast);
+
+                // 셀 대상: (1,2) 레일 동쪽을 (1,3)에서 바라보고 R → ↓.
+                s.Toolbar.Add(ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.South);
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(1, 2, ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.East));
+                w.X = 1f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South;
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                Assert.IsTrue(input.ConfigTargetIsCell);
+                Assert.AreEqual((1, 2), input.ConfigCell);
+                yield return null;
+                var banner = boot.Hud.Root.Find("ConfigBanner");
+                Assert.IsTrue(banner.gameObject.activeSelf, "config banner hidden");
+                Assert.AreEqual(HudController.DirectionBannerText, banner.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.South);
+                Assert.AreEqual(ParcelFactory.Core.Direction.South, s.Grid.Get(1, 2).Direction);
+                StringAssert.Contains("방향 변경", boot.Hud.LastToast);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                input.BeginConfig();
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.West); // 레일 서쪽 미보유
+                Assert.AreEqual("해금되지 않은 방향입니다", boot.Hud.LastToast);
+                Assert.AreEqual(ParcelFactory.Core.Direction.South, s.Grid.Get(1, 2).Direction);
+                yield return null;
+                Assert.IsFalse(banner.gameObject.activeSelf, "config banner should hide after applying");
+
+                // 설정 중 이동 억제: 화살표(D-패드)를 새로 누르면 이동 대신 방향 입력이 되고, 누른 채로도 걷지 않는다.
+                input.BeginConfig();
+                float x0 = w.X, y0 = w.Y;
+                input.SetPad(ParcelFactory.Core.Direction.East, true);
+                yield return null; yield return null; yield return null;
+                Assert.AreEqual(x0, w.X, 1e-5f, "worker moved during config");
+                Assert.AreEqual(y0, w.Y, 1e-5f, "worker moved during config");
+                Assert.AreEqual(ParcelFactory.Core.Direction.East, s.Grid.Get(1, 2).Direction, "newly pressed direction should apply");
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                input.SetPad(ParcelFactory.Core.Direction.East, false);
+
+                // 분배기 (2,2) 동쪽: R → 2 → ↓ = 빨간 출구 남쪽. 파랑과 같은 방향은 거절.
+                Assert.AreEqual(ParcelFactory.Core.UnlockResult.Ok, s.Unlocks.TryPurchase(ParcelFactory.Core.UnlockId.Splitter));
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(2, 2, ParcelFactory.Core.CellType.Splitter, ParcelFactory.Core.Direction.East));
+                w.X = 2f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South;
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickSlot, input.ConfigMode);
+                yield return null;
+                Assert.AreEqual(HudController.SlotBannerText, banner.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
+                // PickSlot에서는 화살표를 눌러도 걷지 않고 모드도 그대로다.
+                input.SetPad(ParcelFactory.Core.Direction.West, true);
+                yield return null; yield return null;
+                Assert.AreEqual(2f, w.X, 1e-5f, "worker moved during slot pick");
+                Assert.AreEqual(ConfigMode.PickSlot, input.ConfigMode);
+                input.SetPad(ParcelFactory.Core.Direction.West, false);
+                input.ApplyConfigSlot(2);
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                Assert.AreEqual(ConfigWhich.Secondary, input.ConfigWhich);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.South);
+                Assert.AreEqual(ParcelFactory.Core.Direction.South, s.Grid.Get(2, 2).RedDirection);
+                StringAssert.Contains("빨간 출구", boot.Hud.LastToast);
+                yield return null;
+                // 명시 빨간 출구는 연결되지 않아도 흐린(40%) 화살표로 보인다.
+                var splitterView = FindCellView("Splitter", 2, 2);
+                Assert.IsNotNull(splitterView.transform.Find("RedArrow"), "explicit red arrow missing");
+                Assert.Less(splitterView.transform.Find("RedArrow").GetComponent<Renderer>().sharedMaterial.GetColor("_BaseColor").a, 0.5f, "unconnected explicit red should be dimmed");
+                input.BeginConfig();
+                input.ApplyConfigSlot(2);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.East);
+                Assert.AreEqual("파란 출구와 같은 방향입니다", boot.Hud.LastToast);
+                Assert.AreEqual(ParcelFactory.Core.Direction.South, s.Grid.Get(2, 2).RedDirection);
+
+                // 팔레트 (5,2): R → 2 = 빨강, 곧바로 적용.
+                w.X = 5f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South;
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickSlot, input.ConfigMode);
+                input.ApplyConfigSlot(2);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(ParcelFactory.Core.PalletKind.Red, s.Grid.Get(5, 2).PalletKind);
+                Assert.AreEqual("팔레트 빨강", boot.Hud.LastToast);
+
+                // 미니 상태바: 설치된 부품마다 하나, 분배기 "파 → · 빨 ↓", 바라보는 부품은 " · R 설정".
+                yield return null;
+                int buildings = 0;
+                for (int y = 0; y < ParcelFactory.Core.FactoryGrid.Height; y++)
+                    for (int x = 0; x < ParcelFactory.Core.FactoryGrid.Width; x++)
+                        if (s.Grid.Get(x, y).IsBuilding) buildings++;
+                Assert.AreEqual(4, buildings); // 레일, 분배기, 시작 팔레트 2개
+                Assert.AreEqual(buildings, boot.StatusBars.Count);
+                StringAssert.Contains("파 →", boot.StatusBars.TextAt(2, 2));
+                StringAssert.Contains("빨 ↓", boot.StatusBars.TextAt(2, 2));
+                Assert.AreEqual("→", boot.StatusBars.TextAt(1, 2));
+                Assert.AreEqual("빨강 0/6", boot.StatusBars.TextAt(5, 4)); // 시작 빨강 팔레트
+                Assert.IsTrue(boot.StatusBars.TextAt(5, 2).StartsWith("빨강 0/6"), boot.StatusBars.TextAt(5, 2));
+                Assert.IsTrue(boot.StatusBars.TextAt(5, 2).EndsWith("R 설정"), boot.StatusBars.TextAt(5, 2));
+                Assert.IsTrue(boot.StatusBars.IsFocused(5, 2));
+                Assert.IsFalse(boot.StatusBars.IsFocused(2, 2));
+                // 설치·해체로 집합이 바뀐다.
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(3, 3, ParcelFactory.Core.CellType.Table, ParcelFactory.Core.Direction.East));
+                yield return null;
+                Assert.AreEqual(5, boot.StatusBars.Count);
+                Assert.AreEqual("검사대", boot.StatusBars.TextAt(3, 3));
+
+                // 터치: R 버튼 = 설정 모드, D-패드 누름 = 방향 1회.
+                boot.Hud.ForceTouchMode(true);
+                yield return null;
+                w.X = 1f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.South;
+                GameObject.Find("TouchR").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                var padN = GameObject.Find("TouchPadN");
+                var ped = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(padN, ped, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+                Assert.AreEqual(ParcelFactory.Core.Direction.North, s.Grid.Get(1, 2).Direction);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(padN, ped, UnityEngine.EventSystems.ExecuteEvents.pointerUpHandler);
+                boot.Hud.ForceTouchMode(false);
                 LogAssert.NoUnexpectedReceived();
             }
             finally

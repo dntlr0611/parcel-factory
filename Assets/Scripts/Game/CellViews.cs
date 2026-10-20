@@ -235,10 +235,12 @@ namespace ParcelFactory.Game
                     float top = PackageViews.SurfaceHeight(CellType.Splitter);
                     Box("SplitterHub", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(SplitterHub, 0.3f));
                     Box("SplitterPlate", go.transform, new Vector3(0f, top + 0.005f, 0f), new Vector3(0.72f, 0.01f, 0.72f), MaterialLibrary.Lit(new Color(0.16f, 0.14f, 0.2f), 0.2f));
-                    ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out var blue, out var red, out var blueConnected);
+                    // 빨간 출구는 명시 설정(RedDirection, 스펙 11.8)이면 연결되지 않아도 흐리게 보인다. 자동 규칙이면 연결된 출구가 있을 때만.
+                    ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out var blue, out var red, out var blueConnected, out var redConnected);
                     var dimBlue = SplitterBlue; dimBlue.a = 0.4f;
+                    var dimRed = SplitterRed; dimRed.a = 0.4f;
                     SplitterArrow(go.transform, "BlueArrow", blue, top, blueConnected ? MaterialLibrary.Emissive(SplitterBlue, 0.5f) : MaterialLibrary.Transparent(dimBlue));
-                    if (red.HasValue) SplitterArrow(go.transform, "RedArrow", red.Value, top, MaterialLibrary.Emissive(SplitterRed, 0.5f));
+                    if (red.HasValue) SplitterArrow(go.transform, "RedArrow", red.Value, top, redConnected ? MaterialLibrary.Emissive(SplitterRed, 0.5f) : MaterialLibrary.Transparent(dimRed));
                     break;
                 }
                 case CellType.Pallet:

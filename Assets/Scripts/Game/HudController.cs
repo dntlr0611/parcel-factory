@@ -46,7 +46,9 @@ namespace ParcelFactory.Game
         /// <summary>마지막으로 띄운 토스트 문구(테스트용).</summary>
         public string LastToast { get; private set; }
         public enum ToastKind { Info, Good, Bad }
-        private Text touchRotateLabel;
+        private Text touchRotateLabel, bannerText;
+        private RectTransform banner;
+        public const string DirectionBannerText = "방향 입력: ← ↑ → ↓  (Esc 취소)", SlotBannerText = "1 파랑 · 2 빨강 선택  (Esc 취소)";
         private InputController input;
         // 근무 시계(스펙 11.1): 상단 중앙 "1일차 09:00", 점심이면 옆에 노란 "점심시간", 퇴근이면 "퇴근" 배지.
         private Text clockText, badgeText;
@@ -79,10 +81,11 @@ namespace ParcelFactory.Game
             canvas.transform.SetParent(transform, false);
             Root = canvas.GetComponent<RectTransform>();
             rootCanvas = canvas;
-            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildStamina(); BuildClock(); BuildToast(); BuildHelp();
+            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildStamina(); BuildClock(); BuildToast(); BuildHelp(); BuildBanner();
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
             input.ToolChanged += RefreshTouchLabels;
+            input.ConfigChanged += RefreshTouchLabels;
             input.Interacted += OnInteracted;
             input.DemolishRequested += r => { if (r != BuildResult.Ok) Toast(DemolishMessage(r)); };
             input.TogglePause += () => { boot.Session.Paused = !boot.Session.Paused; };
@@ -311,7 +314,7 @@ namespace ParcelFactory.Game
         }
 
         /// <summary>월드 좌표 → 캔버스 좌하단 기준 좌표. Overlay가 아닐 때(스크린샷 캡처)는 캔버스 카메라 기준으로 계산한다.</summary>
-        private bool TryWorldToCanvas(Vector3 world, out Vector2 pos)
+        public bool TryWorldToCanvas(Vector3 world, out Vector2 pos)
         {
             pos = Vector2.zero;
             var boot = GameBootstrap.Instance;
@@ -321,6 +324,30 @@ namespace ParcelFactory.Game
             RectTransformUtility.ScreenPointToLocalPointInRectangle(Root, sp, uiCam, out var lp);
             pos = lp + Root.rect.size * 0.5f;
             return true;
+        }
+
+        /// <summary>설정 입력 배너(스펙 11.8): 상태줄 바로 위, 강조색 바탕. 설정 모드일 때만 보인다.</summary>
+        private void BuildBanner()
+        {
+            var bg = UiKit.PanelBox("ConfigBanner", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, StatusY + 32f + 8f), new Vector2(300f, 30f), UiKit.Accent);
+            banner = bg.rectTransform;
+            bannerText = UiKit.Label("Text", banner, "", 15, UiKit.AccentFg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            bannerText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            banner.gameObject.SetActive(false);
+        }
+
+        /// <summary>설정 모드에 맞는 배너 문구. 설정 모드가 아니면 null.</summary>
+        public static string BannerText(ConfigMode mode) =>
+            mode == ConfigMode.PickDirection ? DirectionBannerText : mode == ConfigMode.PickSlot ? SlotBannerText : null;
+
+        private void UpdateBanner()
+        {
+            var text = BannerText(input.ConfigMode);
+            bool show = text != null;
+            if (banner.gameObject.activeSelf != show) banner.gameObject.SetActive(show);
+            if (!show || bannerText.text == text) return;
+            bannerText.text = text;
+            banner.sizeDelta = new Vector2(bannerText.preferredWidth + 32f, 30f);
         }
 
         private void BuildStatus()
@@ -369,8 +396,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 292f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배 (R로 파란 출구 방향)", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 336f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · Q 빈손\nR 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -381,12 +408,12 @@ namespace ParcelFactory.Game
         private void BuildTouchControls()
         {
             touchPad = UiKit.Rect("TouchPad", Root, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(16f, 110f), new Vector2(170f, 170f));
-            void Pad(string name, string txt, Vector2 pos, Direction d) { var b = UiKit.Button(name, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20, Vector2.zero); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => input.SetPad(d, held)); et.triggers.Add(entry); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
+            void Pad(string name, string txt, Vector2 pos, Direction d) { var b = UiKit.Button(name, touchPad, txt, new Vector2(52f, 52f), null, null, null, 20, Vector2.zero); b.GetComponent<RectTransform>().anchoredPosition = pos; var et = b.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>(); void On(UnityEngine.EventSystems.EventTriggerType t, bool held) { var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = t }; entry.callback.AddListener(_ => { if (held && input.ConfigMode == ConfigMode.PickDirection) input.ApplyConfigDirection(d); else input.SetPad(d, held); }); et.triggers.Add(entry); } On(UnityEngine.EventSystems.EventTriggerType.PointerDown, true); On(UnityEngine.EventSystems.EventTriggerType.PointerUp, false); On(UnityEngine.EventSystems.EventTriggerType.PointerExit, false); }
             Pad("TouchPadN", "↑", new Vector2(85f, 140f), Direction.North); Pad("TouchPadW", "←", new Vector2(28f, 85f), Direction.West); Pad("TouchPadE", "→", new Vector2(142f, 85f), Direction.East); Pad("TouchPadS", "↓", new Vector2(85f, 30f), Direction.South);
             touchButtons = UiKit.Rect("TouchButtons", Root, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 110f), new Vector2(200f, 170f));
             var e = UiKit.Button("TouchE", touchButtons, "E", new Vector2(84f, 84f), () => { if (input.UiBlocksInput) return; input.Interact(); }, UiKit.Accent, UiKit.AccentFg, 20, new Vector2(1f, 0f)); e.GetComponent<RectTransform>().anchoredPosition = new Vector2(-50f, 50f);
             var x = UiKit.Button("TouchX", touchButtons, "해체", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.Demolish(); }, new Color(0.55f, 0.2f, 0.16f, 0.92f), null, 14, new Vector2(1f, 0f)); x.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 40f);
-            var r = UiKit.Button("TouchR", touchButtons, "방향", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; input.RotateTool(); }, null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
+            var r = UiKit.Button("TouchR", touchButtons, "설정", new Vector2(62f, 62f), () => { if (input.UiBlocksInput) return; if (input.ConfigMode != ConfigMode.None) input.CancelConfig(); else input.BeginConfig(); }, null, null, 14, new Vector2(1f, 0f)); r.GetComponent<RectTransform>().anchoredPosition = new Vector2(-140f, 118f);
             touchRotateLabel = r.GetComponentInChildren<Text>();
             // 달리기: 해체 버튼 왼쪽, 누르고 있는 동안만 달린다(PointerUp/Exit로 해제).
             var run = UiKit.Button("TouchRun", touchButtons, "달리기", new Vector2(62f, 62f), null, null, null, 14, new Vector2(1f, 0f)); run.GetComponent<RectTransform>().anchoredPosition = new Vector2(-212f, 40f);
@@ -424,6 +451,7 @@ namespace ParcelFactory.Game
         public void Toast(string message, ToastKind kind)
         {
             LastToast = message;
+            if (toastText == null) return; // Start 전
             toastText.text = message;
             toastText.color = kind == ToastKind.Good ? UiKit.Good : kind == ToastKind.Bad ? UiKit.Bad : UiKit.Fg;
             toastUntil = Time.unscaledTime + 1.8f;
@@ -476,9 +504,9 @@ namespace ParcelFactory.Game
 
         /// <summary>설치 프롬프트: "레일 설치 · ₩10", 팔레트는 "파랑 팔레트 설치 · ₩20", 분배기는 파란 출구 방향을 붙여
         /// "분배기 설치 (파랑 →) · ₩60"(스펙 11.7). 잔액이 모자라면 " (잔액 부족)".</summary>
-        public static string PlaceLabel(Tool tool, bool affordable) =>
+        public static string PlaceLabel(Tool tool, bool affordable, Direction? red = null) =>
             (tool.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Direction)) + " " : "") + Name(tool.Type) + " 설치"
-            + (tool.Type == CellType.Splitter ? " (파랑 " + Arrow(tool.Direction) + ")" : "")
+            + (tool.Type == CellType.Splitter ? " (파랑 " + Arrow(tool.Direction) + (red.HasValue && red.Value != tool.Direction ? " · 빨강 " + Arrow(red.Value) : "") + ")" : "")
             + " · ₩" + BuildingCosts.Cost(tool.Type) + (affordable ? "" : " (잔액 부족)");
 
         private string CannotPutMessage()
@@ -505,8 +533,7 @@ namespace ParcelFactory.Game
         private void RefreshTouchLabels()
         {
             if (touchRotateLabel == null) return;
-            var t = input.SelectedTool;
-            touchRotateLabel.text = t.HasValue && t.Value.Type == CellType.Pallet ? "색" : "방향";
+            touchRotateLabel.text = input.ConfigMode != ConfigMode.None ? "취소" : "설정";
         }
 
         public void RefreshHotbar()
@@ -593,7 +620,7 @@ namespace ParcelFactory.Game
             UpdateStamina(w.Stamina, s.Worker.EffectiveMaxStamina, s.Worker.IsRunning);
             var tool = input.SelectedTool;
             workerText.text = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
-                : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R로 " + (tool.Value.Type == CellType.Pallet ? "색" : "방향"))
+                : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R 설정")
                 : "빈손 · 1~6으로 도구 선택");
 
             // 프롬프트: Preview 결과로 문구를 만들고 바라보는 칸 위에 띄운다.
@@ -613,8 +640,8 @@ namespace ParcelFactory.Game
                     break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
                 case InteractResult.Exhausted: label = ExhaustedPrompt; canAct = false; textColor = UiKit.Bad; break;
-                case InteractResult.Placed: label = PlaceLabel(tool.Value, true); break;
-                case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false); canAct = false; textColor = UiKit.Bad; break;
+                case InteractResult.Placed: label = PlaceLabel(tool.Value, true, input.ToolSplitterRed); break;
+                case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false, input.ToolSplitterRed); canAct = false; textColor = UiKit.Bad; break;
             }
             if (label != null && TryWorldToCanvas(PromptAnchor(s, fx, fy), out var promptPos))
             {
@@ -635,6 +662,7 @@ namespace ParcelFactory.Game
                 PlacePopup(i);
             }
 
+            UpdateBanner();
             if (toast.gameObject.activeSelf && Time.unscaledTime > toastUntil) toast.gameObject.SetActive(false);
         }
     }

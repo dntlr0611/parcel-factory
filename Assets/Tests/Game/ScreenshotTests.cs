@@ -136,6 +136,23 @@ namespace ParcelFactory.Game.Tests
                 yield return Capture(boot, "unity-status.png", Width, Height);
                 boot.Panels.CloseAll();
                 s.Paused = false;
+
+                // (c5) 미니 상태바 + 설정 배너: 분배기 (3,3) 북쪽, 북(3,4)·동(4,3)에 레일. 작업자는 서쪽 (2,3)에서 분배기를 바라보고 R → "1 파랑 · 2 빨강 선택".
+                s.Worker.Worker.X = 2.0f; s.Worker.Worker.Y = 3.0f; s.Worker.Worker.Facing = Direction.East;
+                s.Toolbar.Add(CellType.Splitter, Direction.North);
+                s.Toolbar.Add(CellType.Conveyor, Direction.North);
+                Place(s, 3, 3, CellType.Splitter, Direction.North);
+                Place(s, 3, 4, CellType.Conveyor, Direction.North);
+                Place(s, 4, 3, CellType.Conveyor, Direction.East);
+                boot.Input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickSlot, boot.Input.ConfigMode);
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Debug.Log($"[Screenshot] status bars {boot.StatusBars.Count}, splitter '{boot.StatusBars.TextAt(3, 3)}', table '{boot.StatusBars.TextAt(3, 2)}'");
+                Assert.IsTrue(boot.Hud.Root.Find("ConfigBanner").gameObject.activeSelf, "config banner hidden");
+                StringAssert.EndsWith("R 설정", boot.StatusBars.TextAt(3, 3));
+                yield return Capture(boot, "unity-statusbars.png", Width, Height);
+                boot.Input.CancelConfig();
             }
             finally
             {
@@ -205,6 +222,7 @@ namespace ParcelFactory.Game.Tests
             yield return null;
             yield return null;
             FixPrompt(boot, cam);
+            if (boot.StatusBars != null) boot.StatusBars.Refresh(); // 카메라 기준으로 다시 투영
             Canvas.ForceUpdateCanvases();
             cam.Render();
             var prevActive = RenderTexture.active;

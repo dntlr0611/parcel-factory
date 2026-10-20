@@ -7,8 +7,17 @@ using UnityEngine.InputSystem;
 
 namespace ParcelFactory.Game
 {
-    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~6), 방향은 R로 순환.
-    /// 팔레트는 방향 대신 종류: East = 파랑, West = 빨강(Tool.KindOf)이므로 같은 순환이 파랑↔빨강이 된다.</summary>
+    /// <summary>설정 입력 단계(스펙 11.8). None = 평소, PickSlot = 1(파랑)/2(빨강) 고르기, PickDirection = 화살표 입력 대기.</summary>
+    public enum ConfigMode { None, PickSlot, PickDirection }
+    /// <summary>설정 대상: 손에 든 도구, 또는 바라보는 칸에 설치된 부품.</summary>
+    public enum ConfigTarget { Tool, Cell }
+    /// <summary>설정이 둘인 부품(분배기·팔레트)에서 어느 쪽인가. Primary = 파랑, Secondary = 빨강.</summary>
+    public enum ConfigWhich { Primary, Secondary }
+
+    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~6).
+    /// 방향은 순환하지 않는다(스펙 11.8): R → 화살표, 분배기는 R → 1/2 → 화살표, 팔레트는 R → 1(파랑)/2(빨강).
+    /// R을 누를 때 바라보는 칸에 설치된 부품이 있으면 그 부품을 그 자리에서 바꾸고, 아니면 손에 든 도구를 바꾼다.
+    /// 팔레트 도구는 방향 대신 종류: East = 파랑, West = 빨강(Tool.KindOf).</summary>
     public sealed class InputController : MonoBehaviour
     {
         public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Pallet, CellType.Table, CellType.Splitter, CellType.Scanner };
@@ -24,12 +33,27 @@ namespace ParcelFactory.Game
         public event Action<BuildResult> DemolishRequested;
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleStatus, ToggleHelp, Escape, ToolChanged;
 
-        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
+        private InputAction move, dirInput, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
         private bool runHeld; // 화면 "달리기" 버튼을 누르고 있는가
         private const float MoveSubStep = 0.05f;
+
+        // 설정 입력 상태(스펙 11.8)
+        public ConfigMode ConfigMode { get; private set; }
+        public ConfigWhich ConfigWhich { get; private set; }
+        private ConfigTarget configTarget;
+        public bool ConfigTargetIsCell => ConfigMode != ConfigMode.None && configTarget == ConfigTarget.Cell;
+        /// <summary>대상 칸(ConfigTargetIsCell일 때만 의미가 있다).</summary>
+        public (int x, int y) ConfigCell { get; private set; }
+        /// <summary>대상 부품 종류(도구면 도구 종류, 칸이면 그 칸의 종류).</summary>
+        public CellType ConfigType { get; private set; }
+        /// <summary>분배기 도구로 설치할 때 함께 적용할 빨간 출구(없으면 자동 규칙).</summary>
+        public Direction? ToolSplitterRed { get; private set; }
+        public event Action ConfigChanged;
+        private bool moveWasActive;    // 지난 프레임에 이동 입력(키·스틱·D-패드)이 있었는가
+        private bool holdUntilRelease; // 화살표로 설정을 끝낸 뒤 그 키를 뗄 때까지 걷지 않는다
 
         private void Awake()
         {
@@ -41,6 +65,14 @@ namespace ParcelFactory.Game
                 .With("Right", "<Keyboard>/d").With("Right", "<Keyboard>/rightArrow");
             move.AddBinding("<Gamepad>/leftStick");
             move.AddBinding("<Gamepad>/dpad");
+            // 설정 모드의 방향 입력: 이동과 같은 키지만 "이번 프레임에 눌렸는가"만 본다.
+            dirInput = new InputAction("Dir", InputActionType.Value, expectedControlType: "Vector2");
+            dirInput.AddCompositeBinding("2DVector")
+                .With("Up", "<Keyboard>/w").With("Up", "<Keyboard>/upArrow")
+                .With("Down", "<Keyboard>/s").With("Down", "<Keyboard>/downArrow")
+                .With("Left", "<Keyboard>/a").With("Left", "<Keyboard>/leftArrow")
+                .With("Right", "<Keyboard>/d").With("Right", "<Keyboard>/rightArrow");
+            dirInput.AddBinding("<Gamepad>/dpad");
             interact = Button("Interact", "<Keyboard>/e", "<Gamepad>/buttonSouth");
             demolish = Button("Demolish", "<Keyboard>/x", "<Gamepad>/buttonWest");
             rotate = Button("Rotate", "<Keyboard>/r", "<Gamepad>/buttonNorth");
@@ -94,7 +126,7 @@ namespace ParcelFactory.Game
 
         private IEnumerable<InputAction> All()
         {
-            yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
+            yield return move; yield return dirInput; yield return interact; yield return demolish; yield return rotate; yield return clear;
             yield return pause; yield return speed; yield return shop; yield return status; yield return help; yield return escape; yield return runAction;
             foreach (var s in slots) yield return s;
         }
@@ -107,29 +139,67 @@ namespace ParcelFactory.Game
         private void Update()
         {
             if (S == null) return;
-            if (escape.WasPressedThisFrame()) Escape?.Invoke();
+            if (escape.WasPressedThisFrame())
+            {
+                if (ConfigMode != ConfigMode.None) CancelConfig(); // 설정 취소만 하고 패널 닫기로 넘기지 않는다
+                else Escape?.Invoke();
+            }
             // 상점·상태창이 유일하게 열려 있으면 B·C 키가 닫기(또는 서로 바꾸기) 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
             bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
-            if (shop.WasPressedThisFrame() && toggleable) ToggleShop?.Invoke();
-            else if (status.WasPressedThisFrame() && toggleable) ToggleStatus?.Invoke();
-            if (UiBlocksInput) { StopMoving(); return; }
+            if (shop.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleShop?.Invoke(); }
+            else if (status.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleStatus?.Invoke(); }
+            if (UiBlocksInput) { CancelConfig(); StopMoving(); moveWasActive = false; return; }
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
+
+            var v = move.ReadValue<Vector2>();
+            foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
+            bool moveActive = v.sqrMagnitude > 0.04f;
+
+            if (ConfigMode != ConfigMode.None) { UpdateConfig(v, moveActive); return; }
+            if (!moveActive) holdUntilRelease = false;
+            moveWasActive = moveActive;
+
             for (int i = 0; i < slots.Length; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
-            if (rotate.WasPressedThisFrame()) RotateTool();
+            if (rotate.WasPressedThisFrame()) BeginConfig();
+            if (ConfigMode != ConfigMode.None) { StopMoving(); return; } // 1~6 재탭·R로 방금 설정 모드에 들어갔다
             if (clear.WasPressedThisFrame()) ClearTool();
             if (interact.WasPressedThisFrame()) Interact();
             if (demolish.WasPressedThisFrame()) Demolish();
 
-            var v = move.ReadValue<Vector2>();
-            foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
             // 퇴근 후에는 걷지 않는다(일시정지 중에는 걸을 수 있다: 일시정지 중 건설 허용)
-            if (!S.Clock.IsOpen || v.sqrMagnitude <= 0.04f) { StopMoving(); return; }
+            if (!S.Clock.IsOpen || !moveActive || holdUntilRelease) { StopMoving(); return; }
             bool run = RunRequested;
             for (float left = Time.deltaTime; left > 0f; left -= MoveSubStep) S.Worker.Move(v.x, v.y, Mathf.Min(left, MoveSubStep), run); // 서브스텝: 프레임 스파이크에도 1칸 장애물을 뚫지 않는다. 코어가 정규화·충돌·Facing·CancelInspection·달리기 판정을 처리한다
         }
+
+        /// <summary>설정 모드의 한 프레임: 이동은 막고, 화살표(또는 새로 들어온 이동 입력의 주축)로 방향을, 1/2로 설정을 고른다.
+        /// Esc·E·X·Q·숫자(PickSlot의 1/2 제외)는 취소.</summary>
+        private void UpdateConfig(Vector2 v, bool moveActive)
+        {
+            StopMoving();
+            bool newlyMoved = moveActive && !moveWasActive;
+            moveWasActive = moveActive;
+            if (interact.WasPressedThisFrame() || demolish.WasPressedThisFrame() || clear.WasPressedThisFrame()) { CancelConfig(); return; } // 취소만 한다(설치·해체·빈손은 하지 않음)
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i].WasPressedThisFrame()) { SelectSlot(i); return; }
+            if (rotate.WasPressedThisFrame()) { CancelConfig(); return; } // R을 다시 누르면 취소
+            if (ConfigMode != ConfigMode.PickDirection) return;
+            Vector2 dv;
+            if (dirInput.WasPressedThisFrame()) dv = dirInput.ReadValue<Vector2>();
+            else if (newlyMoved) dv = v;
+            else return;
+            if (dv.sqrMagnitude <= 0.04f) dv = v;
+            if (dv.sqrMagnitude <= 0.04f) return;
+            holdUntilRelease = true; // 입력한 화살표를 누른 채라도 걸어가지 않게
+            ApplyConfigDirection(DominantDirection(dv));
+        }
+
+        /// <summary>벡터의 주축 방향. x가 크거나 같으면 동/서, 아니면 북/남(+y = 북).</summary>
+        public static Direction DominantDirection(Vector2 v) =>
+            Mathf.Abs(v.x) >= Mathf.Abs(v.y) ? (v.x >= 0f ? Direction.East : Direction.West) : (v.y >= 0f ? Direction.North : Direction.South);
 
         /// <summary>이동하지 않는 프레임: 영벡터 Move로 코어의 IsRunning만 끈다(멈추면 달리기 즉시 해제, 스펙 11.4). 위치·방향·체력은 바뀌지 않는다.</summary>
         private void StopMoving() => S.Worker.Move(0f, 0f, 0f);
@@ -161,13 +231,20 @@ namespace ParcelFactory.Game
         public void Interact()
         {
             if (S == null) return;
-            var r = S.Worker.Interact(SelectedTool);
+            if (ConfigMode != ConfigMode.None) { CancelConfig(); return; } // 설정 중 E(화면 버튼 포함)는 취소
+            var tool = SelectedTool;
+            var (fx, fy) = S.Worker.FacingTile();
+            var r = S.Worker.Interact(tool);
+            // 분배기 도구에 빨간 출구를 정해 두었으면 설치 직후 그 칸에 적용한다(파랑과 같으면 코어가 거절 → 자동 규칙).
+            if (r == InteractResult.Placed && tool.HasValue && tool.Value.Type == CellType.Splitter && ToolSplitterRed.HasValue)
+                S.Build.SetSplitterRed(fx, fy, ToolSplitterRed.Value);
             Interacted?.Invoke(r);
         }
 
         public void Demolish()
         {
             if (S == null) return;
+            if (ConfigMode != ConfigMode.None) { CancelConfig(); return; } // 설정 중 X(화면 버튼 포함)는 취소
             var panels = GameBootstrap.Instance.Panels;
             if (panels != null) panels.Ask();
             else DemolishRequested?.Invoke(S.Worker.TryDemolishFacing());
@@ -191,12 +268,16 @@ namespace ParcelFactory.Game
             return lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
         }
 
+        /// <summary>핫바 슬롯 선택(키 1~6·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지, 그 밖의 슬롯은 취소.
+        /// 평소에 이미 고른 슬롯을 다시 고르면 설정 모드에 들어간다(= R).</summary>
         public void SelectSlot(int i)
         {
+            if (ConfigMode == ConfigMode.PickSlot && (i == 0 || i == 1)) { ApplyConfigSlot(i + 1); return; }
+            if (ConfigMode != ConfigMode.None) { CancelConfig(); return; }
             var available = AvailableSlots();
             if (i < 0 || i >= available.Count) return;
             var type = available[i];
-            if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { RotateTool(); return; }
+            if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { BeginConfig(); return; }
             var dir = PreferredDirection(type);
             SelectedTool = new Tool(type, dir);
             ToolChanged?.Invoke();
@@ -204,21 +285,125 @@ namespace ParcelFactory.Game
 
         public void ClearTool()
         {
+            CancelConfig();
             SelectedTool = null;
             ToolChanged?.Invoke();
         }
 
-        public void RotateTool()
+        /// <summary>설정할 수 있는 부품(레일·고속·검사대·자동 검사기·분배기·팔레트). 입고구·트럭 도크는 바꿀 수 없다.</summary>
+        public static bool IsConfigurable(CellType t) =>
+            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Table || t == CellType.Scanner || t == CellType.Splitter || t == CellType.Pallet;
+
+        /// <summary>설정이 둘인 부품: 먼저 1(파랑)/2(빨강)을 고른다.</summary>
+        public static bool HasTwoSettings(CellType t) => t == CellType.Splitter || t == CellType.Pallet;
+
+        /// <summary>R: 바라보는 칸에 설정 가능한 부품이 있으면 그 칸, 아니면 손에 든 도구를 대상으로 설정 모드에 들어간다.</summary>
+        public void BeginConfig()
         {
-            if (!SelectedTool.HasValue) return;
+            if (S == null) return;
+            var (fx, fy) = S.Worker.FacingTile();
+            if (S.Grid.InBounds(fx, fy) && IsConfigurable(S.Grid.Get(fx, fy).Type))
+            {
+                configTarget = ConfigTarget.Cell;
+                ConfigCell = (fx, fy);
+                ConfigType = S.Grid.Get(fx, fy).Type;
+            }
+            else if (SelectedTool.HasValue)
+            {
+                configTarget = ConfigTarget.Tool;
+                ConfigType = SelectedTool.Value.Type;
+            }
+            else { Feedback("설정할 대상이 없습니다"); return; }
+            ClearPad(); // 누르고 있던 화면 D-패드가 곧바로 방향으로 읽히지 않게
+            ConfigWhich = ConfigWhich.Primary;
+            ConfigMode = HasTwoSettings(ConfigType) ? ConfigMode.PickSlot : ConfigMode.PickDirection;
+            ConfigChanged?.Invoke();
+        }
+
+        /// <summary>PickSlot에서 1(파랑) 또는 2(빨강). 팔레트는 곧바로 적용하고 끝, 분배기는 방향 입력으로 넘어간다.</summary>
+        public void ApplyConfigSlot(int n)
+        {
+            if (ConfigMode != ConfigMode.PickSlot || (n != 1 && n != 2)) return;
+            ConfigWhich = n == 1 ? ConfigWhich.Primary : ConfigWhich.Secondary;
+            if (ConfigType != CellType.Pallet) { ConfigMode = ConfigMode.PickDirection; ConfigChanged?.Invoke(); return; }
+            var kind = n == 1 ? PalletKind.Blue : PalletKind.Red;
+            if (configTarget == ConfigTarget.Tool) SetToolDirection(kind == PalletKind.Blue ? Direction.East : Direction.West);
+            else
+            {
+                var r = S.Build.SetPalletKind(ConfigCell.x, ConfigCell.y, kind);
+                Feedback(r == ReconfigureResult.Ok ? "팔레트 " + HudController.KindName(kind) : ResultMessage(r), r == ReconfigureResult.Ok);
+            }
+            EndConfig();
+        }
+
+        /// <summary>PickDirection에서 방향 입력. 적용하고 설정 모드를 끝낸다.</summary>
+        public void ApplyConfigDirection(Direction d)
+        {
+            if (ConfigMode != ConfigMode.PickDirection || S == null) return;
+            bool red = ConfigType == CellType.Splitter && ConfigWhich == ConfigWhich.Secondary;
+            if (configTarget == ConfigTarget.Tool)
+            {
+                if (!SelectedTool.HasValue || SelectedTool.Value.Type != ConfigType) { EndConfig(); return; }
+                if (red)
+                {
+                    if (d == SelectedTool.Value.Direction) Feedback(SameAsBlueMessage);
+                    else { ToolSplitterRed = d; ToolChanged?.Invoke(); }
+                }
+                else if (!S.Toolbar.Owns(ConfigType, d)) Feedback("해금되지 않은 방향입니다");
+                else SetToolDirection(d);
+            }
+            else
+            {
+                var (x, y) = ConfigCell;
+                var r = red ? S.Build.SetSplitterRed(x, y, d) : S.Build.SetDirection(x, y, d);
+                Feedback(r == ReconfigureResult.Ok ? (red ? "빨간 출구 " : "방향 변경 ") + HudController.Arrow(d) : ResultMessage(r), r == ReconfigureResult.Ok);
+            }
+            EndConfig();
+        }
+
+        /// <summary>설정 모드를 끝낸다(아무것도 바꾸지 않음). 설정 모드가 아니면 아무 일도 없다.</summary>
+        public void CancelConfig()
+        {
+            if (ConfigMode == ConfigMode.None) return;
+            EndConfig();
+        }
+
+        private void EndConfig()
+        {
+            ConfigMode = ConfigMode.None;
+            ConfigWhich = ConfigWhich.Primary;
+            ConfigChanged?.Invoke();
+        }
+
+        private void SetToolDirection(Direction d)
+        {
             var t = SelectedTool.Value;
-            var dirs = OwnedDirections(t.Type);
-            if (dirs.Count == 0) { ClearTool(); return; }
-            int idx = dirs.IndexOf(t.Direction);
-            var next = dirs[(idx + 1) % dirs.Count];
-            lastDir[t.Type] = next;
-            SelectedTool = new Tool(t.Type, next);
+            lastDir[t.Type] = d;
+            SelectedTool = new Tool(t.Type, d);
+            if (t.Type == CellType.Splitter && ToolSplitterRed == d) ToolSplitterRed = null; // 파랑과 같아진 빨강은 의미가 없다
             ToolChanged?.Invoke();
+        }
+
+        public const string SameAsBlueMessage = "파란 출구와 같은 방향입니다";
+
+        /// <summary>재설정 실패 문구.</summary>
+        private string ResultMessage(ReconfigureResult r)
+        {
+            switch (r)
+            {
+                case ReconfigureResult.NotOwned: return "해금되지 않은 방향입니다";
+                case ReconfigureResult.Invalid:
+                    var (x, y) = ConfigCell;
+                    if (S.Grid.InBounds(x, y) && S.Grid.Get(x, y).Demolishing) return "해체 중입니다";
+                    return ConfigType == CellType.Splitter && ConfigWhich == ConfigWhich.Secondary ? SameAsBlueMessage : "같은 방향으로는 설정할 수 없습니다";
+                default: return "설정할 수 없는 대상입니다";
+            }
+        }
+
+        private static void Feedback(string message, bool good = false)
+        {
+            var hud = GameBootstrap.Instance != null ? GameBootstrap.Instance.Hud : null;
+            if (hud != null) hud.Toast(message, good ? HudController.ToastKind.Good : HudController.ToastKind.Info);
         }
     }
 }
