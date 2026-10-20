@@ -218,8 +218,10 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
                 StringAssert.Contains("출고 (미검사 −10)", promptText.text);
-                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(false, false));
-                Assert.AreEqual("출고", HudController.DeliverLabel(true, true));
+                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.UninspectedToReturn));
+                Assert.AreEqual("출고 +30", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.Delivered));
+                Assert.AreEqual("반품 +10", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.ReturnedBad));
+                Assert.AreEqual("출고 (불량 −30)", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.BadToOutlet));
                 int money0 = s.Economy.Money;
                 boot.Input.Interact();
                 Assert.IsNull(s.Worker.Worker.Carrying);
@@ -234,6 +236,83 @@ namespace ParcelFactory.Game.Tests
                 q.Bad = false; q.Inspect(false);
                 s2.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
                 Assert.AreEqual("정상 출고 +30", boot.Hud.LastToast);
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Money_ShownAtPointOfAction_PromptPopupsAndFlash()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 게임 루프가 해체·택배를 진행시키지 않게 한다
+                var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
+                var moneyText = boot.Hud.Root.Find("TopLeft/Money").GetComponent<UnityEngine.UI.Text>();
+                // 빈 칸 (1,2)를 레일 도구로 바라본다: 가격이 프롬프트에 보인다.
+                s.Worker.Worker.X = 1f; s.Worker.Worker.Y = 3f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.South;
+                Assert.AreEqual((1, 2), s.Worker.FacingTile());
+                Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(1, 2).Type);
+                boot.Input.SelectSlot(0);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Conveyor, boot.Input.SelectedTool.Value.Type);
+                yield return null;
+                Assert.IsTrue(promptText.gameObject.activeInHierarchy, "placement prompt hidden");
+                StringAssert.Contains("₩10", promptText.text);
+                StringAssert.Contains("레일 설치 · ₩10", promptText.text);
+                Assert.AreEqual("파랑 팔레트 설치 · ₩20", HudController.PlaceLabel(new ParcelFactory.Core.Tool(ParcelFactory.Core.CellType.Pallet, ParcelFactory.Core.Direction.East), true));
+
+                // 잔액이 모자라도 프롬프트는 뜨고 빨갛게 "(잔액 부족)".
+                int keep = s.Economy.Money;
+                s.Economy.Adjust(5 - keep);
+                yield return null;
+                Assert.IsTrue(promptText.gameObject.activeInHierarchy, "prompt must stay visible when unaffordable");
+                StringAssert.Contains("레일 설치 · ₩10 (잔액 부족)", promptText.text);
+                Assert.AreEqual(UiKit.Bad, promptText.color);
+                Assert.AreEqual(UiKit.Bad, moneyText.color, "balance should flash red after a decrease");
+                s.Economy.Adjust(keep - 5);
+                yield return null;
+                Assert.AreEqual(UiKit.Good, moneyText.color, "balance should flash green after an increase");
+                StringAssert.Contains("레일 설치 · ₩10   [E]", promptText.text);
+                Assert.AreEqual(UiKit.Fg, promptText.color);
+
+                // 설치하면 그 칸에 빨간 −10 팝업.
+                Assert.IsNull(GameObject.Find("MoneyPopup"), "no popup before acting");
+                boot.Input.Interact();
+                Assert.AreEqual(ParcelFactory.Core.CellType.Conveyor, s.Grid.Get(1, 2).Type);
+                var popup = GameObject.Find("MoneyPopup");
+                Assert.IsNotNull(popup, "MoneyPopup not shown after placing");
+                Assert.IsTrue(popup.activeInHierarchy);
+                Assert.AreEqual("−10", popup.GetComponent<UnityEngine.UI.Text>().text);
+
+                // 해체가 끝나면 그 칸에 초록 +8 팝업(CellChanged로 귀속).
+                Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.BeginDemolish(1, 2));
+                s.Build.Tick(ParcelFactory.Core.BuildService.DemolishSeconds + 0.1f);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Empty, s.Grid.Get(1, 2).Type);
+                bool sawRefund = false;
+                foreach (var t in boot.Hud.Root.GetComponentsInChildren<UnityEngine.UI.Text>())
+                    if (t.name == "MoneyPopup" && t.text == "+8") sawRefund = true;
+                Assert.IsTrue(sawRefund, "refund popup +8 missing");
+
+                // 배송 팝업: +30 초록.
+                var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
+                q.Bad = false; q.Inspect(false);
+                s.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
+                bool sawDelivery = false;
+                foreach (var t in boot.Hud.Root.GetComponentsInChildren<UnityEngine.UI.Text>())
+                    if (t.name == "MoneyPopup" && t.text == "+30") sawDelivery = true;
+                Assert.IsTrue(sawDelivery, "delivery popup +30 missing");
+
+                // 0.9초 뒤 모두 사라진다.
+                yield return new WaitForSecondsRealtime(HudController.PopupSeconds + 0.2f);
+                Assert.IsNull(GameObject.Find("MoneyPopup"), "popups should expire");
+                Assert.AreEqual(UiKit.Accent, moneyText.color, "flash should end");
                 LogAssert.NoUnexpectedReceived();
             }
             finally

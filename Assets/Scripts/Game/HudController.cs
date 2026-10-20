@@ -20,7 +20,25 @@ namespace ParcelFactory.Game
         private readonly List<Text> slotPrices = new List<Text>();
         private readonly List<Text> slotKeys = new List<Text>();
         private float toastUntil;
-        private ConveyorSim boundSim;
+        private GameSession boundSession;
+        private Canvas rootCanvas;
+        private Image promptBg;
+        private static readonly Color PromptBadBg = new Color(0.32f, 0.08f, 0.06f, 0.94f);
+        // 잔액 깜빡임: 값이 바뀌면 0.4초 동안 초록(증가)/빨강(감소).
+        public const float MoneyFlashSeconds = 0.4f;
+        private int lastMoney;
+        private GameSession moneySession;
+        private float moneyFlashUntil;
+        private Color moneyFlashColor;
+        // 월드 금액 팝업 풀. 칸 위에서 0.9초 동안 0.6 올라가며 사라진다.
+        public const int PopupPoolSize = 8;
+        public const float PopupSeconds = 0.9f, PopupRise = 0.6f, PopupBaseHeight = 0.8f;
+        private readonly List<Text> popups = new List<Text>();
+        private readonly List<Vector3> popupWorld = new List<Vector3>();
+        private readonly List<float> popupAge = new List<float>();
+        private readonly List<Color> popupColor = new List<Color>();
+        // 해체 중인 칸 → 완료 시 환불액. 자세한 내용은 OnCellChanged 참고.
+        private readonly Dictionary<(int x, int y), int> pendingRefunds = new Dictionary<(int x, int y), int>();
         /// <summary>마지막으로 띄운 토스트 문구(테스트용).</summary>
         public string LastToast { get; private set; }
         public enum ToastKind { Info, Good, Bad }
@@ -48,7 +66,8 @@ namespace ParcelFactory.Game
             var canvas = UiKit.MakeCanvas();
             canvas.transform.SetParent(transform, false);
             Root = canvas.GetComponent<RectTransform>();
-            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildStatus(); BuildToast(); BuildHelp();
+            rootCanvas = canvas;
+            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildToast(); BuildHelp();
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
             input.ToolChanged += RefreshTouchLabels;
@@ -58,25 +77,66 @@ namespace ParcelFactory.Game
             input.ToggleSpeed += () => { boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f; };
             input.ToggleHelp += () => SetHelp(!help.gameObject.activeSelf);
             input.Escape += () => { if (help.gameObject.activeSelf) SetHelp(false); };
-            boot.SessionReplaced += s => { s.Unlocks.Unlocked += _ => RefreshHotbar(); BindSim(s.Sim); RefreshHotbar(); };
+            boot.SessionReplaced += s => { s.Unlocks.Unlocked += _ => RefreshHotbar(); BindSession(s); RefreshHotbar(); };
             boot.Session.Unlocks.Unlocked += _ => RefreshHotbar();
-            BindSim(boot.Session.Sim);
+            BindSession(boot.Session);
             RefreshHotbar();
         }
 
-        /// <summary>배송 결과 토스트를 받을 시뮬레이션을 바꾼다. 이전 세션 구독은 끊는다.</summary>
-        private void BindSim(ConveyorSim sim)
+        /// <summary>배송 토스트·금액 팝업을 받을 세션을 바꾼다. 이전 세션 구독은 끊고 남은 팝업은 숨긴다.</summary>
+        private void BindSession(GameSession session)
         {
-            if (boundSim == sim) return;
-            if (boundSim != null) boundSim.PackageDelivered -= OnPackageDelivered;
-            boundSim = sim;
-            if (boundSim != null) boundSim.PackageDelivered += OnPackageDelivered;
+            if (boundSession == session) return;
+            if (boundSession != null)
+            {
+                boundSession.Sim.PackageDelivered -= OnPackageDelivered;
+                boundSession.Build.CellChanged -= OnCellChanged;
+            }
+            boundSession = session;
+            pendingRefunds.Clear();
+            for (int i = 0; i < popups.Count; i++) popups[i].gameObject.SetActive(false);
+            if (boundSession == null) return;
+            boundSession.Sim.PackageDelivered += OnPackageDelivered;
+            boundSession.Build.CellChanged += OnCellChanged;
+            // 불러온 저장에 해체 중인 칸이 있으면 완료 때 환불 팝업을 띄울 수 있게 미리 적어 둔다.
+            for (int x = 0; x < FactoryGrid.Width; x++)
+                for (int y = 0; y < FactoryGrid.Height; y++)
+                {
+                    var c = boundSession.Grid.Get(x, y);
+                    if (c.Demolishing) pendingRefunds[(x, y)] = BuildService.RefundFor(c.Type);
+                }
         }
 
-        private void OnDestroy() => BindSim(null);
+        private void OnDestroy() => BindSession(null);
 
-        private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta) =>
+        private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
+        {
             Toast(DeliveryMessage(outcome), DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
+            bool outlet = DockOf(outcome) == CellType.Outlet;
+            SpawnMoneyPopup(outlet ? FactoryGrid.OutletX : FactoryGrid.ReturnDockX, outlet ? FactoryGrid.OutletY : FactoryGrid.ReturnDockY, delta);
+        }
+
+        /// <summary>
+        /// 환불 귀속: 코어에는 환불 이벤트가 없다. BuildService는 해체 시작(BeginDemolish) 때와 완료(Tick) 때 CellChanged를 낸다.
+        /// 시작 때 칸이 Demolishing이면 (x,y)와 그 부품의 환불액(RefundFor)을 적어 두고, 같은 칸이 Demolishing이 아닌 빈 칸으로
+        /// 다시 바뀌면 해체가 끝나 환불된 것이므로 그 칸에 +환불 팝업을 띄운다. 잔액 변화량을 추측하지 않으므로 같은 틱의 배송과 섞이지 않는다.
+        /// </summary>
+        private void OnCellChanged(int x, int y)
+        {
+            var c = boundSession.Grid.Get(x, y);
+            if (c.Demolishing) { pendingRefunds[(x, y)] = BuildService.RefundFor(c.Type); return; }
+            if (!pendingRefunds.TryGetValue((x, y), out var refund)) return;
+            pendingRefunds.Remove((x, y));
+            if (c.Type == CellType.Empty) SpawnMoneyPopup(x, y, refund);
+        }
+
+        /// <summary>배송 결과가 어느 도크에서 났는가.</summary>
+        public static CellType DockOf(DeliveryOutcome o) =>
+            o == DeliveryOutcome.Delivered || o == DeliveryOutcome.UninspectedToOutlet || o == DeliveryOutcome.RejectedToOutlet || o == DeliveryOutcome.BadToOutlet
+                ? CellType.Outlet : CellType.ReturnDock;
+
+        /// <summary>금액 표기: +30, −10(유니코드 마이너스).</summary>
+        public static string Signed(int delta) => delta >= 0 ? "+" + delta : "−" + (-delta);
 
         /// <summary>배송 결과 문구: 이유와 잔액 변화. 벌점이면 왜 깎였는지 알려 준다.</summary>
         public static string DeliveryMessage(DeliveryOutcome o)
@@ -157,9 +217,73 @@ namespace ParcelFactory.Game
 
         private void BuildPrompt()
         {
-            prompt = UiKit.PanelBox("Prompt", Root, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0.5f, 0f), Vector2.zero, new Vector2(170f, 32f), UiKit.Panel2).rectTransform;
+            promptBg = UiKit.PanelBox("Prompt", Root, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0.5f, 0f), Vector2.zero, new Vector2(170f, 32f), UiKit.Panel2);
+            prompt = promptBg.rectTransform;
             promptText = UiKit.Label("Text", prompt, "", 14, UiKit.Fg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            promptText.horizontalOverflow = HorizontalWrapMode.Overflow; // 폭은 Update에서 글자에 맞춘다
             prompt.gameObject.SetActive(false);
+        }
+
+        private void BuildPopups()
+        {
+            var layer = UiKit.Rect("MoneyPopups", Root, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            for (int i = 0; i < PopupPoolSize; i++)
+            {
+                var t = UiKit.Label("MoneyPopup", layer, "", 18, UiKit.Good, TextAnchor.MiddleCenter, FontStyle.Bold);
+                var rt = t.rectTransform;
+                rt.anchorMin = rt.anchorMax = Vector2.zero; rt.pivot = new Vector2(0.5f, 0.5f); rt.sizeDelta = new Vector2(90f, 26f);
+                t.horizontalOverflow = HorizontalWrapMode.Overflow;
+                var outline = t.gameObject.AddComponent<Outline>();
+                outline.effectColor = new Color(0f, 0f, 0f, 0.85f); outline.effectDistance = new Vector2(1.5f, -1.5f);
+                var shadow = t.gameObject.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.5f); shadow.effectDistance = new Vector2(2f, -3f);
+                t.gameObject.SetActive(false);
+                popups.Add(t); popupWorld.Add(Vector3.zero); popupAge.Add(0f); popupColor.Add(UiKit.Good);
+            }
+        }
+
+        /// <summary>칸 (x, y) 위에 금액 팝업을 띄운다. 양수는 초록, 음수는 빨강. 풀이 차면 가장 오래된 것을 다시 쓴다.</summary>
+        public void SpawnMoneyPopup(int x, int y, int delta)
+        {
+            if (popups.Count == 0 || delta == 0) return;
+            int slot = -1;
+            for (int i = 0; i < popups.Count; i++)
+            {
+                if (!popups[i].gameObject.activeSelf) { slot = i; break; }
+                if (slot < 0 || popupAge[i] > popupAge[slot]) slot = i;
+            }
+            var t = popups[slot];
+            var color = delta > 0 ? UiKit.Good : UiKit.Bad;
+            t.text = Signed(delta);
+            t.color = color;
+            popupColor[slot] = color;
+            popupWorld[slot] = Grid3D.Tile(x, y) + new Vector3(0f, PopupBaseHeight, 0f);
+            popupAge[slot] = 0f;
+            t.transform.SetAsLastSibling(); // 최신 팝업이 위에
+            t.gameObject.SetActive(true);
+            PlacePopup(slot);
+        }
+
+        private void PlacePopup(int i)
+        {
+            float k = Mathf.Clamp01(popupAge[i] / PopupSeconds);
+            float rise = PopupRise * (1f - (1f - k) * (1f - k)); // ease-out
+            var c = popupColor[i]; c.a = 1f - k * k;
+            popups[i].color = c;
+            if (TryWorldToCanvas(popupWorld[i] + new Vector3(0f, rise, 0f), out var pos)) popups[i].rectTransform.anchoredPosition = pos;
+        }
+
+        /// <summary>월드 좌표 → 캔버스 좌하단 기준 좌표. Overlay가 아닐 때(스크린샷 캡처)는 캔버스 카메라 기준으로 계산한다.</summary>
+        private bool TryWorldToCanvas(Vector3 world, out Vector2 pos)
+        {
+            pos = Vector2.zero;
+            var boot = GameBootstrap.Instance;
+            if (boot == null || boot.World == null || boot.World.MainCamera == null) return false;
+            var sp = boot.World.MainCamera.WorldToScreenPoint(world);
+            var uiCam = rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay ? rootCanvas.worldCamera : null;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(Root, sp, uiCam, out var lp);
+            pos = lp + Root.rect.size * 0.5f;
+            return true;
         }
 
         private void BuildStatus()
@@ -245,12 +369,34 @@ namespace ParcelFactory.Game
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다"); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
+                case InteractResult.Placed:
+                    var tool = input.SelectedTool;
+                    var s = GameBootstrap.Instance.Session;
+                    if (tool.HasValue && s != null) { var (fx, fy) = s.Worker.FacingTile(); SpawnMoneyPopup(fx, fy, -BuildingCosts.Cost(tool.Value.Type)); }
+                    break;
             }
         }
 
-        /// <summary>트럭 도크 앞 프롬프트. 미검사 택배면 벌점을 미리 보여 준다.</summary>
-        public static string DeliverLabel(bool outlet, bool inspected) =>
-            outlet ? (inspected ? "출고" : "출고 (미검사 −10)") : (inspected ? "반품" : "반품 (미검사 −5)");
+        /// <summary>트럭 도크 앞 프롬프트: 도크 이름과 잔액 변화. 벌점이면 이유를 괄호에 붙인다(예: "출고 +30", "반품 (미검사 −5)").</summary>
+        public static string DeliverLabel(DeliveryOutcome o)
+        {
+            string dock = DockOf(o) == CellType.Outlet ? "출고" : "반품";
+            string money = Signed(DeliveryScoring.Delta(o));
+            switch (o)
+            {
+                case DeliveryOutcome.UninspectedToOutlet:
+                case DeliveryOutcome.UninspectedToReturn: return dock + " (미검사 " + money + ")";
+                case DeliveryOutcome.RejectedToOutlet: return dock + " (거부한 택배 " + money + ")";
+                case DeliveryOutcome.BadToOutlet: return dock + " (불량 " + money + ")";
+                case DeliveryOutcome.GoodToReturn: return dock + " (정상 택배 " + money + ")";
+                case DeliveryOutcome.ApprovedToReturn: return dock + " (승인한 택배 " + money + ")";
+                default: return dock + " " + money;
+            }
+        }
+
+        /// <summary>설치 프롬프트: "레일 설치 · ₩10", 팔레트는 "파랑 팔레트 설치 · ₩20". 잔액이 모자라면 " (잔액 부족)".</summary>
+        public static string PlaceLabel(Tool tool, bool affordable) =>
+            (tool.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Direction)) + " " : "") + Name(tool.Type) + " 설치 · ₩" + BuildingCosts.Cost(tool.Type) + (affordable ? "" : " (잔액 부족)");
 
         private string CannotPutMessage()
         {
@@ -305,12 +451,28 @@ namespace ParcelFactory.Game
             }
         }
 
+        /// <summary>잔액 표시. 값이 바뀌면 MoneyFlashSeconds 동안 증가는 초록, 감소는 빨강. 세션이 바뀐 직후는 깜빡이지 않는다.</summary>
+        private void UpdateMoney(GameSession s)
+        {
+            int m = s.Economy.Money;
+            if (moneySession != s) { moneySession = s; lastMoney = m; moneyFlashUntil = 0f; }
+            else if (m != lastMoney)
+            {
+                moneyFlashColor = m > lastMoney ? UiKit.Good : UiKit.Bad;
+                moneyFlashUntil = Time.unscaledTime + MoneyFlashSeconds;
+                lastMoney = m;
+            }
+            money.text = m.ToString();
+            money.color = Time.unscaledTime < moneyFlashUntil ? moneyFlashColor : UiKit.Accent;
+        }
+
         private void Update()
         {
             var boot = GameBootstrap.Instance;
             if (boot == null || boot.Session == null) return;
             var s = boot.Session;
-            money.text = s.Economy.Money.ToString();
+            BindSession(s);
+            UpdateMoney(s);
             delivered.text = "배송 " + s.Sim.DeliveredCount;
             lost.text = "소실 " + s.Sim.LostCount;
             waiting.text = "검사 대기 " + s.Sim.AwaitingInspectionCount;
@@ -328,24 +490,39 @@ namespace ParcelFactory.Game
             var r = s.Worker.Preview(tool);
             var (fx, fy) = s.Worker.FacingTile();
             string label = null;
+            bool canAct = true;
+            Color textColor = UiKit.Fg;
             switch (r)
             {
                 case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
                 case InteractResult.PutDown: label = "놓기"; break;
-                case InteractResult.Delivered: label = DeliverLabel(s.Grid.Get(fx, fy).Type == CellType.Outlet, w.Carrying != null && w.Carrying.Inspected); break;
+                case InteractResult.Delivered:
+                    var outcome = DeliveryScoring.Outcome(w.Carrying, s.Grid.Get(fx, fy).Type);
+                    label = DeliverLabel(outcome);
+                    textColor = DeliveryScoring.Delta(outcome) >= 0 ? UiKit.Good : UiKit.Bad;
+                    break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
-                case InteractResult.Placed: label = (tool.Value.Type == CellType.Pallet ? KindName(Tool.KindOf(tool.Value.Direction)) + " " : "") + Name(tool.Value.Type) + " 설치"; break;
+                case InteractResult.Placed: label = PlaceLabel(tool.Value, true); break;
+                case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false); canAct = false; textColor = UiKit.Bad; break;
             }
-            if (label != null && boot.World != null && boot.World.MainCamera != null)
+            if (label != null && TryWorldToCanvas(PromptAnchor(s, fx, fy), out var promptPos))
             {
-                var sp = boot.World.MainCamera.WorldToScreenPoint(PromptAnchor(s, fx, fy));
-                var canvasRt = Root;
-                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, sp, null, out var lp);
-                prompt.anchoredPosition = lp + canvasRt.rect.size * 0.5f;
-                promptText.text = label + "   [E]";
+                prompt.anchoredPosition = promptPos;
+                promptText.text = canAct ? label + "   [E]" : label;
+                promptText.color = textColor;
+                promptBg.color = canAct ? UiKit.Panel2 : PromptBadBg;
+                prompt.sizeDelta = new Vector2(Mathf.Max(120f, promptText.preferredWidth + 28f), 32f);
                 prompt.gameObject.SetActive(true);
             }
             else prompt.gameObject.SetActive(false);
+
+            for (int i = 0; i < popups.Count; i++)
+            {
+                if (!popups[i].gameObject.activeSelf) continue;
+                popupAge[i] += Time.unscaledDeltaTime;
+                if (popupAge[i] >= PopupSeconds) { popups[i].gameObject.SetActive(false); continue; }
+                PlacePopup(i);
+            }
 
             if (toast.gameObject.activeSelf && Time.unscaledTime > toastUntil) toast.gameObject.SetActive(false);
         }

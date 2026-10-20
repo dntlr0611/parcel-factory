@@ -62,7 +62,7 @@ namespace ParcelFactory.Game.Tests
                 yield return Capture(boot, "unity-start.png", Width, Height);
 
                 // (b) 샘플 배치: 입고 → 레일 → 검사대 → 레일 → 파랑 팔레트(5,2)에 검사한 상자 3개(맨 위는 거부 도장, 나머지는 초록 체크),
-                //     작업자는 검사한 상자(초록 체크)를 들고 트럭 도크(11,2) 앞에 서 있다(프롬프트 "출고").
+                //     작업자는 검사한 상자(초록 체크)를 들고 트럭 도크(11,2) 앞에 서 있다(프롬프트 "출고 +30").
                 var s = boot.Session;
                 s.Economy.Earn(500);
                 Place(s, 1, 2, CellType.Conveyor, Direction.East);
@@ -87,6 +87,9 @@ namespace ParcelFactory.Game.Tests
                 s.Sim.TrySpawn(2, 2, PackageKind.Normal, out _);
                 yield return new WaitForSeconds(0.2f);
                 Debug.Log($"[Screenshot] packages on line: {s.Sim.Packages.Count}, pallet pile {s.Sim.PalletCount(5, 2)}, selected slot {boot.Input.SelectedSlot}");
+                var demoPrompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
+                Debug.Log($"[Screenshot] demo prompt '{demoPrompt.text}'");
+                StringAssert.Contains("출고 +30", demoPrompt.text);
                 yield return Capture(boot, "unity-demo.png", Width, Height);
 
                 // (c) 터치 모드
@@ -95,6 +98,19 @@ namespace ParcelFactory.Game.Tests
                 yield return new WaitForSeconds(0.2f);
                 yield return Capture(boot, "unity-touch.png", Width, Height);
                 boot.Hud.ForceTouchMode(false);
+
+                // (c2) 설치 프롬프트: 빈손이 아닌 레일 도구로 빈 칸 (3,3)을 바라본다 → "레일 설치 · ₩10   [E]".
+                s.Worker.Worker.Carrying = null;
+                s.Worker.Worker.X = 3.0f; s.Worker.Worker.Y = 4.0f; s.Worker.Worker.Facing = Direction.South;
+                boot.Input.SelectSlot(0);
+                Assert.AreEqual(CellType.Conveyor, boot.Input.SelectedTool.Value.Type);
+                Assert.AreEqual(CellType.Empty, s.Grid.Get(3, 3).Type);
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                var placePrompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
+                Debug.Log($"[Screenshot] place prompt '{placePrompt.text}'");
+                StringAssert.Contains("레일 설치 · ₩10", placePrompt.text);
+                yield return Capture(boot, "unity-place.png", Width, Height);
             }
             finally
             {

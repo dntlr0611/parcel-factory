@@ -174,7 +174,7 @@ namespace ParcelFactory.Game
             if (c.Type == CellType.Pallet && c.Pallet.Count > 0) { hud.Toast(HudController.DemolishMessage(BuildResult.Occupied)); return; }
             pendingDemolish = (fx, fy);
             dText.text = HudController.Name(c.Type) + " " + HudController.DirLabel(c) + " 를 해체합니다.";
-            dRefund.text = "환불 " + BuildService.RefundFor(c.Type) + " · 소요 " + BuildService.DemolishSeconds + "초";
+            dRefund.text = "환불 ₩" + BuildService.RefundFor(c.Type) + " · 소요 " + BuildService.DemolishSeconds + "초";
             demolish.gameObject.SetActive(true);
             Sync();
         }
