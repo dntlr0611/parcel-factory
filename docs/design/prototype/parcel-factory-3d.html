@@ -255,19 +255,26 @@
     const p = { id: S.nextId++, x, y, progress: 0, heading: h, entry: h, bad, inspected: false, rejected: false, label: makeLabel(bad) };
     c.occ = p.id; S.packages.push(p); return true;
   }
-  // 점수 규칙 한 곳: 도크 프롬프트(label)와 deliver()가 같은 값을 쓴다 (스펙 3.3, 9.3)
+  // 점수 규칙 한 곳: deliver()와 토스트·팝업이 쓴다 (스펙 3.3, 9.3)
   function scoreFor(p, dockType) {
-    const o = (delta, msg, label, success) => ({ delta, msg, label, kind: success ? 'good' : 'bad', success });
+    const o = (delta, msg, success) => ({ delta, msg, kind: success ? 'good' : 'bad', success });
     if (dockType === 'outlet') {
-      if (!p.inspected) return o(-10, '검사대를 거치지 않은 택배 · 출고 −10', '출고 (미검사 −10)', false);
-      if (p.rejected) return o(-10, '거부 택배를 출고 −10', '출고 (거부 −10)', false);
-      if (p.bad) return o(-30, '불량을 승인해 출고 −30', '출고 (불량 −30)', false);
-      return o(30, '정상 출고 +30', '출고 +30', true);
+      if (!p.inspected) return o(-10, '검사대를 거치지 않은 택배 · 출고 −10', false);
+      if (p.rejected) return o(-10, '거부 택배를 출고 −10', false);
+      if (p.bad) return o(-30, '불량을 승인해 출고 −30', false);
+      return o(30, '정상 출고 +30', true);
     }
-    if (!p.inspected) return o(-5, '검사대를 거치지 않은 택배 · 반품 −5', '반품 (미검사 −5)', false);
-    if (p.rejected && p.bad) return o(10, '불량 반품 +10', '반품 +10', true);
-    if (!p.rejected) return o(-5, '승인 택배를 반품 −5', '반품 (승인 −5)', false);
-    return o(-5, '정상 택배를 반품 −5', '반품 (정상 −5)', false);
+    if (!p.inspected) return o(-5, '검사대를 거치지 않은 택배 · 반품 −5', false);
+    if (p.rejected && p.bad) return o(10, '불량 반품 +10', true);
+    if (!p.rejected) return o(-5, '승인 택배를 반품 −5', false);
+    return o(-5, '정상 택배를 반품 −5', false);
+  }
+  // 도크 프롬프트 문구: 숨은 bad 값을 노출하지 않도록 검사가 맞았다고 가정하고 inspected/rejected만 본다 (실제 정산은 scoreFor)
+  function promptLabel(p, dockType) {
+    const out = dockType === 'outlet';
+    if (!p.inspected) return out ? '출고 (미검사 −10)' : '반품 (미검사 −5)';
+    if (p.rejected) return out ? '출고 (거부 −10)' : '반품 +10';
+    return out ? '출고 +30' : '반품 (승인 −5)';
   }
   // 돈 팝업 이벤트: 렌더 루프가 비운다 (월드 칸 좌표)
   function pushFx(x, y, delta) { if (UI.fx.length < 32) UI.fx.push({ x, y, delta }); }
@@ -734,7 +741,7 @@
     cursor.visible = !!fc;
     if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
     const r = preview(); let label = null;
-    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = scoreFor(S.worker.carrying, fc.type).label; else if (r === 'inspect') label = '검사'; else if (r === 'place' || r === 'nomoney') { const nm = UI.tool.type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[UI.tool.type]; label = nm + ' 설치 · ₩' + COST[UI.tool.type] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
+    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = promptLabel(S.worker.carrying, fc.type); else if (r === 'inspect') label = '검사'; else if (r === 'place' || r === 'nomoney') { const nm = UI.tool.type === 'pallet' ? KIND_LABEL[KIND_OF_DIR[UI.tool.dir]] + ' 팔레트' : NAMES[UI.tool.type]; label = nm + ' 설치 · ₩' + COST[UI.tool.type] + (r === 'nomoney' ? ' (잔액 부족)' : ''); }
     const pr = $('prompt'); pr.hidden = !label; pr.classList.toggle('warn', r === 'nomoney');
     if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
