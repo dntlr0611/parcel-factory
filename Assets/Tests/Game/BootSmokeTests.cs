@@ -218,10 +218,13 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
                 StringAssert.Contains("출고 (미검사 −10)", promptText.text);
-                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.UninspectedToReturn));
-                Assert.AreEqual("출고 +30", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.Delivered));
-                Assert.AreEqual("반품 +10", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.ReturnedBad));
-                Assert.AreEqual("출고 (불량 −30)", HudController.DeliverLabel(ParcelFactory.Core.DeliveryOutcome.BadToOutlet));
+                // 프롬프트는 숨은 불량 여부를 드러내지 않는다: 검사 판정이 옳다고 가정한 금액만 보인다.
+                Assert.AreEqual("출고 (미검사 −10)", HudController.DeliverLabel(true, false, false));
+                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(false, false, false));
+                Assert.AreEqual("출고 +30", HudController.DeliverLabel(true, true, false));
+                Assert.AreEqual("반품 (승인한 택배 −5)", HudController.DeliverLabel(false, true, false));
+                Assert.AreEqual("반품 +10", HudController.DeliverLabel(false, true, true));
+                Assert.AreEqual("출고 (거부한 택배 −10)", HudController.DeliverLabel(true, true, true));
                 int money0 = s.Economy.Money;
                 boot.Input.Interact();
                 Assert.IsNull(s.Worker.Worker.Carrying);
@@ -308,6 +311,18 @@ namespace ParcelFactory.Game.Tests
                 foreach (var t in boot.Hud.Root.GetComponentsInChildren<UnityEngine.UI.Text>())
                     if (t.name == "MoneyPopup" && t.text == "+30") sawDelivery = true;
                 Assert.IsTrue(sawDelivery, "delivery popup +30 missing");
+
+                // 승인했지만 실제로는 불량인 택배: 프롬프트는 "출고 +30"(불량을 드러내지 않음), 지급·토스트는 진짜 결과 −30.
+                var bad = new ParcelFactory.Core.PackageFactory(new System.Random(4)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
+                bad.Bad = true; bad.Inspect(false);
+                s.Worker.Worker.Carrying = bad;
+                s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.East;
+                yield return null;
+                StringAssert.Contains("출고 +30", promptText.text);
+                int before = s.Economy.Money;
+                boot.Input.Interact();
+                Assert.AreEqual(before - 30, s.Economy.Money);
+                Assert.AreEqual("불량을 승인해 출고 −30", boot.Hud.LastToast);
 
                 // 0.9초 뒤 모두 사라진다.
                 yield return new WaitForSecondsRealtime(HudController.PopupSeconds + 0.2f);

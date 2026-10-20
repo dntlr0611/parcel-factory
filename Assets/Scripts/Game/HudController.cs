@@ -377,21 +377,27 @@ namespace ParcelFactory.Game
             }
         }
 
-        /// <summary>트럭 도크 앞 프롬프트: 도크 이름과 잔액 변화. 벌점이면 이유를 괄호에 붙인다(예: "출고 +30", "반품 (미검사 −5)").</summary>
-        public static string DeliverLabel(DeliveryOutcome o)
+        /// <summary>
+        /// 트럭 도크 앞 프롬프트: 도크 이름과 예상 잔액 변화. 숨은 불량 여부(Package.Bad)는 보지 않고 검사 결과가 옳다고 가정한다:
+        /// 승인 → 출고 +30 / 반품 −5, 거부 → 반품 +10 / 출고 −10, 미검사 → 출고 −10 / 반품 −5.
+        /// 실제 지급·토스트·팝업은 DeliveryScoring의 진짜 결과를 따르므로 검사 실수는 배송 뒤에 드러난다.
+        /// </summary>
+        public static string DeliverLabel(bool outlet, bool inspected, bool rejected)
         {
-            string dock = DockOf(o) == CellType.Outlet ? "출고" : "반품";
-            string money = Signed(DeliveryScoring.Delta(o));
-            switch (o)
-            {
-                case DeliveryOutcome.UninspectedToOutlet:
-                case DeliveryOutcome.UninspectedToReturn: return dock + " (미검사 " + money + ")";
-                case DeliveryOutcome.RejectedToOutlet: return dock + " (거부한 택배 " + money + ")";
-                case DeliveryOutcome.BadToOutlet: return dock + " (불량 " + money + ")";
-                case DeliveryOutcome.GoodToReturn: return dock + " (정상 택배 " + money + ")";
-                case DeliveryOutcome.ApprovedToReturn: return dock + " (승인한 택배 " + money + ")";
-                default: return dock + " " + money;
-            }
+            int d = ExpectedDelta(outlet, inspected, rejected);
+            if (!inspected) return (outlet ? "출고" : "반품") + " (미검사 " + Signed(d) + ")";
+            if (outlet) return rejected ? "출고 (거부한 택배 " + Signed(d) + ")" : "출고 " + Signed(d);
+            return rejected ? "반품 " + Signed(d) : "반품 (승인한 택배 " + Signed(d) + ")";
+        }
+
+        /// <summary>프롬프트용 예상 증감. 검사 판정이 옳다고 가정한 결과(불량 여부는 보지 않음)의 DeliveryScoring.Delta.</summary>
+        public static int ExpectedDelta(bool outlet, bool inspected, bool rejected)
+        {
+            DeliveryOutcome o;
+            if (!inspected) o = outlet ? DeliveryOutcome.UninspectedToOutlet : DeliveryOutcome.UninspectedToReturn;
+            else if (outlet) o = rejected ? DeliveryOutcome.RejectedToOutlet : DeliveryOutcome.Delivered;
+            else o = rejected ? DeliveryOutcome.ReturnedBad : DeliveryOutcome.ApprovedToReturn;
+            return DeliveryScoring.Delta(o);
         }
 
         /// <summary>설치 프롬프트: "레일 설치 · ₩10", 팔레트는 "파랑 팔레트 설치 · ₩20". 잔액이 모자라면 " (잔액 부족)".</summary>
@@ -497,9 +503,9 @@ namespace ParcelFactory.Game
                 case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
                 case InteractResult.PutDown: label = "놓기"; break;
                 case InteractResult.Delivered:
-                    var outcome = DeliveryScoring.Outcome(w.Carrying, s.Grid.Get(fx, fy).Type);
-                    label = DeliverLabel(outcome);
-                    textColor = DeliveryScoring.Delta(outcome) >= 0 ? UiKit.Good : UiKit.Bad;
+                    bool toOutlet = s.Grid.Get(fx, fy).Type == CellType.Outlet;
+                    label = DeliverLabel(toOutlet, w.Carrying.Inspected, w.Carrying.Rejected);
+                    textColor = ExpectedDelta(toOutlet, w.Carrying.Inspected, w.Carrying.Rejected) >= 0 ? UiKit.Good : UiKit.Bad;
                     break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
                 case InteractResult.Placed: label = PlaceLabel(tool.Value, true); break;
