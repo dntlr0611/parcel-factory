@@ -137,6 +137,7 @@
       <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
       <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
+      <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
       <div>검사대 위 택배는 검사 전까지 멈춥니다. 잠긴 구역도 걸어 다닐 수 있지만 설치는 산 부지에만 됩니다. 12×12까지 넓히면 레일을 트럭에 바로 붙일 수 있습니다.</div>
       <div>입고 3초마다 1개 · 배송 +15 · 해체 2초 후 설치비 80% 환불 · 더미가 있는 팔레트는 해체 불가</div>
       <div class="fileRow"><button class="btn" id="saveBtn2">저장</button><button class="btn" id="loadBtn2">불러오기</button><button class="btn" id="newBtn2">새 게임</button></div>
@@ -250,14 +251,15 @@
   function deliver(p, dockType) {
     let delta = 0, msg = '', kind = 'bad';
     if (dockType === 'outlet') {
-      if (!p.inspected) { delta = -10; msg = '검사하지 않은 택배가 출고됨 −10'; }
-      else if (p.rejected) { delta = -10; msg = '거부한 택배를 출고함 −10'; }
-      else if (p.bad) { delta = -20; msg = '불량 택배가 출고됨 −20'; }
-      else { delta = 15; S.delivered++; msg = '배송 완료 +15'; kind = 'good'; }
+      if (!p.inspected) { delta = -10; msg = '검사대를 거치지 않은 택배 · 출고 −10'; }
+      else if (p.rejected) { delta = -10; msg = '거부 택배를 출고 −10'; }
+      else if (p.bad) { delta = -20; msg = '불량을 승인해 출고 −20'; }
+      else { delta = 15; S.delivered++; msg = '정상 출고 +15'; kind = 'good'; }
     } else {
-      if (!p.inspected) { delta = -5; msg = '검사하지 않은 택배를 반품함 −5'; }
-      else if (p.rejected && p.bad) { delta = 5; S.delivered++; msg = '불량 반품 처리 +5'; kind = 'good'; }
-      else { delta = -5; msg = '정상 택배를 반품함 −5'; }
+      if (!p.inspected) { delta = -5; msg = '검사대를 거치지 않은 택배 · 반품 −5'; }
+      else if (p.rejected && p.bad) { delta = 5; S.delivered++; msg = '불량 반품 +5'; kind = 'good'; }
+      else if (!p.rejected) { delta = -5; msg = '승인 택배를 반품 −5'; }
+      else { delta = -5; msg = '정상 택배를 반품 −5'; }
     }
     S.money += delta; toast(msg, kind);
   }
@@ -442,18 +444,18 @@
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   const held = new Set();
   document.querySelectorAll('[data-move]').forEach(b => { const d = b.dataset.move; const on = e => { e.preventDefault(); held.add('pad' + d); }, off = () => held.delete('pad' + d); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
-  window.addEventListener('keyup', e => held.delete(e.key.toLowerCase())); window.addEventListener('blur', () => held.clear());
-  const KEYDIR = { w: 'N', arrowup: 'N', s: 'S', arrowdown: 'S', a: 'W', arrowleft: 'W', d: 'E', arrowright: 'E', padn: 'N', pads: 'S', padw: 'W', pade: 'E' };
+  window.addEventListener('keyup', e => held.delete(e.code)); window.addEventListener('blur', () => held.clear());
+  const KEYDIR = { KeyW: 'N', ArrowUp: 'N', KeyS: 'S', ArrowDown: 'S', KeyA: 'W', ArrowLeft: 'W', KeyD: 'E', ArrowRight: 'E', padN: 'N', padS: 'S', padW: 'W', padE: 'E' }; // e.code 기준 — 한글 IME 상태에서도 동작
   function inputVector() { let vx = 0, vy = 0; for (const k of held) { const d = KEYDIR[k]; if (d) { vx += DX[d]; vy += DY[d]; } } return [vx, vy]; }
   $('touchAct').addEventListener('click', act); $('touchDemolish').addEventListener('click', askDemolish); $('touchRotate').addEventListener('click', rotateTool);
   window.addEventListener('keydown', e => {
-    const k = e.key.toLowerCase();
-    if (k === 'escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
+    const k = e.code;
+    if (k === 'Escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
     if (!$('inspect').hidden || !$('demolish').hidden) return;
     if (KEYDIR[k]) { e.preventDefault(); held.add(k); return; }
-    if (k === 'e') act(); else if (k === 'x') askDemolish(); else if (k === 'q') clearTool(); else if (k === 'r') rotateTool();
-    else if (k === 'p') $('pauseBtn').click(); else if (k === 't') $('speedBtn').click(); else if (k === 'b') $('shopBtn').click(); else if (k === 'o') $('helpBtn').click();
-    else if (/^[1-6]$/.test(k)) selectSlot(parseInt(k, 10) - 1);
+    if (k === 'KeyE') act(); else if (k === 'KeyX') askDemolish(); else if (k === 'KeyQ') clearTool(); else if (k === 'KeyR') rotateTool();
+    else if (k === 'KeyP') $('pauseBtn').click(); else if (k === 'KeyT') $('speedBtn').click(); else if (k === 'KeyB') $('shopBtn').click(); else if (k === 'KeyO') $('helpBtn').click();
+    else if (/^Digit[1-6]$/.test(k)) selectSlot(parseInt(k.slice(5), 10) - 1);
   });
 
   // ---------------- 3D ----------------
@@ -626,7 +628,8 @@
   function rebuildAll() { rebuildLot(); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rebuildCell(x, y); }
   const parcelObjs = new Map(), parcelLayer = new THREE.Group(); scene.add(parcelLayer);
   const pileObjs = new Map(), PILE_Y = [0.12, 0.52, 0.92];
-  function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(srgb(0xc9472f), { emissive: srgb(0xc9472f), emissiveIntensity: 0.5 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); return g; }
+  function parcelMesh() { const g = new THREE.Group(); g.add(make('box-small', 0.8, 0)); const stamp = box(0.14, 0.02, 0.14, lit(srgb(0xc9472f), { emissive: srgb(0xc9472f), emissiveIntensity: 0.5 }), 0.1, 0.46, 0.08); stamp.name = 'stamp'; stamp.visible = false; g.add(stamp); const check = box(0.14, 0.02, 0.14, lit(srgb(0x3fa35a), { emissive: srgb(0x3fa35a), emissiveIntensity: 0.5 }), -0.1, 0.46, 0.08); check.name = 'check'; check.visible = false; g.add(check); return g; }
+  const markState = (m, p) => { m.getObjectByName('stamp').visible = p.inspected && p.rejected; m.getObjectByName('check').visible = p.inspected && !p.rejected; };
   const surface = t => t === 'table' ? 0.6 : t === 'inlet' ? 0.22 : 0.4;
   const worker = new THREE.Group(); scene.add(worker);
   let carried, cursor, mixer = null, actions = {}, curAction = null;
@@ -679,7 +682,7 @@
     for (const p of S.packages) {
       seen.add(p.id); let m = parcelObjs.get(p.id); if (!m) { m = parcelMesh(); parcelLayer.add(m); parcelObjs.set(p.id, m); }
       const dir = p.progress < 0.5 ? p.entry : p.heading, off = p.progress - 0.5;
-      m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); m.getObjectByName('stamp').visible = p.inspected && p.rejected;
+      m.position.set(W(p.x + DX[dir] * off), surface(S.cells[p.y][p.x].type), Z(p.y + DY[dir] * off)); m.rotation.y = yawOf(dir); markState(m, p);
     }
     for (const [id, m] of parcelObjs) if (!seen.has(id)) { parcelLayer.remove(m); parcelObjs.delete(id); }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { // 팔레트 더미: 층당 2개, 최대 3층 (레일 위 상자와 같은 크기)
@@ -688,19 +691,19 @@
       if (!arr) { arr = []; pileObjs.set(key, arr); }
       while (arr.length < pile.length) { const m = parcelMesh(); parcelLayer.add(m); arr.push(m); }
       while (arr.length > pile.length) parcelLayer.remove(arr.pop());
-      pile.forEach((p, i) => { const m = arr[i]; m.position.set(W(x) + (i % 2 ? -0.22 : 0.22), PILE_Y[Math.floor(i / 2)], Z(y)); m.rotation.y = Math.PI / 2; /* 좁은 면(0.4)이 x축 → 2개가 겹치지 않음 */ m.getObjectByName('stamp').visible = p.inspected && p.rejected; });
+      pile.forEach((p, i) => { const m = arr[i]; m.position.set(W(x) + (i % 2 ? -0.22 : 0.22), PILE_Y[Math.floor(i / 2)], Z(y)); m.rotation.y = Math.PI / 2; /* 좁은 면(0.4)이 x축 → 2개가 겹치지 않음 */ markState(m, p); });
     }
     const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden;
     const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt);
     worker.position.set(W(w.x), 0, Z(w.y));
     const ty = yawFacing[w.facing]; let dy = ty - worker.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); worker.rotation.y += dy * (1 - Math.pow(0.0005, dt));
     if (mixer) { playAnim(moving ? 'walk' : (w.carrying ? 'holding-both' : 'idle')); mixer.update(dt); } else { bob = moving ? bob + dt * 14 : 0; if (worker.children[0]) worker.children[0].position.y = moving ? Math.abs(Math.sin(bob)) * 0.05 : 0; }
-    carried.visible = !!w.carrying; if (w.carrying) carried.getObjectByName('stamp').visible = w.carrying.inspected && w.carrying.rejected;
+    carried.visible = !!w.carrying; if (w.carrying) markState(carried, w.carrying);
     const f = facingTile(); const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     cursor.visible = !!fc;
     if (cursor.visible) { const h = fc.type === 'pallet' ? 0.13 + Math.ceil(fc.pile.length / 2) * 0.4 : (isBuilding(fc) || isDock(fc.type) || fc.type === 'inlet') ? surface(fc.type) : 0; cursor.position.set(W(f.x), 0.03 + h, Z(f.y)); cursor.material.opacity = 0.32 + 0.12 * Math.sin(now / 170); }
     const r = preview(); let label = null;
-    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = fc.type === 'outlet' ? '출고' : '반품'; else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
+    if (r === 'pick') label = '집기'; else if (r === 'palletpick') label = '집기 (' + fc.pile.length + ')'; else if (r === 'palletput') label = '놓기'; else if (r === 'palletfull') label = '가득 참'; else if (r === 'put') label = '놓기'; else if (r === 'deliver') label = (fc.type === 'outlet' ? '출고' : '반품') + (S.worker.carrying && !S.worker.carrying.inspected ? (fc.type === 'outlet' ? ' (미검사 −10)' : ' (미검사 −5)') : ''); else if (r === 'inspect') label = '검사'; else if (r === 'place') label = NAMES[UI.tool.type] + ' 설치';
     const pr = $('prompt'); pr.hidden = !label;
     if (label) { $('promptText').textContent = label; tmpV.set(W(f.x), 0.95 + (fc && fc.type === 'pallet' ? Math.ceil(fc.pile.length / 2) * 0.4 : fc && isBuilding(fc) ? 0.2 : 0), Z(f.y)).project(camera); pr.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px'; pr.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight - 14) + 'px'; }
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const c = S.cells[y][x], key = x + ',' + y; let bar = demoBars.get(key); if (c.demolishing) { if (!bar) { bar = box(0.8, 0.05, 0.12, lit(0xffd36a, { emissive: 0xffb84a, emissiveIntensity: 0.8 }), W(x), 1.1, Z(y)); bar.castShadow = false; scene.add(bar); demoBars.set(key, bar); } bar.scale.x = Math.max(0.02, 1 - c.remain / 2); } else if (bar) { scene.remove(bar); demoBars.delete(key); } }
