@@ -957,6 +957,36 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual(ConfigMode.None, input.ConfigMode);
                 Assert.AreEqual(0, input.SelectedSlot);
 
+                // 설정 모드 중 다른 슬롯 숫자 = 취소 + 그 슬롯 선택. 같은 슬롯 숫자 = 취소만(다시 설정 모드에 들어가지 않음).
+                input.SelectSlot(0); // 재탭 → 설정 모드
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                input.SelectSlot(1);
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(1, input.SelectedSlot, "digit in config mode must select that slot");
+                input.SelectSlot(0);
+                Assert.AreEqual(0, input.SelectedSlot);
+                input.SelectSlot(0); // 재탭 → 설정 모드
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                input.SelectSlot(0); // 같은 슬롯 → 취소만
+                Assert.AreEqual(ConfigMode.None, input.ConfigMode);
+                Assert.AreEqual(0, input.SelectedSlot);
+
+                // PickSlot(분배기 도구)에서 1·2는 파랑/빨강 선택이고 슬롯은 바뀌지 않는다.
+                s.Economy.Adjust(10000);
+                Assert.AreEqual(ParcelFactory.Core.UnlockResult.Ok, s.Unlocks.TryPurchase(ParcelFactory.Core.UnlockId.Splitter));
+                int splitterSlot = input.AvailableSlots().IndexOf(ParcelFactory.Core.CellType.Splitter);
+                input.SelectSlot(splitterSlot);
+                input.BeginConfig();
+                Assert.AreEqual(ConfigMode.PickSlot, input.ConfigMode);
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                input.SelectSlot(0);
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                Assert.AreEqual(ConfigWhich.Primary, input.ConfigWhich);
+                Assert.AreEqual(splitterSlot, input.SelectedSlot, "1 in PickSlot is the blue choice, not a slot change");
+                input.CancelConfig();
+                input.SelectSlot(0);
+                Assert.AreEqual(0, input.SelectedSlot);
+
                 // ① 설정 모드 중 Esc = 취소만(도구 유지)
                 input.BeginConfig();
                 input.PressEscape();

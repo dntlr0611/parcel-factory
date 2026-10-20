@@ -268,16 +268,17 @@ namespace ParcelFactory.Game
             return lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
         }
 
-        /// <summary>핫바 슬롯 선택(키 1~6·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지, 그 밖의 슬롯은 취소.
-        /// 평소에 이미 고른 슬롯을 다시 고르면 설정 모드에 들어간다(= R).</summary>
+        /// <summary>핫바 슬롯 선택(키 1~6·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지(파랑/빨강), 그 밖에는 설정을 취소하고 그 슬롯을 고른다
+        /// (이미 고른 슬롯이면 취소만 하고 설정 모드에 다시 들어가지 않는다). 평소에 이미 고른 슬롯을 다시 고르면 설정 모드에 들어간다(= R).</summary>
         public void SelectSlot(int i)
         {
             if (ConfigMode == ConfigMode.PickSlot && (i == 0 || i == 1)) { ApplyConfigSlot(i + 1); return; }
-            if (ConfigMode != ConfigMode.None) { CancelConfig(); return; }
+            bool wasConfig = ConfigMode != ConfigMode.None;
+            CancelConfig();
             var available = AvailableSlots();
             if (i < 0 || i >= available.Count) return;
             var type = available[i];
-            if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { BeginConfig(); return; }
+            if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { if (!wasConfig) BeginConfig(); return; }
             ToolSplitterRed = null; // 다른 종류를 고르면 분배기 도구의 빨간 출구 설정은 버린다
             var dir = PreferredDirection(type);
             SelectedTool = new Tool(type, dir);
