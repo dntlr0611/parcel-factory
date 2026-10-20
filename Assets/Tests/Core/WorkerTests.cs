@@ -219,7 +219,7 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.X = 10; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East; // 트럭 도크 출고 (11,2)
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
             Assert.IsNull(ws.Worker.Carrying);
-            Assert.AreEqual(215, economy.Money);
+            Assert.AreEqual(230, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);
         }
 
@@ -379,7 +379,7 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.Carrying = bad;
             ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
-            Assert.AreEqual(205, economy.Money);
+            Assert.AreEqual(210, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);
         }
 

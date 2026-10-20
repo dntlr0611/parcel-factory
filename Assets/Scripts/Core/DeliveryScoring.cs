@@ -4,11 +4,11 @@ namespace ParcelFactory.Core
 {
     public enum DeliveryOutcome
     {
-        Delivered,            // 승인·정상 → 출고구 +15
-        ReturnedBad,          // 거부·불량 → 반품구 +5
+        Delivered,            // 승인·정상 → 출고구 +30
+        ReturnedBad,          // 거부·불량 → 반품구 +10
         UninspectedToOutlet,  // −10
         RejectedToOutlet,     // −10
-        BadToOutlet,          // 승인·불량 → 출고구 −20
+        BadToOutlet,          // 승인·불량 → 출고구 −30
         UninspectedToReturn,  // −5
         GoodToReturn,         // 거부·정상 → 반품구 −5
         ApprovedToReturn,     // 승인 → 반품구 −5
@@ -38,11 +38,11 @@ namespace ParcelFactory.Core
         {
             switch (o)
             {
-                case DeliveryOutcome.Delivered: return 15;
-                case DeliveryOutcome.ReturnedBad: return 5;
+                case DeliveryOutcome.Delivered: return 30;
+                case DeliveryOutcome.ReturnedBad: return 10;
                 case DeliveryOutcome.UninspectedToOutlet: return -10;
                 case DeliveryOutcome.RejectedToOutlet: return -10;
-                case DeliveryOutcome.BadToOutlet: return -20;
+                case DeliveryOutcome.BadToOutlet: return -30;
                 case DeliveryOutcome.UninspectedToReturn: return -5;
                 case DeliveryOutcome.GoodToReturn: return -5;
                 case DeliveryOutcome.ApprovedToReturn: return -5;

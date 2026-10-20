@@ -83,12 +83,12 @@ namespace ParcelFactory.Game
         {
             switch (o)
             {
-                case DeliveryOutcome.Delivered: return "정상 출고 +15";
-                case DeliveryOutcome.ReturnedBad: return "불량 반품 +5";
+                case DeliveryOutcome.Delivered: return "정상 출고 +30";
+                case DeliveryOutcome.ReturnedBad: return "불량 반품 +10";
                 case DeliveryOutcome.UninspectedToOutlet: return "검사대를 거치지 않은 택배 · 출고 −10";
                 case DeliveryOutcome.UninspectedToReturn: return "검사대를 거치지 않은 택배 · 반품 −5";
                 case DeliveryOutcome.RejectedToOutlet: return "거부한 택배를 출고 −10";
-                case DeliveryOutcome.BadToOutlet: return "불량을 승인해 출고 −20";
+                case DeliveryOutcome.BadToOutlet: return "불량을 승인해 출고 −30";
                 case DeliveryOutcome.GoodToReturn: return "정상 택배를 반품 −5";
                 case DeliveryOutcome.ApprovedToReturn: return "승인한 택배를 반품 −5";
                 default: return o.ToString();
@@ -178,7 +178,7 @@ namespace ParcelFactory.Game
         private void BuildHelp()
         {
             help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 228f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 배송 +15 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\n1~6 도구 선택 · R 방향(팔레트는 색) · Q 빈손\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();

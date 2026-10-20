@@ -37,7 +37,7 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void StraightLine_WithScanner_Earns15()
+        public void StraightLine_WithScanner_Earns30()
         {
             var s = new GameSession(new Economy(400), new PackageFactory(new Random(1), 0.0));
             s.Unlocks.Grant(UnlockId.Plot2);
@@ -48,7 +48,7 @@ namespace ParcelFactory.Core.Tests
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(190, s.Economy.Money);
             for (int i = 0; i < 390; i++) s.Tick(0.05f); // 8초 생성 + 11초 이동
-            Assert.AreEqual(205, s.Economy.Money);
+            Assert.AreEqual(220, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
 
@@ -108,7 +108,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
             s.Worker.Worker.X = 10; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East; // 트럭 도크 (11,2)
             Assert.AreEqual(InteractResult.Delivered, s.Worker.Interact(null));
-            Assert.AreEqual(75, s.Economy.Money);
+            Assert.AreEqual(90, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
 

@@ -337,7 +337,7 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.X = 10; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Preview(null));
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
-            Assert.AreEqual(215, economy.Money);
+            Assert.AreEqual(230, economy.Money);
             Assert.IsNull(ws.Worker.Carrying);
 
             var bad = Loose(bad: true);
@@ -345,7 +345,7 @@ namespace ParcelFactory.Core.Tests
             ws.Worker.Carrying = bad;
             ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
-            Assert.AreEqual(220, economy.Money);
+            Assert.AreEqual(240, economy.Money); // 230 + 불량 반품 10
             Assert.AreEqual(2, sim.DeliveredCount);
         }
 
@@ -363,7 +363,7 @@ namespace ParcelFactory.Core.Tests
             sim.Tick(1f);
             Assert.AreEqual(0, sim.Packages.Count);
             Assert.AreEqual(DeliveryOutcome.Delivered, seen);
-            Assert.AreEqual(205, economy.Money); // 200 − 10 + 15
+            Assert.AreEqual(220, economy.Money); // 200 − 10 + 30
         }
 
         [Test]
@@ -387,7 +387,7 @@ namespace ParcelFactory.Core.Tests
             s.Worker.Move(0f, -1f, 0f); // 제자리에서 남쪽(트럭 도크 (11,2))을 바라본다
             Assert.AreEqual((11, 2), s.Worker.FacingTile());
             Assert.AreEqual(InteractResult.Delivered, s.Worker.Interact(null));
-            Assert.AreEqual(165, s.Economy.Money);
+            Assert.AreEqual(180, s.Economy.Money);
             Assert.AreEqual(1, s.Sim.DeliveredCount);
         }
 

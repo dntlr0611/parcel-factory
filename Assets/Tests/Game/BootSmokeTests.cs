@@ -233,7 +233,7 @@ namespace ParcelFactory.Game.Tests
                 var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s2.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
                 q.Bad = false; q.Inspect(false);
                 s2.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
-                Assert.AreEqual("정상 출고 +15", boot.Hud.LastToast);
+                Assert.AreEqual("정상 출고 +30", boot.Hud.LastToast);
                 LogAssert.NoUnexpectedReceived();
             }
             finally

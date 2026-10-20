@@ -114,7 +114,7 @@ namespace ParcelFactory.Core.Tests
             sim.PackageDelivered += (pk, outcome, delta) => delivered.Add(pk);
             for (int i = 0; i < 11; i++) sim.Tick(1f);
             Assert.AreEqual(0, sim.Packages.Count);
-            Assert.AreEqual(15, economy.Money);
+            Assert.AreEqual(30, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);
             Assert.AreSame(p, delivered[0]);
             Assert.AreEqual(-1, grid.Get(10, 2).OccupantId);
