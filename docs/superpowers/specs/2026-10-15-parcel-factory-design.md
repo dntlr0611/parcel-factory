@@ -307,5 +307,5 @@ Unity 레이어는 수동 플레이 테스트로 확인한다.
 
 **미니 상태바**: 설치된 모든 부품 위에 작은 상태 표시(반투명 검은 알약, 11px)를 띄운다. 내용: 레일/고속 "→", 검사대 "검사 대기 n" 또는 "검사대", 자동 검사기 "자동 →", 분배기 "파 → · 빨 ↓", 팔레트 "파랑 3/6". 작업자가 바라보는 부품의 상태바는 밝게 강조되고 "R 설정" 힌트가 붙는다. 상태바는 월드 위치를 매 프레임 화면에 투영해 그린다(택배 팝업과 같은 방식). 상태가 바뀌면 즉시 갱신.
 
-- 코어: `Cell.RedDirection`(Direction?, 분배기만), `BuildService.SetDirection(x, y, dir)`(레일·고속·검사대·자동 검사기·분배기 파랑; `CellChanged` 발생; 그 칸 택배 Heading 갱신), `SetSplitterRed(x, y, Direction?)`, `SetPalletKind(x, y, kind)`; 결과 `ReconfigureResult { Ok, NotConfigurable, Invalid }`. `ConveyorSim.SplitterRoutes`가 `RedDirection`을 우선한다. 저장: `CellState.RedDirection`(선택 필드, 버전 유지 6).
+- 코어: `Cell.RedDirection`(Direction?, 분배기만), `BuildService.SetDirection(x, y, dir)`(레일·고속·검사대·자동 검사기·분배기 파랑; `CellChanged` 발생; 그 칸 택배 Heading 갱신), `SetSplitterRed(x, y, Direction?)`, `SetPalletKind(x, y, kind)`; 결과 `ReconfigureResult { Ok, NotConfigurable, Invalid, NotOwned }` (`NotOwned` = 레일·고속 레일을 보유하지 않은 방향으로 바꾸려 할 때). `ConveyorSim.SplitterRoutes`가 `RedDirection`을 우선한다. 저장: `CellState.RedDirection`(선택 필드, 버전 유지 6).
 - `Toolbar`: 방향별 보유는 유지(해금 체계 그대로). 도구 방향 입력 시 보유하지 않은 방향이면 토스트 "해금되지 않은 방향입니다"(분배기·검사대·자동 검사기는 4방향 모두 보유).
