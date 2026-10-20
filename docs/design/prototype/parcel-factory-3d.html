@@ -133,8 +133,8 @@
     .chips { flex-wrap: wrap; } .topright { max-width: 40%; }
     .clock { top: calc(100px + env(safe-area-inset-top, 0px)); }
     .slot { width: 52px; height: 52px; } .slot .ico { width: 20px; height: 20px; } .slot .c { display: none; }
-    .touch { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
-    .touch2 .big { width: 72px; height: 72px; } .touch2 .mid { width: 52px; height: 52px; }
+    .touch { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); left: max(10px, env(safe-area-inset-left, 0px)); }
+    .touch2 { gap: 4px; right: max(10px, env(safe-area-inset-right, 0px)); } .touch2 .big { width: 60px; height: 60px; } .touch2 .mid { width: 44px; height: 44px; font-size: 11px; } /* 좁은 폭에서도 세 버튼 + 방향패드가 겹치지 않도록 (44px 최소 터치 크기 유지) */
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -161,7 +161,7 @@
       <button class="btn" id="newBtn">새 게임</button>
     </div>
     <div class="panel help" id="help" hidden>
-      <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
+      <div><span class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>이동 · <span class="k"><span class="key">Space</span></span>달리기(체력 ×2.5 소모) · <span class="k"><span class="key">E</span></span><b>집기 · 놓기 · 설치 · 검사</b> · <span class="k"><span class="key">X</span></span>해체</div>
       <div><span class="k"><span class="key">1</span>~<span class="key">6</span></span>도구 선택 · <span class="k"><span class="key">R</span></span>방향·팔레트 색 · <span class="k"><span class="key">Q</span></span>빈손 · <span class="k"><span class="key">Esc</span></span>닫기</div>
       <div>레일 끝 <b>팔레트</b>에 택배가 최대 6개 쌓입니다. 팔레트에서 집어 동쪽 벽의 트럭까지 나르세요 — <b>정상은 파랑 출고 트럭</b>, <b>불량(거부)은 빨강 반품 트럭</b>.</div>
       <div>택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.</div>
@@ -184,6 +184,7 @@
     <div class="touch2">
       <button class="btn mid" id="touchRotate">방향</button>
       <button class="btn mid" id="touchDemolish">해체</button>
+      <button class="btn mid" id="touchRun" aria-label="달리기 (누르고 있는 동안)">달리기</button>
       <button class="btn big primary" id="touchAct">E</button>
     </div>
     <div class="toast" id="toast" hidden><span class="bar"></span><span id="toastText"></span></div>
@@ -241,7 +242,7 @@
   const PALLET_CAP = 6, OUTLET_X = 11, RDOCK_X = 11; // 스펙 10.1·10.2
   // 근무 시계·스태미나 (스펙 11): 시각은 하루 중 분(540..1080), 1게임분 = 1실제초(배속 전)
   const DAY_OPEN = 540, LUNCH_START = 720, LUNCH_END = 780, DAY_CLOSE = 1080;
-  const MAX_STAMINA = 100, WALK_DRAIN = 1.2, CARRY_DRAIN = 2.2, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30;
+  const MAX_STAMINA = 100, WALK_DRAIN = 1.2, CARRY_DRAIN = 2.2, STAND_REGEN = 0.8, LUNCH_REGEN = 20, SLOW_BELOW = 30, RUN_MULT = 1.6, RUN_DRAIN_MULT = 2.5, RUN_MIN_STAMINA = 10;
   const phaseAt = m => m >= DAY_CLOSE ? 'closed' : (m >= LUNCH_START && m < LUNCH_END) ? 'lunch' : 'working';
   const timeText = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
   const signed = d => d >= 0 ? '+' + d : '−' + (-d);
@@ -279,7 +280,7 @@
     g.worker = { x: 3.0, y: 4.0, facing: 'N', carrying: null, stamina: 15 }; return g;
   }
   let S = location.hash === '#lunch' ? lunchLayout(newGame()) : location.hash === '#demo' ? demoLayout(newGame()) : newGame();
-  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
+  const UI = { tool: null, slot: -1, lastDir: {}, pending: null, inspect: null, running: false, toastUntil: 0, dirty: new Set(), rebuildAll: true, saved: null, fx: [] };
 
   function headingFor(c, incoming) {
     if (c.type !== 'splitter') return c.dir;
@@ -385,12 +386,13 @@
     if (phase === 'lunch') S.worker.stamina = clampSta(S.worker.stamina + LUNCH_REGEN * dt);
     else if (phase === 'working' && !moved) S.worker.stamina = clampSta(S.worker.stamina + STAND_REGEN * dt);
   }
-  function moveWorker(vx, vy, dt) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리. 퇴근 후에는 걷지 않는다 (일시정지 중에는 걸을 수 있다)
-    const w = S.worker; const len = Math.hypot(vx, vy); if (len < 1e-6 || S.minute >= DAY_CLOSE) return false;
-    vx /= len; vy /= len; const step = WALK_SPEED * speedFactor() * dt; let moved = false;
+  function moveWorker(vx, vy, dt, run) { // 눌린 방향으로 부드럽게 이동, 축별로 따로 충돌 처리. 퇴근 후에는 걷지 않는다 (일시정지 중에는 걸을 수 있다)
+    const w = S.worker; const len = Math.hypot(vx, vy); UI.running = false; if (len < 1e-6 || S.minute >= DAY_CLOSE) return false;
+    const sprint = !!run && w.stamina >= RUN_MIN_STAMINA; // 스태미나 10 미만이면 달리기 입력이 있어도 걷는다 (스펙 11.4)
+    vx /= len; vy /= len; const step = WALK_SPEED * (sprint ? RUN_MULT : 1) * speedFactor() * dt; let moved = false;
     const nx = w.x + vx * step; if (walkableAt(nx, w.y)) { w.x = nx; moved = true; }
     const ny = w.y + vy * step; if (walkableAt(w.x, ny)) { w.y = ny; moved = true; }
-    if (moved) { movedSinceRest = true; w.stamina = clampSta(w.stamina - (w.carrying ? CARRY_DRAIN : WALK_DRAIN) * dt); } // 움직인 프레임만 소모
+    if (moved) { movedSinceRest = true; UI.running = sprint; w.stamina = clampSta(w.stamina - (w.carrying ? CARRY_DRAIN : WALK_DRAIN) * (sprint ? RUN_DRAIN_MULT : 1) * dt); } // 움직인 프레임만 소모
     w.facing = Math.abs(vx) >= Math.abs(vy) ? (vx > 0 ? 'E' : 'W') : (vy > 0 ? 'N' : 'S');
     if (UI.inspect) { UI.inspect = null; $('inspect').hidden = true; }
     return true;
@@ -548,13 +550,16 @@
   $('newBtn').addEventListener('click', () => { S = newGame(); clearTool(); UI.rebuildAll = true; movedSinceRest = false; $('summary').hidden = true; toast('새 게임'); });
   $('saveBtn2').addEventListener('click', () => $('saveBtn').click()); $('loadBtn2').addEventListener('click', () => $('loadBtn').click()); $('newBtn2').addEventListener('click', () => $('newBtn').click());
   const held = new Set();
+  { const b = $('touchRun'), on = e => { e.preventDefault(); held.add('padRun'); }, off = () => held.delete('padRun'); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); b.addEventListener('contextmenu', e => e.preventDefault()); }
   document.querySelectorAll('[data-move]').forEach(b => { const d = b.dataset.move; const on = e => { e.preventDefault(); held.add('pad' + d); }, off = () => held.delete('pad' + d); b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
-  window.addEventListener('keyup', e => held.delete(e.code)); window.addEventListener('blur', () => held.clear());
+  window.addEventListener('keyup', e => { if (e.code === 'Space') e.preventDefault(); held.delete(e.code); }); window.addEventListener('blur', () => held.clear());
   const KEYDIR = { KeyW: 'N', ArrowUp: 'N', KeyS: 'S', ArrowDown: 'S', KeyA: 'W', ArrowLeft: 'W', KeyD: 'E', ArrowRight: 'E', padN: 'N', padS: 'S', padW: 'W', padE: 'E' }; // e.code 기준 — 한글 IME 상태에서도 동작
+  const wantsRun = () => held.has('Space') || held.has('padRun');
   function inputVector() { let vx = 0, vy = 0; for (const k of held) { const d = KEYDIR[k]; if (d) { vx += DX[d]; vy += DY[d]; } } return [vx, vy]; }
   $('touchAct').addEventListener('click', act); $('touchDemolish').addEventListener('click', askDemolish); $('touchRotate').addEventListener('click', rotateTool);
   window.addEventListener('keydown', e => {
     const k = e.code;
+    if (k === 'Space') { e.preventDefault(); held.add(k); return; } // 달리기: 누르고 있는 동안. 페이지 스크롤·버튼 활성화 방지
     if (!$('summary').hidden) { if (KEYDIR[k]) e.preventDefault(); return; } // 하루 요약은 "다음 날" 버튼으로만 닫힌다 (Esc 무시)
     if (k === 'Escape') { $('shop').hidden = true; $('help').hidden = true; $('demolish').hidden = true; UI.pending = null; if (!$('inspect').hidden) { UI.inspect = null; $('inspect').hidden = true; } return; }
     if (!$('inspect').hidden || !$('demolish').hidden) return;
@@ -744,14 +749,14 @@
     if (src && clips['character-male-a'] && clips['character-male-a'].length) { // Kenney 캐릭터에 내장된 클립: idle / walk / holding-both
       mixer = new THREE.AnimationMixer(m);
       const byName = n => clips['character-male-a'].find(c => c.name === n);
-      for (const n of ['idle', 'walk', 'holding-both']) { const c = byName(n); if (c) actions[n] = mixer.clipAction(c); }
+      for (const n of ['idle', 'walk', 'sprint', 'holding-both']) { const c = byName(n); if (c) actions[n] = mixer.clipAction(c); }
       playAnim('idle');
     }
     const anchor = new THREE.Group(); anchor.position.y = 1.22; carried = parcelMesh(); carried.visible = false; anchor.add(carried); worker.add(anchor);
     cursor = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.3, depthWrite: false })); cursor.rotation.x = -Math.PI / 2; scene.add(cursor);
     worker.position.set(W(S.worker.x), 0, Z(S.worker.y));
   }
-  function playAnim(name) { const a = actions[name] || actions.idle; if (!a || a === curAction) return; a.reset().setEffectiveTimeScale(name === 'walk' ? 1.6 : 1).fadeIn(0.12).play(); if (curAction) curAction.fadeOut(0.12); curAction = a; }
+  function playAnim(name) { const a = actions[name] || actions.idle; if (!a || a === curAction) return; a.reset().setEffectiveTimeScale(name === 'walk' ? 1.6 : name === 'sprint' ? 1.3 : 1).fadeIn(0.12).play(); if (curAction) curAction.fadeOut(0.12); curAction = a; }
   const demoBars = new Map();
   const yawFacing = { S: Math.PI, E: -Math.PI / 2, N: 0, W: Math.PI / 2 }; // +z가 북쪽을 향하는 모델 기준
 
@@ -818,10 +823,10 @@
       pile.forEach((p, i) => { const m = arr[i]; m.position.set(W(x) + (i % 2 ? -0.22 : 0.22), PILE_Y[Math.floor(i / 2)], Z(y)); m.rotation.y = Math.PI / 2; /* 좁은 면(0.4)이 x축 → 2개가 겹치지 않음 */ markState(m, p); });
     }
     const w = S.worker; const modal = !$('inspect').hidden || !$('demolish').hidden || !$('summary').hidden;
-    const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt);
+    const [ivx, ivy] = modal ? [0, 0] : inputVector(); const moving = moveWorker(ivx, ivy, dt, !modal && wantsRun());
     worker.position.set(W(w.x), 0, Z(w.y));
     const ty = yawFacing[w.facing]; let dy = ty - worker.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); worker.rotation.y += dy * (1 - Math.pow(0.0005, dt));
-    if (mixer) { playAnim(moving ? 'walk' : (w.carrying ? 'holding-both' : 'idle')); mixer.update(dt); } else { bob = moving ? bob + dt * 14 : 0; if (worker.children[0]) worker.children[0].position.y = moving ? Math.abs(Math.sin(bob)) * 0.05 : 0; }
+    if (mixer) { playAnim(moving ? (UI.running ? 'sprint' : 'walk') : (w.carrying ? 'holding-both' : 'idle')); mixer.update(dt); } else { bob = moving ? bob + dt * 14 : 0; if (worker.children[0]) worker.children[0].position.y = moving ? Math.abs(Math.sin(bob)) * 0.05 : 0; }
     carried.visible = !!w.carrying; if (w.carrying) markState(carried, w.carrying);
     const f = facingTile(); const fc = inBounds(f.x, f.y) ? S.cells[f.y][f.x] : null;
     cursor.visible = !!fc;
@@ -838,7 +843,7 @@
     { const ph = phaseAt(S.minute), st = Math.max(0, Math.min(MAX_STAMINA, w.stamina)); $('clockText').textContent = S.day + '일차 ' + timeText(S.minute);
       const bd = $('phaseBadge'); bd.hidden = ph === 'working'; bd.textContent = ph === 'lunch' ? '점심시간' : '퇴근'; bd.classList.toggle('closed', ph === 'closed');
       const fl = $('staminaFill'); fl.style.width = st + '%'; fl.className = 'fill' + (st > 50 ? '' : st > 20 ? ' mid' : ' low') + (st < 20 ? ' pulse' : ''); }
-    $('workerText').textContent = w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요');
+    $('workerText').textContent = (UI.running ? '달리는 중 · ' : '') + (w.carrying ? ('택배 #' + w.carrying.id + ' 운반 중 · 레일·팔레트·트럭을 보고 E') : (UI.tool ? NAMES[UI.tool.type] + ' ' + dirLabel(UI.tool.type, UI.tool.dir) + ' · E로 설치 · R로 ' + (UI.tool.type === 'pallet' ? '색' : '방향') : '빈손 · 1~6으로 도구를 고르세요'));
     renderer.render(scene, camera);
   }
   loadAll(() => { resize(); frameLot(true); buildStatic(); buildWorker(); renderHotbar(); renderShop(); if (location.hash === '#lunch') selectSlot(0); UI.rebuildAll = true; $('loading').hidden = true; requestAnimationFrame(frame); });
