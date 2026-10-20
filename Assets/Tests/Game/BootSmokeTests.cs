@@ -1104,5 +1104,158 @@ namespace ParcelFactory.Game.Tests
             }
             yield return null;
         }
+
+        private static Rect ScreenRect(RectTransform rt)
+        {
+            var c = new Vector3[4];
+            rt.GetWorldCorners(c);
+            return Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+        }
+
+        [UnityTest]
+        public IEnumerator Bridge_Crossing_LanesAtTwoHeights_SevenSlots_StatusBar_StaminaTick_AndShopRow()
+        {
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                s.Paused = true; // 입고구에 택배가 생기지 않게. 시뮬레이션은 아래에서 직접 돌린다
+                s.Economy.Adjust(10000);
+                var input = boot.Input;
+                var w = s.Worker.Worker;
+                // 7종 모두 보유: 레일, 고속, 브릿지, 팔레트, 검사대, 분배기, 자동 검사기(Grant는 선행 부지까지 적용)
+                s.Unlocks.Grant(ParcelFactory.Core.UnlockId.Plot1);
+                s.Unlocks.Grant(ParcelFactory.Core.UnlockId.Bridge);
+                s.Unlocks.Grant(ParcelFactory.Core.UnlockId.FastEast);
+                s.Unlocks.Grant(ParcelFactory.Core.UnlockId.Splitter);
+                s.Unlocks.Grant(ParcelFactory.Core.UnlockId.Scanner);
+                s.Toolbar.Add(ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.North);
+                yield return null;
+
+                // 핫바 7칸, 브릿지는 세 번째(키 3)
+                Assert.AreEqual(7, InputController.SlotCount);
+                var slots = input.AvailableSlots();
+                Assert.AreEqual(7, slots.Count, string.Join(",", slots));
+                Assert.AreEqual(ParcelFactory.Core.CellType.Bridge, slots[2]);
+                Assert.IsTrue(InputController.IsConfigurable(ParcelFactory.Core.CellType.Bridge));
+                var hotbar = boot.Hud.Root.Find("Hotbar") as RectTransform;
+                int shownSlots = 0;
+                foreach (Transform t in hotbar) if (t.gameObject.activeSelf) shownSlots++;
+                Assert.AreEqual(7, shownSlots);
+                Assert.AreEqual("브릿지", hotbar.Find("Slot3").GetComponentInChildren<UnityEngine.UI.Text>().text);
+
+                // 터치 모드: 7칸 핫바가 캔버스 안에 있고 터치 버튼과 겹치지 않는다
+                boot.Hud.ForceTouchMode(true);
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+                var canvasRect = ScreenRect(boot.Hud.Root);
+                var barRect = ScreenRect(hotbar);
+                Assert.GreaterOrEqual(barRect.xMin, canvasRect.xMin - 0.01f, "hotbar sticks out left");
+                Assert.LessOrEqual(barRect.xMax, canvasRect.xMax + 0.01f, "hotbar sticks out right");
+                foreach (var name in new[] { "TouchE", "TouchX", "TouchR", "TouchRun", "TouchPadN", "TouchPadS", "TouchPadW", "TouchPadE" })
+                    Assert.IsFalse(barRect.Overlaps(ScreenRect(GameObject.Find(name).GetComponent<RectTransform>())), "hotbar overlaps " + name);
+                boot.Hud.ForceTouchMode(false);
+
+                // 브릿지 도구(슬롯 index 2) → R → ↑ → (2,3)에서 동쪽 (3,3)에 설치
+                w.X = 2f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.East;
+                input.SelectSlot(2);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Bridge, input.SelectedTool.Value.Type);
+                input.BeginConfig();
+                Assert.IsFalse(input.ConfigTargetIsCell);
+                Assert.AreEqual(ConfigMode.PickDirection, input.ConfigMode);
+                input.ApplyConfigDirection(ParcelFactory.Core.Direction.North);
+                Assert.AreEqual(ParcelFactory.Core.Direction.North, input.SelectedTool.Value.Direction);
+                yield return null;
+                Assert.IsTrue(boot.Ghost.Visible, "bridge ghost hidden");
+                Assert.IsNotNull(boot.Ghost.Model.transform.Find("UpperBelt"), "bridge ghost has no upper belt");
+                input.Interact();
+                var cell = s.Grid.Get(3, 3);
+                Assert.AreEqual(ParcelFactory.Core.CellType.Bridge, cell.Type);
+                Assert.AreEqual(ParcelFactory.Core.Direction.North, cell.Direction);
+                Assert.AreEqual(1.3f, PackageViews.TopHeight(cell), 1e-4f);
+
+                // 동쪽 줄 (2,3)→(3,3)→(4,3), 북쪽 줄 (3,2)→(3,3)→(3,4). 작업자는 비켜 선다.
+                w.X = 5f; w.Y = 3f; w.Facing = ParcelFactory.Core.Direction.East;
+                foreach (var (x, y, d) in new[] { (2, 3, ParcelFactory.Core.Direction.East), (4, 3, ParcelFactory.Core.Direction.East), (3, 2, ParcelFactory.Core.Direction.North), (3, 4, ParcelFactory.Core.Direction.North) })
+                    Assert.AreEqual(ParcelFactory.Core.BuildResult.Ok, s.Build.TryPlace(x, y, ParcelFactory.Core.CellType.Conveyor, d), $"rail at ({x},{y})");
+                yield return null;
+
+                // 뷰: 바닥 벨트 + 기둥 4개 + 고가 벨트(0.9) + 윗길 화살표
+                var view = FindCellView("Bridge", 3, 3);
+                Assert.IsNotNull(view, "bridge view missing");
+                Assert.IsNotNull(view.transform.Find("LowerBelt"), "lower belt missing");
+                var upperBelt = view.transform.Find("UpperBelt");
+                Assert.IsNotNull(upperBelt, "upper belt missing");
+                Assert.AreEqual(0.9f, upperBelt.localPosition.y, 1e-4f);
+                int posts = 0;
+                foreach (Transform t in view.transform) if (t.name == "BridgePost") posts++;
+                Assert.AreEqual(4, posts);
+                var arrowPivot = view.transform.Find("ArrowPivot");
+                Assert.IsNotNull(arrowPivot, "upper arrow pivot missing");
+                Assert.AreEqual(0.9f, arrowPivot.localPosition.y, 1e-4f);
+                Assert.IsNotNull(arrowPivot.Find("Chevron").GetComponent<BeltArrow>());
+                Assert.Greater(Vector3.Dot(Pointing(arrowPivot), Vector3.forward), 0.99f, "upper arrow should point north (+z)");
+
+                // 상태바 "브릿지 ↑"
+                StringAssert.Contains("브릿지 ↑", boot.StatusBars.TextAt(3, 3));
+
+                // 두 택배를 흘려 둘 다 브릿지에 올린다: 북쪽 줄 = 윗길, 동쪽 줄 = 아랫길
+                Assert.IsTrue(s.Sim.TrySpawn(2, 3, ParcelFactory.Core.PackageKind.Normal, out var east));
+                Assert.IsTrue(s.Sim.TrySpawn(3, 2, ParcelFactory.Core.PackageKind.Normal, out var north));
+                for (int i = 0; i < 80 && s.Sim.PackagesAt(3, 3).Count < 2; i++) s.Sim.Tick(0.05f);
+                Assert.AreEqual(2, s.Sim.PackagesAt(3, 3).Count, "both packages should be on the bridge");
+                Assert.AreEqual(ParcelFactory.Core.Lane.Upper, north.Lane);
+                Assert.AreEqual(ParcelFactory.Core.Lane.Lower, east.Lane);
+                yield return null;
+                var pv = boot.GetComponent<PackageViews>();
+                var upperBox = pv.ViewOf(north.Id);
+                var lowerBox = pv.ViewOf(east.Id);
+                Assert.IsNotNull(upperBox, "upper package not drawn");
+                Assert.IsNotNull(lowerBox, "lower package not drawn");
+                Assert.AreEqual(1.3f, upperBox.transform.position.y, 1e-3f, "upper lane height");
+                Assert.AreEqual(0.4f, lowerBox.transform.position.y, 1e-3f, "lower lane height");
+                var tile = Grid3D.Tile(3, 3);
+                foreach (var box in new[] { upperBox, lowerBox })
+                {
+                    Assert.LessOrEqual(Mathf.Abs(box.transform.position.x - tile.x), 0.5f, box.name + " not over the bridge tile");
+                    Assert.LessOrEqual(Mathf.Abs(box.transform.position.z - tile.z), 0.5f, box.name + " not over the bridge tile");
+                }
+
+                // 체력 바 80% 눈금
+                var tick = boot.Hud.Root.Find("Stamina/Bar/" + HudController.StaminaTickName) as RectTransform;
+                Assert.IsNotNull(tick, "stamina 80% tick missing");
+                Assert.AreEqual(ParcelFactory.Core.WorkerService.RegenCap, tick.anchorMin.x, 1e-4f);
+                Assert.AreEqual(1f, tick.rect.width, 1e-3f);
+                Assert.Greater(tick.GetSiblingIndex(), boot.Hud.Root.Find("Stamina/Bar/Fill").GetSiblingIndex(), "tick must draw over the fill");
+
+                // 상점: 12번째 행(브릿지)이 패널 안에 보인다
+                input.RequestShop();
+                Assert.IsTrue(boot.Panels.ShopIsOnlyOpen, "shop did not open");
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+                var shop = boot.Hud.Root.Find("Shop") as RectTransform;
+                var list = shop.Find("List");
+                Assert.AreEqual(ParcelFactory.Core.UnlockCatalog.All.Count, list.childCount);
+                Transform bridgeRow = null;
+                foreach (Transform row in list) if (row.Find("Name").GetComponent<UnityEngine.UI.Text>().text == "브릿지") bridgeRow = row;
+                Assert.IsNotNull(bridgeRow, "shop has no 브릿지 row");
+                Assert.IsTrue(bridgeRow.gameObject.activeInHierarchy);
+                var shopRect = ScreenRect(shop);
+                foreach (Transform row in list)
+                {
+                    var r = ScreenRect((RectTransform)row);
+                    Assert.GreaterOrEqual(r.yMin, shopRect.yMin - 0.01f, row.Find("Name").GetComponent<UnityEngine.UI.Text>().text + " row below the shop panel");
+                }
+                Assert.AreEqual("보유", bridgeRow.Find("Buy").GetComponentInChildren<UnityEngine.UI.Text>().text);
+                boot.Panels.CloseAll();
+                LogAssert.NoUnexpectedReceived();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
     }
 }

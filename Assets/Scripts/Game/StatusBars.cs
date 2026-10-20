@@ -129,7 +129,7 @@ namespace ParcelFactory.Game
         }
 
         /// <summary>
-        /// 부품 상태 문구: 레일 "→", 고속 "고속 →", 검사대 "검사대" 또는 "검사 대기 1", 자동 검사기 "자동 →",
+        /// 부품 상태 문구: 레일 "→", 고속 "고속 →", 브릿지 "브릿지 ↑"(윗길 방향), 검사대 "검사대" 또는 "검사 대기 1", 자동 검사기 "자동 →",
         /// 분배기 "파 → · 빨 ↓"(빨간 출구가 없거나 연결되지 않았으면 흐린 글자), 팔레트 "파랑 3/6".
         /// </summary>
         public static string Describe(GameSession s, int x, int y)
@@ -140,6 +140,7 @@ namespace ParcelFactory.Game
                 case CellType.Conveyor: return HudController.Arrow(c.Direction);
                 case CellType.FastConveyor: return "고속 " + HudController.Arrow(c.Direction);
                 case CellType.Scanner: return "자동 " + HudController.Arrow(c.Direction);
+                case CellType.Bridge: return "브릿지 " + HudController.Arrow(c.Direction); // 윗길 방향
                 case CellType.Table:
                 {
                     var p = s.Sim.PackageAt(x, y);

@@ -61,7 +61,7 @@ namespace ParcelFactory.Game
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
-            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Pallet, "팔레트" }, { CellType.Table, "검사대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
+            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Bridge, "브릿지" }, { CellType.Pallet, "팔레트" }, { CellType.Table, "검사대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
             { CellType.Inlet, "입고구" }, { CellType.Outlet, "출고구" }, { CellType.ReturnDock, "반품구" }, { CellType.Empty, "빈 칸" }, { CellType.Locked, "잠긴 칸" },
         };
         public static string Name(CellType t) => Names.TryGetValue(t, out var n) ? n : t.ToString();
@@ -365,7 +365,14 @@ namespace ParcelFactory.Game
             lbl.rectTransform.offsetMin = new Vector2(10f, 0f); lbl.rectTransform.offsetMax = new Vector2(-(w - 38f), 0f);
             var bar = UiKit.PanelBox("Bar", box.transform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(44f, 0f), new Vector2(StaminaBarWidth, StaminaBarHeight), new Color(1f, 1f, 1f, 0.12f)).rectTransform;
             staminaFill = UiKit.PanelBox("Fill", bar, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(StaminaBarWidth, 0f), UiKit.Good);
+            // 평소 회복 상한(스펙 11.11): 바 폭의 80% 자리에 1px 어두운 눈금. 채움 위에 그린다. 위치는 고정(최대 체력이 바뀌어도 비율).
+            var tick = UiKit.PanelBox(StaminaTickName, bar, new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1f, StaminaBarHeight + 4f), StaminaTickColor);
+            tick.raycastTarget = false;
         }
+
+        /// <summary>체력 바의 80% 눈금(회복 상한) 오브젝트 이름과 색.</summary>
+        public const string StaminaTickName = "Tick80";
+        public static readonly Color StaminaTickColor = new Color(0.04f, 0.05f, 0.06f, 0.85f);
 
         /// <summary>달리는 중(Worker.IsRunning)이면 상태줄 앞에 붙는다.</summary>
         public const string RunningPrefix = "달리는 중 · ";
@@ -396,8 +403,8 @@ namespace ParcelFactory.Game
 
         private void BuildHelp()
         {
-            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 336f)).rectTransform;
-            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~6 도구 선택 · Q·Esc 빈손\nR 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배", 12, UiKit.Muted, TextAnchor.UpperLeft);
+            help = UiKit.PanelBox("Help", Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(330f, 372f)).rectTransform;
+            helpText = UiKit.Label("Text", help, "WASD/방향키 이동 · E 집기·놓기·설치·검사 · X 해체\nSpace 달리기(체력 소모)\nB 상점 · C 상태창(EXP 강화)\n1~7 도구 선택 · Q·Esc 빈손\nR 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n검사대 위 택배는 검사 전까지 멈춥니다.\n팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배\n브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)", 12, UiKit.Muted, TextAnchor.UpperLeft);
             helpText.rectTransform.offsetMin = new Vector2(12f, 52f); helpText.rectTransform.offsetMax = new Vector2(-12f, -8f);
             var close = UiKit.Button("Close", help, "닫기", new Vector2(100f, 36f), () => SetHelp(false));
             var crt = close.GetComponent<RectTransform>();
@@ -464,7 +471,7 @@ namespace ParcelFactory.Game
             {
                 case InteractResult.NoFloor: Toast("바닥이 없는 곳입니다"); break;
                 case InteractResult.CannotPutHere: Toast(CannotPutMessage()); break;
-                case InteractResult.NoTool: Toast("도구를 고르세요 (1~6)"); break;
+                case InteractResult.NoTool: Toast("도구를 고르세요 (1~7)"); break;
                 case InteractResult.Locked: Toast("아직 사지 않은 부지입니다"); break;
                 case InteractResult.Occupied: Toast("이미 무언가 있습니다"); break;
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
@@ -522,11 +529,11 @@ namespace ParcelFactory.Game
             return "여기에는 내려놓을 수 없습니다";
         }
 
-        /// <summary>프롬프트를 띄울 월드 위치. 팔레트는 더미 꼭대기 + 0.3(3층 더미도 가리지 않게), 그 외는 칸 위 0.9.</summary>
+        /// <summary>프롬프트를 띄울 월드 위치. 팔레트는 더미 꼭대기 + 0.3(3층 더미도 가리지 않게), 브릿지는 고가 벨트 위 + 0.3, 그 외는 칸 위 0.9.</summary>
         public static Vector3 PromptAnchor(GameSession s, int x, int y)
         {
             var c = s.Grid.Get(x, y);
-            float h = c.Type == CellType.Pallet ? PackageViews.TopHeight(c) + 0.3f : 0.9f;
+            float h = c.Type == CellType.Pallet || c.Type == CellType.Bridge ? PackageViews.TopHeight(c) + 0.3f : 0.9f;
             return Grid3D.Tile(x, y) + new Vector3(0f, h, 0f);
         }
 
@@ -621,7 +628,7 @@ namespace ParcelFactory.Game
             var tool = input.SelectedTool;
             workerText.text = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R 설정")
-                : "빈손 · 1~6으로 도구 선택");
+                : "빈손 · 1~7로 도구 선택");
 
             // 프롬프트: Preview 결과로 문구를 만들고 바라보는 칸 위에 띄운다.
             var r = s.Worker.Preview(tool);

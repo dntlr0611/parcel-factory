@@ -111,9 +111,12 @@ namespace ParcelFactory.Game
             return dim;
         }
 
+        /// <summary>상점 패널 높이: 목록 위 44 + 아래 12, 항목 12개(34 + 간격 4) = 12×34 + 11×4 = 452 → 508.</summary>
+        public const float ShopHeight = 508f;
+
         private void BuildShop()
         {
-            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(340f, 470f), UiKit.Panel2).rectTransform;
+            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(340f, ShopHeight), UiKit.Panel2).rectTransform;
             var title = UiKit.Label("Title", shop, "해금 상점", 16, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
             title.rectTransform.offsetMin = new Vector2(16f, 0f); title.rectTransform.offsetMax = new Vector2(-16f, -12f);
             shopMoney = UiKit.Label("Money", shop, "", 12, UiKit.Muted, TextAnchor.UpperRight);

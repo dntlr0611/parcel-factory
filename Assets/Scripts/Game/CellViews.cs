@@ -177,6 +177,8 @@ namespace ParcelFactory.Game
         public static readonly Color SplitterHub = new Color(0x7A / 255f, 0x5C / 255f, 0xC9 / 255f);
         public static readonly Color SplitterBlue = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f);
         public static readonly Color SplitterRed = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+        /// <summary>브릿지 기둥 색(#5A5F66).</summary>
+        public static readonly Color BridgePost = new Color(0x5A / 255f, 0x5F / 255f, 0x66 / 255f);
 
         /// <summary>분배기 출구 화살표: 허브 중심에서 출구 쪽으로 0.3, 상판 위 0.03.</summary>
         private static void SplitterArrow(Transform parent, string name, Direction d, float top, Material mat)
@@ -250,6 +252,29 @@ namespace ParcelFactory.Game
                         laser.GetComponent<Renderer>().material = MaterialLibrary.Transparent(new Color(1f, 0.2f, 0.2f, 0.45f));
                         Destroy(laser.GetComponent<Collider>());
                     }
+                    break;
+                }
+                case CellType.Bridge:
+                {
+                    // 브릿지(스펙 11.12): 아랫길 = Direction과 수직인 바닥 벨트(양방향 직진이라 화살표 없음),
+                    // 모서리 기둥 4개, 윗길 = 높이 0.9의 고가 벨트(Direction 축, 폭 0.9) + 미끄러지는 화살표.
+                    var lower = Model(cat, "conveyor-stripe", go.transform, Vector3.zero, facing * Quaternion.Euler(0f, 90f, 0f), 1f);
+                    lower.name = "LowerBelt";
+                    const float deck = PackageViews.BridgeDeckHeight;
+                    var postMat = MaterialLibrary.Lit(BridgePost, 0.3f);
+                    foreach (var px in new[] { -0.38f, 0.38f })
+                        foreach (var pz in new[] { -0.38f, 0.38f })
+                            Box("BridgePost", go.transform, new Vector3(px, deck / 2f, pz), new Vector3(0.08f, deck, 0.08f), postMat);
+                    var upper = Model(cat, "conveyor-stripe", go.transform, new Vector3(0f, deck, 0f), facing, 1f);
+                    upper.name = "UpperBelt";
+                    upper.transform.localScale = new Vector3(0.9f, 1f, 1f); // 폭만 0.9(길이는 1칸 그대로 이웃 벨트와 이어진다)
+                    var upperPivot = new GameObject("ArrowPivot").transform;
+                    upperPivot.SetParent(go.transform, false);
+                    upperPivot.localPosition = new Vector3(0f, deck, 0f);
+                    upperPivot.localRotation = facing;
+                    var upperArrow = ChevronMesh.Create(upperPivot);
+                    upperArrow.transform.localPosition = new Vector3(0f, 0.43f, -0.32f);
+                    upperArrow.AddComponent<BeltArrow>();
                     break;
                 }
                 case CellType.Splitter:

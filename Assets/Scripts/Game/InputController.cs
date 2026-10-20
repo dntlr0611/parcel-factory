@@ -14,13 +14,13 @@ namespace ParcelFactory.Game
     /// <summary>설정이 둘인 부품(분배기·팔레트)에서 어느 쪽인가. Primary = 파랑, Secondary = 빨강.</summary>
     public enum ConfigWhich { Primary, Secondary }
 
-    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~6).
+    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~7).
     /// 방향은 순환하지 않는다(스펙 11.8): R → 화살표, 분배기는 R → 1/2 → 화살표, 팔레트는 R → 1(파랑)/2(빨강).
     /// R을 누를 때 바라보는 칸에 설치된 부품이 있으면 그 부품을 그 자리에서 바꾸고, 아니면 손에 든 도구를 바꾼다.
     /// 팔레트 도구는 방향 대신 종류: East = 파랑, West = 빨강(Tool.KindOf).</summary>
     public sealed class InputController : MonoBehaviour
     {
-        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Pallet, CellType.Table, CellType.Splitter, CellType.Scanner };
+        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Bridge, CellType.Pallet, CellType.Table, CellType.Splitter, CellType.Scanner };
         public static int SlotCount => SlotOrder.Length;
 
         public Tool? SelectedTool { get; private set; }
@@ -159,7 +159,7 @@ namespace ParcelFactory.Game
 
             for (int i = 0; i < slots.Length; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
             if (rotate.WasPressedThisFrame()) BeginConfig();
-            if (ConfigMode != ConfigMode.None) { StopMoving(); return; } // 1~6 재탭·R로 방금 설정 모드에 들어갔다
+            if (ConfigMode != ConfigMode.None) { StopMoving(); return; } // 1~7 재탭·R로 방금 설정 모드에 들어갔다
             if (clear.WasPressedThisFrame()) ClearTool();
             if (interact.WasPressedThisFrame()) Interact();
             if (demolish.WasPressedThisFrame()) Demolish();
@@ -268,7 +268,7 @@ namespace ParcelFactory.Game
             return lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
         }
 
-        /// <summary>핫바 슬롯 선택(키 1~6·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지(파랑/빨강), 그 밖에는 설정을 취소하고 그 슬롯을 고른다
+        /// <summary>핫바 슬롯 선택(키 1~7·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지(파랑/빨강), 그 밖에는 설정을 취소하고 그 슬롯을 고른다
         /// (이미 고른 슬롯이면 취소만 하고 설정 모드에 다시 들어가지 않는다). 평소에 이미 고른 슬롯을 다시 고르면 설정 모드에 들어간다(= R).</summary>
         public void SelectSlot(int i)
         {
@@ -293,9 +293,9 @@ namespace ParcelFactory.Game
             ToolChanged?.Invoke();
         }
 
-        /// <summary>설정할 수 있는 부품(레일·고속·검사대·자동 검사기·분배기·팔레트). 입고구·트럭 도크는 바꿀 수 없다.</summary>
+        /// <summary>설정할 수 있는 부품(레일·고속·브릿지(윗길 방향)·검사대·자동 검사기·분배기·팔레트). 입고구·트럭 도크는 바꿀 수 없다.</summary>
         public static bool IsConfigurable(CellType t) =>
-            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Table || t == CellType.Scanner || t == CellType.Splitter || t == CellType.Pallet;
+            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Bridge || t == CellType.Table || t == CellType.Scanner || t == CellType.Splitter || t == CellType.Pallet;
 
         /// <summary>설정이 둘인 부품: 먼저 1(파랑)/2(빨강)을 고른다.</summary>
         public static bool HasTwoSettings(CellType t) => t == CellType.Splitter || t == CellType.Pallet;

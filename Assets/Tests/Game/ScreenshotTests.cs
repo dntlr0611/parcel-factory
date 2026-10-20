@@ -192,6 +192,74 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
+        /// <summary>
+        /// 브릿지 교차(스펙 11.12): 데모 라인(입고 → 레일 → 검사대 → 레일 → 파랑 팔레트) 옆, 부지 확장 1(9×9)에서
+        /// 브릿지 (3,4) 북쪽. 동쪽 줄 (2,4)→(3,4)→(4,4)→빨강 팔레트(5,4)는 아랫길, 북쪽 줄 (3,3)→(3,4)→(3,5)→(3,6)은 윗길.
+        /// 두 차선 모두에 택배가 올라 있고 뒤에 한 개씩 더 기다린다. 작업자는 (2,6)에서 동쪽을 본다. 일시정지로 고정한다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Bridge()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(1000);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Bridge);
+                s.Unlocks.Grant(UnlockId.FastEast);
+                s.Unlocks.Grant(UnlockId.Splitter);
+                s.Toolbar.Add(CellType.Scanner, Direction.East); // 핫바 7칸이 보이게(자동 검사기 해금은 부지 2가 필요하므로 도구만 준다)
+                s.Toolbar.Add(CellType.Conveyor, Direction.North);
+                boot.Hud.RefreshHotbar(); // Toolbar.Add는 해금 이벤트를 내지 않는다
+                Place(s, 1, 2, CellType.Conveyor, Direction.East);
+                Place(s, 2, 2, CellType.Conveyor, Direction.East);
+                Place(s, 3, 2, CellType.Table, Direction.East);
+                Place(s, 4, 2, CellType.Conveyor, Direction.East);
+                Place(s, 3, 4, CellType.Bridge, Direction.North);
+                Place(s, 2, 4, CellType.Conveyor, Direction.East);
+                Place(s, 4, 4, CellType.Conveyor, Direction.East);
+                Place(s, 3, 3, CellType.Conveyor, Direction.North);
+                Place(s, 3, 5, CellType.Conveyor, Direction.North);
+                Place(s, 3, 6, CellType.Conveyor, Direction.North);
+                Assert.IsTrue(s.Sim.TrySpawn(2, 4, PackageKind.Normal, out var east), "spawn east");
+                Assert.IsTrue(s.Sim.TrySpawn(3, 3, PackageKind.Normal, out var north), "spawn north");
+                for (int i = 0; i < 80 && s.Sim.PackagesAt(3, 4).Count < 2; i++) s.Sim.Tick(0.05f);
+                Assert.AreEqual(2, s.Sim.PackagesAt(3, 4).Count, "both lanes should hold a package");
+                for (int i = 0; i < 6; i++) s.Sim.Tick(0.05f); // 칸 가운데 쪽으로
+                // 아랫길 택배는 고가 벨트 밑을 지나는 동안 위에서 가려지므로, 동쪽으로 빠져나오는 순간(진행 0.9)으로 옮겨 찍는다.
+                east.Progress = 0.9f;
+                Assert.IsTrue(s.Sim.TrySpawn(2, 4, PackageKind.Normal, out _), "spawn east 2");
+                Assert.IsTrue(s.Sim.TrySpawn(3, 3, PackageKind.Normal, out _), "spawn north 2");
+                s.Sim.TrySpawn(1, 2, PackageKind.Normal, out _);
+                Assert.AreEqual(Lane.Upper, north.Lane);
+                Assert.AreEqual(Lane.Lower, east.Lane);
+                s.Worker.Worker.X = 2.0f; s.Worker.Worker.Y = 6.0f; s.Worker.Worker.Facing = Direction.East;
+                s.Worker.Worker.Stamina = 90f; // 80% 눈금이 채움 위에 보이게
+                s.Clock.Set(1, 640f);
+                yield return null;
+                yield return new WaitForSeconds(0.3f);
+                Debug.Log($"[Screenshot] bridge status '{boot.StatusBars.TextAt(3, 4)}', slots {boot.Input.AvailableSlots().Count}, packages {s.Sim.Packages.Count}, north {north.X},{north.Y} p{north.Progress:F2}, east {east.X},{east.Y} p{east.Progress:F2}");
+                StringAssert.Contains("브릿지 ↑", boot.StatusBars.TextAt(3, 4));
+                yield return Capture(boot, "unity-bridge.png", Width, Height);
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
         private static void Place(GameSession s, int x, int y, CellType t, Direction d)
         {
             var r = s.Build.TryPlace(x, y, t, d);

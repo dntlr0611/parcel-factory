@@ -12,6 +12,9 @@ namespace ParcelFactory.Game
         private readonly HashSet<int> seen = new HashSet<int>();
         private Transform root;
 
+        /// <summary>택배 id의 상자 오브젝트(지금 그리는 중이 아니면 null). 테스트용.</summary>
+        public GameObject ViewOf(int id) => active.TryGetValue(id, out var go) ? go : null;
+
         public static float SurfaceHeight(CellType t)
         {
             switch (t)
@@ -29,9 +32,17 @@ namespace ParcelFactory.Game
         public const float PalletLayerHeight = 0.4f;
         public const int PalletPerLayer = 2;
 
-        /// <summary>칸 위 표시물(커서 등)이 놓일 높이. 팔레트는 더미 꼭대기, 바닥 칸은 0.</summary>
+        /// <summary>브릿지 고가 벨트 바닥 높이와 윗길 택배 높이(스펙 11.12). 아랫길은 레일과 같은 0.4.</summary>
+        public const float BridgeDeckHeight = 0.9f, BridgeUpperHeight = 1.3f;
+
+        /// <summary>칸 위 택배가 놓일 높이. 브릿지는 차선에 따라 윗길 1.3, 아랫길 0.4.</summary>
+        public static float PackageHeight(Cell c, Lane lane) =>
+            c.Type == CellType.Bridge && lane == Lane.Upper ? BridgeUpperHeight : SurfaceHeight(c.Type);
+
+        /// <summary>칸 위 표시물(커서 등)이 놓일 높이. 팔레트는 더미 꼭대기, 브릿지는 고가 벨트 윗면, 바닥 칸은 0.</summary>
         public static float TopHeight(Cell c)
         {
+            if (c.Type == CellType.Bridge) return BridgeUpperHeight;
             if (c.Type == CellType.Pallet)
                 return SurfaceHeight(CellType.Pallet) + PalletLayerHeight * ((c.Pallet.Count + PalletPerLayer - 1) / PalletPerLayer);
             return c.IsBuilding || c.IsDock || c.Type == CellType.Inlet ? SurfaceHeight(c.Type) : 0f;
@@ -98,7 +109,7 @@ namespace ParcelFactory.Game
                 var dir = p.Progress < 0.5f ? p.EntryHeading : p.Heading;
                 float off = p.Progress - 0.5f;
                 var pos = Grid3D.TileF(p.X + dir.Dx() * off, p.Y + dir.Dy() * off);
-                pos.y = SurfaceHeight(boot.Session.Grid.Get(p.X, p.Y).Type);
+                pos.y = PackageHeight(boot.Session.Grid.Get(p.X, p.Y), p.Lane);
                 go.transform.position = pos;
                 go.transform.rotation = Grid3D.Facing(dir);
                 SetMarks(go, p);
