@@ -366,13 +366,13 @@ namespace ParcelFactory.Game
             var bar = UiKit.PanelBox("Bar", box.transform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(44f, 0f), new Vector2(StaminaBarWidth, StaminaBarHeight), new Color(1f, 1f, 1f, 0.12f)).rectTransform;
             staminaFill = UiKit.PanelBox("Fill", bar, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(StaminaBarWidth, 0f), UiKit.Good);
             // 평소 회복 상한(스펙 11.11): 바 폭의 80% 자리에 1px 어두운 눈금. 채움 위에 그린다. 위치는 고정(최대 체력이 바뀌어도 비율).
-            var tick = UiKit.PanelBox(StaminaTickName, bar, new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1f, StaminaBarHeight + 4f), StaminaTickColor);
+            var tick = UiKit.PanelBox(StaminaTickName, bar, new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(WorkerService.RegenCap, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, StaminaBarHeight + 4f), StaminaTickColor);
             tick.raycastTarget = false;
         }
 
         /// <summary>체력 바의 80% 눈금(회복 상한) 오브젝트 이름과 색.</summary>
         public const string StaminaTickName = "Tick80";
-        public static readonly Color StaminaTickColor = new Color(0.04f, 0.05f, 0.06f, 0.85f);
+        public static readonly Color StaminaTickColor = new Color(1f, 1f, 1f, 0.85f); // 80% 눈금: 녹색 채움과 빈 트랙 양쪽에서 보이도록 밝게
 
         /// <summary>달리는 중(Worker.IsRunning)이면 상태줄 앞에 붙는다.</summary>
         public const string RunningPrefix = "달리는 중 · ";
