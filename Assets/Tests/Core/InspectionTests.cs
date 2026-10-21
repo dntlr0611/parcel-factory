@@ -27,7 +27,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(DeliveryOutcome.BadToOutlet, DeliveryScoring.Outcome(Pkg(true, true, false), CellType.Outlet));
             Assert.AreEqual(DeliveryOutcome.RejectedToOutlet, DeliveryScoring.Outcome(Pkg(true, true, true), CellType.Outlet));
             Assert.AreEqual(DeliveryOutcome.RejectedToOutlet, DeliveryScoring.Outcome(Pkg(false, true, true), CellType.Outlet));
-            Assert.AreEqual(-10, DeliveryScoring.Delta(DeliveryOutcome.UninspectedToOutlet));
+            Assert.AreEqual(-20, DeliveryScoring.Delta(DeliveryOutcome.UninspectedToOutlet)); // 스펙 16.1
             Assert.AreEqual(30, DeliveryScoring.Delta(DeliveryOutcome.Delivered));
             Assert.AreEqual(-30, DeliveryScoring.Delta(DeliveryOutcome.BadToOutlet));
             Assert.AreEqual(-10, DeliveryScoring.Delta(DeliveryOutcome.RejectedToOutlet));
@@ -41,7 +41,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(DeliveryOutcome.ApprovedToReturn, DeliveryScoring.Outcome(Pkg(true, true, false), CellType.ReturnDock));
             Assert.AreEqual(DeliveryOutcome.ReturnedBad, DeliveryScoring.Outcome(Pkg(true, true, true), CellType.ReturnDock));
             Assert.AreEqual(DeliveryOutcome.GoodToReturn, DeliveryScoring.Outcome(Pkg(false, true, true), CellType.ReturnDock));
-            Assert.AreEqual(-5, DeliveryScoring.Delta(DeliveryOutcome.UninspectedToReturn));
+            Assert.AreEqual(-10, DeliveryScoring.Delta(DeliveryOutcome.UninspectedToReturn)); // 스펙 16.1
             Assert.AreEqual(-5, DeliveryScoring.Delta(DeliveryOutcome.ApprovedToReturn));
             Assert.AreEqual(10, DeliveryScoring.Delta(DeliveryOutcome.ReturnedBad));
             Assert.AreEqual(-5, DeliveryScoring.Delta(DeliveryOutcome.GoodToReturn));
@@ -143,7 +143,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 1; x <= 10; x++) grid.Place(x, 2, CellType.Conveyor, Direction.East);
             Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out _));
             for (int i = 0; i < 12; i++) sim.Tick(1f);
-            Assert.AreEqual(-10, economy.Money);
+            Assert.AreEqual(-20, economy.Money);
             Assert.AreEqual(0, sim.DeliveredCount);
         }
 
@@ -215,8 +215,8 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(30, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);
             var q = new PackageFactory(new Random(1), 0.0).Create(6, 0, 0, Direction.East);
-            Assert.AreEqual(-5, sim.DeliverCarried(q, CellType.ReturnDock));
-            Assert.AreEqual(25, economy.Money);
+            Assert.AreEqual(-10, sim.DeliverCarried(q, CellType.ReturnDock));
+            Assert.AreEqual(20, economy.Money);
             Assert.Throws<ArgumentException>(() => sim.DeliverCarried(q, CellType.Conveyor));
         }
     

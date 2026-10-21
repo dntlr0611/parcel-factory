@@ -83,7 +83,7 @@ namespace ParcelFactory.Game
             "검사대 위 택배는 검사 전까지 멈춥니다. 검사한 택배는 부착대에서 E로 운송장을 끌어다 붙이세요(운송장 없이 출고 −20 · 반품 −10).\n" +
             "팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n" +
             "입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n" +
-            "택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n" +
+            "택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 출고 −20 · 반품 −10(스펙 16.1).\n" +
             "분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배\n" +
             "브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)\n" +
             "부지 확장 2 이후: 파란 비행기 마크 = 항공 택배 → 항공 트럭(초록 출고 · 노랑 반품). 운송 수단이 틀리면 −10\n" +
@@ -277,8 +277,8 @@ namespace ParcelFactory.Game
             {
                 case DeliveryOutcome.Delivered: return "정상 출고 +30";
                 case DeliveryOutcome.ReturnedBad: return "불량 반품 +10";
-                case DeliveryOutcome.UninspectedToOutlet: return "검사대를 거치지 않은 택배 · 출고 −10";
-                case DeliveryOutcome.UninspectedToReturn: return "검사대를 거치지 않은 택배 · 반품 −5";
+                case DeliveryOutcome.UninspectedToOutlet: return "검사대를 거치지 않은 택배 · 출고 " + Signed(DeliveryScoring.Delta(o));
+                case DeliveryOutcome.UninspectedToReturn: return "검사대를 거치지 않은 택배 · 반품 " + Signed(DeliveryScoring.Delta(o));
                 case DeliveryOutcome.RejectedToOutlet: return "거부한 택배를 출고 −10";
                 case DeliveryOutcome.BadToOutlet: return "불량을 승인해 출고 −30";
                 case DeliveryOutcome.GoodToReturn: return "정상 택배를 반품 −5";
@@ -700,7 +700,7 @@ namespace ParcelFactory.Game
 
         /// <summary>
         /// 트럭 도크 앞 프롬프트: 도크 이름과 예상 잔액 변화. 숨은 불량 여부(Package.Bad)는 보지 않고 검사 결과가 옳다고 가정한다:
-        /// 승인 → 출고 +30 / 반품 −5, 거부 → 반품 +10 / 출고 −10, 미검사 → 출고 −10 / 반품 −5.
+        /// 승인 → 출고 +30 / 반품 −5, 거부 → 반품 +10 / 출고 −10, 미검사 → 출고 −20 / 반품 −10(스펙 16.1).
         /// 실제 지급·토스트·팝업은 DeliveryScoring의 진짜 결과를 따르므로 검사 실수는 배송 뒤에 드러난다.
         /// </summary>
         public static string DeliverLabel(bool outlet, bool inspected, bool rejected)

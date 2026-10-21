@@ -8,6 +8,10 @@ namespace ParcelFactory.Core
         public const int Height = 12;
         public const int InitialUnlocked = 6;
         public const int InletX = 0, InletY = 2;
+        /// <summary>부지마다 하나씩 늘어나는 입고구(스펙 16.2): 확장 1 → (0,7), 확장 2 → (0,10). 모두 동쪽으로 내보낸다.</summary>
+        public const int Plot1InletY = 7, Plot2InletY = 10;
+        /// <summary>입고구가 생길 수 있는 칸 전부(처음부터 있는 것 먼저). 입고 순서도 이 순서다.</summary>
+        public static readonly (int x, int y)[] InletTiles = { (InletX, InletY), (InletX, Plot1InletY), (InletX, Plot2InletY) };
         /// <summary>트럭 도크(스펙 10.1): 동쪽 벽 출입구 바로 안쪽. 해금 여부와 무관하게 처음부터 존재한다.</summary>
         public const int OutletX = 11, OutletY = 2;
         public const int ReturnDockX = 11, ReturnDockY = 4;
@@ -28,13 +32,18 @@ namespace ParcelFactory.Core
                 for (int y = 0; y < Height; y++)
                     cells[x, y] = new Cell { Type = IsUnlocked(x, y) ? CellType.Empty : CellType.Locked };
 
-            cells[InletX, InletY].Type = CellType.Inlet;
-            cells[InletX, InletY].Direction = Direction.East;
+            SetInlet(cells[InletX, InletY]);
             cells[OutletX, OutletY].Type = CellType.Outlet;
             cells[ReturnDockX, ReturnDockY].Type = CellType.ReturnDock;
 
             SetPallet(cells[StartBluePalletX, StartBluePalletY], PalletKind.Blue);
             SetPallet(cells[StartRedPalletX, StartRedPalletY], PalletKind.Red);
+        }
+
+        private static void SetInlet(Cell c)
+        {
+            c.Type = CellType.Inlet;
+            c.Direction = Direction.East;
         }
 
         private static void SetPallet(Cell c, PalletKind kind)
@@ -61,6 +70,9 @@ namespace ParcelFactory.Core
                 for (int y = 0; y < Height; y++)
                     if (cells[x, y].Type == CellType.Locked && IsUnlocked(x, y))
                         cells[x, y].Type = CellType.Empty;
+            // 부지 확장 1(9×9) 이상이면 (0,7), 2(12×12)면 (0,10)에 입고구(스펙 16.2). 잠긴 칸이던 자리라 충돌이 없다.
+            if (size >= 9) SetInlet(cells[InletX, Plot1InletY]);
+            if (size == Width) SetInlet(cells[InletX, Plot2InletY]);
             if (size == Width)
             {
                 cells[AirOutletX, AirOutletY].Type = CellType.AirOutlet;

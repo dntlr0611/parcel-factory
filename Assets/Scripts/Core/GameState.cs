@@ -11,7 +11,10 @@ namespace ParcelFactory.Core
         public List<string> Purchased = new List<string>();
         public List<CellState> Cells = new List<CellState>();
         public List<PackageState> Packages = new List<PackageState>();
+        /// <summary>입고구 (0,2)의 타이머. v8부터는 InletTimers에도 있다.</summary>
         public float SpawnTimer;
+        /// <summary>입고구마다의 타이머(v8, 스펙 16.2). 없으면(null, v7 이하) (0,2)는 SpawnTimer, 나머지는 기본값(간격의 절반).</summary>
+        public List<InletTimerState> InletTimers;
         public int NextPackageId;
         public int DeliveredCount;
         public int LostCount;
@@ -40,6 +43,13 @@ namespace ParcelFactory.Core
         public int StaminaLevel;
         public int SpeedLevel;
         public int RegenLevel;
+    }
+
+    public sealed class InletTimerState
+    {
+        public int X;
+        public int Y;
+        public float Timer;
     }
 
     public sealed class CellState

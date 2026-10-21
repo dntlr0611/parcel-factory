@@ -6,10 +6,10 @@ namespace ParcelFactory.Core
     {
         Delivered,            // 승인·정상 → 출고구 +30
         ReturnedBad,          // 거부·불량 → 반품구 +10
-        UninspectedToOutlet,  // −10
+        UninspectedToOutlet,  // −20 (스펙 16.1)
         RejectedToOutlet,     // −10
         BadToOutlet,          // 승인·불량 → 출고구 −30
-        UninspectedToReturn,  // −5
+        UninspectedToReturn,  // −10 (스펙 16.1)
         GoodToReturn,         // 거부·정상 → 반품구 −5
         ApprovedToReturn,     // 승인 → 반품구 −5
         WrongCarrier,         // 항공 택배 → 일반 트럭, 일반 택배 → 항공 트럭 −10 (스펙 14.3)
@@ -48,10 +48,10 @@ namespace ParcelFactory.Core
             {
                 case DeliveryOutcome.Delivered: return 30;
                 case DeliveryOutcome.ReturnedBad: return 10;
-                case DeliveryOutcome.UninspectedToOutlet: return -10;
+                case DeliveryOutcome.UninspectedToOutlet: return -20; // 스펙 16.1(이전 −10)
                 case DeliveryOutcome.RejectedToOutlet: return -10;
                 case DeliveryOutcome.BadToOutlet: return -30;
-                case DeliveryOutcome.UninspectedToReturn: return -5;
+                case DeliveryOutcome.UninspectedToReturn: return -10; // 스펙 16.1(이전 −5)
                 case DeliveryOutcome.GoodToReturn: return -5;
                 case DeliveryOutcome.ApprovedToReturn: return -5;
                 case DeliveryOutcome.WrongCarrier: return -10;

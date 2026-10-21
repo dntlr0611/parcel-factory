@@ -495,10 +495,10 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual((11, 2), s.Worker.FacingTile());
                 yield return null;
                 var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<UnityEngine.UI.Text>();
-                StringAssert.Contains("출고 (미검사 −10)", promptText.text);
+                StringAssert.Contains("출고 (미검사 −20)", promptText.text); // 스펙 16.1
                 // 프롬프트는 숨은 불량 여부를 드러내지 않는다: 검사 판정이 옳다고 가정한 금액만 보인다.
-                Assert.AreEqual("출고 (미검사 −10)", HudController.DeliverLabel(true, false, false));
-                Assert.AreEqual("반품 (미검사 −5)", HudController.DeliverLabel(false, false, false));
+                Assert.AreEqual("출고 (미검사 −20)", HudController.DeliverLabel(true, false, false));
+                Assert.AreEqual("반품 (미검사 −10)", HudController.DeliverLabel(false, false, false));
                 Assert.AreEqual("출고 +30", HudController.DeliverLabel(true, true, false));
                 Assert.AreEqual("반품 (승인한 택배 −5)", HudController.DeliverLabel(false, true, false));
                 Assert.AreEqual("반품 +10", HudController.DeliverLabel(false, true, true));
@@ -506,7 +506,7 @@ namespace ParcelFactory.Game.Tests
                 int money0 = s.Economy.Money;
                 boot.Input.Interact();
                 Assert.IsNull(s.Worker.Worker.Carrying);
-                Assert.AreEqual(money0 - 10, s.Economy.Money);
+                Assert.AreEqual(money0 - 20, s.Economy.Money);
                 StringAssert.Contains("검사대를 거치지 않은", boot.Hud.LastToast);
                 // 세션을 바꾸면 새 세션의 배송도 토스트가 뜬다(이전 구독은 끊김).
                 boot.StartNewGame();

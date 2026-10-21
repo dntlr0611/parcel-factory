@@ -27,7 +27,7 @@ namespace ParcelFactory.Game
         private static readonly Color LaneColor = Hex(0xE9C94A);
 
         private ModelCatalog cat;
-        private Transform root, lotRoot, wallsRoot, eastWall, airDocks;
+        private Transform root, lotRoot, wallsRoot, eastWall, airDocks, westWall, inletDocks;
         private GameSession bound;
         private int framedSize = -1, framedW, framedH;
 
@@ -51,12 +51,14 @@ namespace ParcelFactory.Game
             bound.Unlocks.Unlocked += OnUnlocked;
             RebuildLot(session);
             RebuildEastSide(session);
+            RebuildWestSide(session);
         }
 
         private void OnUnlocked(UnlockId id)
         {
             RebuildLot(bound);
             if (id == UnlockId.Plot2) RebuildEastSide(bound); // 항공 도크는 부지 확장 2에서만 생긴다(세션 교체는 Bind가 다시 만든다)
+            if (id == UnlockId.Plot1 || id == UnlockId.Plot2) RebuildWestSide(bound); // 부지마다 입고구 하나(스펙 16.2)
         }
 
         private static Color Hex(int rgb) => new Color(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
@@ -223,8 +225,7 @@ namespace ParcelFactory.Game
             var walls = wallsRoot = Group("Walls");
             const float h = HalfBuilding;
             WallRun(walls, -h, h, h, h); // 북쪽 전체. 남쪽(카메라 쪽)은 트임.
-            SideWall(walls, -h, new[] { RowZ(FactoryGrid.InletY) });
-            // 동쪽 벽은 항공 도크(스펙 14.1) 유무에 따라 출입구가 달라 RebuildEastSide에서 만든다.
+            // 서쪽 벽은 입고구 수(스펙 16.2), 동쪽 벽은 항공 도크(스펙 14.1) 유무에 따라 출입구가 달라 RebuildWestSide·RebuildEastSide에서 만든다.
             var darkMat = MaterialLibrary.Lit(WallDark, 0.15f);
             foreach (var (x, z) in new[] { (h, h), (-h, h), (h, -h), (-h, -h) })
                 Box("CornerPillar", walls, new Vector3(x, (WallHeight + 0.3f) / 2f, z), new Vector3(0.5f, WallHeight + 0.3f, 0.5f), darkMat);
@@ -285,7 +286,7 @@ namespace ParcelFactory.Game
             var docks = Group("Docks");
             // 차량은 벽 밖 출입구 앞에 후진 주차한다(모델 앞 = +z 가정: 뒤가 출입구를 향하도록 yaw).
             // 트럭 도크(스펙 10.1)는 동쪽 벽 출입구 바로 안쪽 칸 (11,2)·(11,4). 좌표는 FactoryGrid에서만 읽는다.
-            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, new Color(0.25f, 0.64f, 0.35f), "van", -8.5f, -90f, truck: false, Hex(0x3FA35A));
+            Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, InletSlab, "van", -8.5f, -90f, truck: false, InletVan);
             Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true, Hex(0x3D7BE0));
             Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true, Hex(0xD95A4A));
         }
@@ -318,6 +319,33 @@ namespace ParcelFactory.Game
                 AirSign(Dock(airDocks, FactoryGrid.AirOutletX, FactoryGrid.AirOutletY, AirOutletColor, "delivery", 8.6f, 90f, truck: true, AirOutletColor, "Dock_air-outlet"), AirOutletColor);
             if (airRet)
                 AirSign(Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "truck", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return"), AirReturnColor);
+        }
+
+        /// <summary>입고 트럭 색(초록). 부지 확장 입고구도 (0,2)와 같다.</summary>
+        private static readonly Color InletSlab = new Color(0.25f, 0.64f, 0.35f);
+        private static readonly Color InletVan = Hex(0x3FA35A);
+
+        /// <summary>
+        /// 서쪽 벽과 부지 확장 입고구(스펙 16.2). 출입구는 격자에 있는 입고구 줄마다 낸다((0,2)는 항상, (0,7)·(0,10)은 확장 뒤).
+        /// (0,2)의 도크·밴은 BuildDocks가 만들고, 확장 입고구는 같은 모양(슬래브·신호등·바닥 차선·초록 밴)으로 여기서 만든다.
+        /// </summary>
+        private void RebuildWestSide(GameSession session)
+        {
+            if (wallsRoot == null) return;
+            if (westWall != null) Destroy(westWall.gameObject);
+            if (inletDocks != null) Destroy(inletDocks.gameObject);
+            westWall = new GameObject("West").transform;
+            westWall.SetParent(wallsRoot, false);
+            inletDocks = Group("InletDocks");
+            var rows = new List<float>();
+            foreach (var (x, y) in FactoryGrid.InletTiles)
+            {
+                if (session.Grid.Get(x, y).Type != CellType.Inlet) continue;
+                rows.Add(RowZ(y));
+                if ((x, y) != (FactoryGrid.InletX, FactoryGrid.InletY))
+                    Dock(inletDocks, x, y, InletSlab, "van", -8.5f, -90f, truck: false, InletVan, "Dock_inlet-" + y);
+            }
+            SideWall(westWall, -HalfBuilding, rows);
         }
 
         /// <summary>트럭 지붕 위 비행기 표지판: 기둥 + 트럭 색 테두리 + 파란 판 + 흰 비행기(ui-air). 판은 카메라를 향해 기운다.</summary>

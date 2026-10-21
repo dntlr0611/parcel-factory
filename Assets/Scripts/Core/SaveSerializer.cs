@@ -12,8 +12,9 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        /// <summary>v7: 택배 Air(스펙 14.4). v6 저장도 읽는다(Air = false, 항공 도크는 부지 확장 2 복원 때 다시 생긴다).</summary>
-        public const int CurrentVersion = 7;
+        /// <summary>v7: 택배 Air(스펙 14.4). v6 저장도 읽는다(Air = false, 항공 도크는 부지 확장 2 복원 때 다시 생긴다).
+        /// v8: 입고구마다의 타이머(스펙 16.2). v7 이하도 읽는다(부지 확장 입고구 자리의 설치물은 환불 철거).</summary>
+        public const int CurrentVersion = 8;
         /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
         public const int MinReadableVersion = 6;
 
@@ -48,6 +49,9 @@ namespace ParcelFactory.Core
 
             foreach (var id in s.Unlocks.Purchased)
                 st.Purchased.Add(id.ToString());
+            st.InletTimers = new List<InletTimerState>();
+            foreach (var (x, y, timer) in s.Spawner.Timers())
+                st.InletTimers.Add(new InletTimerState { X = x, Y = y, Timer = timer });
 
             for (int x = 0; x < FactoryGrid.Width; x++)
             {
@@ -124,10 +128,17 @@ namespace ParcelFactory.Core
                     if (s.Grid.Get(x, y).IsBuilding) s.Grid.Clear(x, y);
 
             int maxId = -1;
-            // v6 저장(스펙 14.1): 부지 확장 2 뒤 (11,7)·(11,9)는 빈 칸이었다. 지금은 Grant(Plot2)가 항공 도크로 만들었으므로
-            // 그 칸에 지어 둔 설치물은 설치비 전액 환불로 철거하고, 그 위(팔레트 더미·브릿지 아랫길 포함)의 택배는 소실로 센다.
+            // 예전 저장에서 빈 칸이던 자리가 지금은 해금으로 고정 칸이 된 경우(스펙 14.1, 16.2):
+            // v6의 항공 도크 (11,7)·(11,9), v7 이하의 부지 확장 입고구 (0,7)·(0,10). 지금은 Grant가 그 칸을 만들었으므로
+            // 거기 지어 둔 설치물은 설치비 전액 환불로 철거하고, 그 위(팔레트 더미·브릿지 아랫길 포함)의 택배는 소실로 센다.
             int droppedParcels = 0, refund = 0;
-            bool AirDockTile(int x, int y) => st.Version < 7 && s.Grid.InBounds(x, y) && Cell.IsAirDock(s.Grid.Get(x, y).Type);
+            bool AirDockTile(int x, int y)
+            {
+                if (!s.Grid.InBounds(x, y)) return false;
+                var t = s.Grid.Get(x, y).Type;
+                if (st.Version < 7 && Cell.IsAirDock(t)) return true;
+                return st.Version < 8 && t == CellType.Inlet && (x, y) != (FactoryGrid.InletX, FactoryGrid.InletY);
+            }
             foreach (var c in st.Cells)
             {
                 var type = ParseDefined<CellType>(c.Type);
@@ -220,7 +231,13 @@ namespace ParcelFactory.Core
             s.Sim.DeliveredCount = st.DeliveredCount;
             s.Sim.LostCount = st.LostCount + droppedParcels;
             if (refund > 0) s.Economy.Earn(refund);
-            s.Spawner.Timer = st.SpawnTimer;
+            s.Spawner.Timer = st.SpawnTimer; // 음수·NaN이면 ArgumentOutOfRangeException → corrupt save
+            if (st.InletTimers != null)
+                foreach (var it in st.InletTimers)
+                {
+                    if (it == null) throw new SaveVersionException("null inlet timer");
+                    s.Spawner.SetTimer(it.X, it.Y, it.Timer); // 입고구가 아니거나 잘못된 값이면 예외 → corrupt save
+                }
             s.Paused = st.Paused;
             s.Speed = st.Speed;
 

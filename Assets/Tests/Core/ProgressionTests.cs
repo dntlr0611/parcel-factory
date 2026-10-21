@@ -301,7 +301,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V6_RoundTripsExpLevelsAndDayStartExp()
         {
-            Assert.AreEqual(7, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(8, SaveSerializer.CurrentVersion);
             var s = new GameSession();
             s.Progression.AddExp(500);
             s.Progression.TryUpgrade(Stat.Stamina);
@@ -314,7 +314,7 @@ namespace ParcelFactory.Core.Tests
             s.Progression.AddExp(14);
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(7, st.Version);
+            Assert.AreEqual(8, st.Version);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.AreEqual(s.Progression.Exp, r.Progression.Exp);
             Assert.AreEqual(2, r.Progression.Level(Stat.Stamina));

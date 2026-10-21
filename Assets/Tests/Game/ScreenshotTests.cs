@@ -501,6 +501,54 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
+        /// <summary>
+        /// 부지마다 입고구(스펙 16.2): 12×12에서 서쪽 벽 (0,2)·(0,7)·(0,10) 세 입고구와 초록 입고 트럭, 각 입고구 앞 짧은 레일(1..3, ·)에 택배.
+        /// 일시정지로 고정한다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Inlets()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(1000);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                yield return null;
+                foreach (var (x, y) in FactoryGrid.InletTiles)
+                {
+                    Assert.AreEqual(CellType.Inlet, s.Grid.Get(x, y).Type, $"inlet ({x},{y})");
+                    for (int rx = 1; rx <= 3; rx++) Place(s, rx, y, CellType.Conveyor, Direction.East);
+                    Assert.IsTrue(s.Sim.TrySpawn(x, y, PackageKind.Normal, out var a), "spawn at inlet");
+                    a.Progress = 0.5f;
+                    Assert.IsTrue(s.Sim.TrySpawn(2, y, PackageKind.Normal, out var b), "spawn on rail");
+                    b.Progress = 0.5f;
+                }
+                s.Worker.Worker.X = 4.0f; s.Worker.Worker.Y = 5.0f; s.Worker.Worker.Facing = Direction.West;
+                s.Clock.Set(1, 640f);
+                yield return new WaitForSeconds(HudController.PopupSeconds + 0.2f); // 설치비 팝업이 사라질 때까지
+                Assert.IsNotNull(GameObject.Find("World/InletDocks/Dock_inlet-7/van"));
+                Assert.IsNotNull(GameObject.Find("World/InletDocks/Dock_inlet-10/van"));
+                yield return Capture(boot, "unity-inlets.png", Width, Height);
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
         private static void Place(GameSession s, int x, int y, CellType t, Direction d)
         {
             var r = s.Build.TryPlace(x, y, t, d);

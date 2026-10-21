@@ -322,7 +322,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V7_RoundTripsAirOnLinePalletAndHands()
         {
-            Assert.AreEqual(7, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(8, SaveSerializer.CurrentVersion);
             var s = new GameSession(new Economy(1000));
             s.Unlocks.Grant(UnlockId.Plot2);
             s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
@@ -340,7 +340,7 @@ namespace ParcelFactory.Core.Tests
             s.Worker.Worker.Carrying = carried;
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(7, st.Version);
+            Assert.AreEqual(8, st.Version);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.IsTrue(r.Sim.PackageAt(1, 2).Air);
             Assert.IsTrue(r.Grid.Get(5, 2).Pallet[0].Air);

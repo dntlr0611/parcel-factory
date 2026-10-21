@@ -177,7 +177,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual("항공 정상 출고 +30", boot.Hud.LastToast);
 
                 Assert.AreEqual("항공 반품 +10", HudController.DeliverLabel(CellType.AirReturnDock, true, true, true));
-                Assert.AreEqual("항공 출고 (미검사 −10)", HudController.DeliverLabel(CellType.AirOutlet, true, false, false));
+                Assert.AreEqual("항공 출고 (미검사 −20)", HudController.DeliverLabel(CellType.AirOutlet, true, false, false));
                 Assert.AreEqual("운송 수단 틀림 −10", HudController.DeliverLabel(CellType.Outlet, true, true, false));
                 Assert.AreEqual("출고 +30", HudController.DeliverLabel(CellType.Outlet, false, true, false));
                 Assert.AreEqual(-10, HudController.ExpectedDelta(CellType.ReturnDock, true, true, true));

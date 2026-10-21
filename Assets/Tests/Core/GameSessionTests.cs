@@ -31,8 +31,8 @@ namespace ParcelFactory.Core.Tests
             for (int x = 1; x <= 10; x++)
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(x, 2, CellType.Conveyor, Direction.East));
             Assert.AreEqual(100, s.Economy.Money);
-            for (int i = 0; i < 390; i++) s.Tick(0.05f); // 19.5초: 8초에 생성, 11초 이동, 검사 없이 출고 → −10
-            Assert.AreEqual(90, s.Economy.Money);
+            for (int i = 0; i < 390; i++) s.Tick(0.05f); // 19.5초: 8초에 생성, 11초 이동, 검사 없이 출고 → −20(스펙 16.1)
+            Assert.AreEqual(80, s.Economy.Money);
             Assert.AreEqual(0, s.Sim.DeliveredCount);
         }
 
