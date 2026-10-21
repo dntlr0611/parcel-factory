@@ -20,13 +20,16 @@ namespace ParcelFactory.Game
         public const string Version = "v0.8";
         public const string FooterText = Version + " · 에셋 Kenney (CC0) · 폰트 Noto Sans KR · Sora (OFL)";
         public const string TitleText = "PARCEL FACTORY", SubtitleText = "택배 공장 운영 시뮬레이션";
-        public const float MenuWidth = 300f, MenuHeight = 52f, MenuGap = 10f;
+        public const float MenuWidth = 300f, MenuHeight = 52f, MenuGap = 10f, ColumnLeft = 96f;
 
-        public enum Item { Resume, Continue, NewGame, Controls, Quit }
+        public enum Item { Resume, Continue, NewGame, Settings, Controls, Quit }
 
         public bool IsOpen { get; private set; }
         /// <summary>조작법 카드가 떠 있는가.</summary>
         public bool ControlsOpen => controls != null && controls.gameObject.activeSelf;
+        /// <summary>설정 카드(스펙 13.3). 시작 화면 메뉴의 설정 또는 인게임 메뉴 → 설정으로 연다.</summary>
+        public SettingsCard Settings { get; private set; }
+        public bool SettingsOpen => Settings != null && Settings.IsOpen;
         /// <summary>인게임 메뉴로 열렸는가(첫 버튼이 계속하기).</summary>
         public bool InGame { get; private set; }
         /// <summary>지금 선택된 메뉴 항목.</summary>
@@ -43,6 +46,7 @@ namespace ParcelFactory.Game
         private readonly Dictionary<Item, string> labels = new Dictionary<Item, string>();
         private Text continueSub, saveError;
         private GameObject hint;
+        private RectTransform titleRow;
         private int selected;
         // 인게임 메뉴의 새 게임·종료는 두 번 눌러야 실행된다(진행 손실 방지). 첫 누름이 확인 상태를 켠다.
         public const float ConfirmSeconds = 3f;
@@ -85,7 +89,7 @@ namespace ParcelFactory.Game
             var shade = UiKit.Fill("Shade", root).gameObject.AddComponent<Image>();
             shade.sprite = UiSprites.HorizontalFade(UiKit.DarkAlpha(0.88f), UiKit.DarkAlpha(0.22f)); shade.color = new Color(8f / 255f, 11f / 255f, 13f / 255f, 1f); shade.raycastTarget = true;
 
-            var col = UiKit.Rect("Column", root, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(96f, 0f), new Vector2(MenuWidth, 520f));
+            var col = UiKit.Rect("Column", root, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(ColumnLeft, 0f), new Vector2(MenuWidth, 520f));
             var g = col.gameObject.AddComponent<VerticalLayoutGroup>();
             g.childAlignment = TextAnchor.MiddleLeft; g.spacing = 0f;
             g.childControlWidth = false; g.childControlHeight = false; g.childForceExpandWidth = false; g.childForceExpandHeight = false;
@@ -97,7 +101,7 @@ namespace ParcelFactory.Game
             UiKit.AddShadow(logo.rectTransform, 14, UiKit.Elevation.Panel);
             Spacer(col, 22f);
             // Sora Bold 44, 자간 넓게: UGUI Text에는 자간이 없으므로 글자마다 Text를 두고 간격 3.5(0.08em)로 늘어놓는다.
-            var title = UiKit.Rect("Title", col, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(640f, 52f));
+            var title = titleRow = UiKit.Rect("Title", col, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(640f, 52f));
             var tg = UiKit.Row(title, 3.5f, new RectOffset(0, 0, 0, 0)); tg.childAlignment = TextAnchor.MiddleLeft;
             foreach (var ch in TitleText)
             {
@@ -111,7 +115,7 @@ namespace ParcelFactory.Game
             sub.rectTransform.sizeDelta = new Vector2(MenuWidth, 24f);
             Spacer(col, 36f);
 
-            var menu = UiKit.Rect("Menu", col, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(MenuWidth, 4f * MenuHeight + 3f * MenuGap));
+            var menu = UiKit.Rect("Menu", col, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(MenuWidth, 5f * MenuHeight + 4f * MenuGap));
             var mg = menu.gameObject.AddComponent<VerticalLayoutGroup>();
             mg.spacing = MenuGap; mg.childAlignment = TextAnchor.UpperLeft;
             mg.childControlWidth = true; mg.childControlHeight = true; mg.childForceExpandWidth = true; mg.childForceExpandHeight = false;
@@ -119,6 +123,7 @@ namespace ParcelFactory.Game
             MenuButton(menu, Item.Resume, "계속하기", "ui-play", Resume);
             MenuButton(menu, Item.Continue, "이어하기", "ui-load", Continue);
             MenuButton(menu, Item.NewGame, "새 게임", "ui-new", NewGame);
+            MenuButton(menu, Item.Settings, "설정", "ui-settings", OpenSettings);
             MenuButton(menu, Item.Controls, "조작법", "ui-help", () => SetControls(true));
             MenuButton(menu, Item.Quit, "종료", "ui-exit", Quit);
             // 이어하기는 버튼 안 아래줄에 "N일차 · ₩금액".
@@ -139,6 +144,7 @@ namespace ParcelFactory.Game
             hint = hintRt.gameObject;
 
             BuildControls();
+            Settings = SettingsCard.Build(root);
             root.gameObject.SetActive(false);
         }
 
@@ -190,6 +196,17 @@ namespace ParcelFactory.Game
             if (controls != null) controls.gameObject.SetActive(open);
         }
 
+        /// <summary>설정 카드를 연다(메뉴의 설정).</summary>
+        public void OpenSettings() { if (Settings != null) Settings.Open(SettingsFreeLeft()); }
+
+        /// <summary>설정 카드를 놓을 빈 영역의 왼쪽 끝: 메뉴 열(왼쪽 96 + 제목·메뉴 중 넓은 쪽) + 48.</summary>
+        private float SettingsFreeLeft()
+        {
+            float w = MenuWidth;
+            if (titleRow != null) w = Mathf.Max(w, LayoutUtility.GetPreferredWidth(titleRow));
+            return ColumnLeft + w + 48f;
+        }
+
         /// <summary>시작 화면을 띄운다. inGame이면 첫 버튼이 계속하기(현재 세션 재개), 아니면 이어하기/새 게임.</summary>
         public void Show(bool inGame)
         {
@@ -208,6 +225,7 @@ namespace ParcelFactory.Game
             if (boot.Hud != null) { boot.Hud.CloseHelp(); boot.Hud.SetVisible(false); }
             RefreshMenu();
             SetControls(false);
+            if (Settings != null) Settings.Close();
             if (hint != null) hint.SetActive(boot.Hud == null || !boot.Hud.TouchMode);
             hoverLive = false; hoveredItem = null;
             pointerAtShow = Pointer.current != null ? Pointer.current.position.ReadValue() : Vector2.zero;
@@ -224,6 +242,7 @@ namespace ParcelFactory.Game
             if (boot.Input != null) boot.Input.SetBlock("start", false);
             if (boot.Hud != null) boot.Hud.SetVisible(true);
             SetControls(false);
+            if (Settings != null) Settings.Close();
             if (root != null) root.gameObject.SetActive(false);
         }
 
@@ -243,6 +262,7 @@ namespace ParcelFactory.Game
             if (InGame) visible.Add(Item.Resume);
             else if (SavedPreview != null) visible.Add(Item.Continue);
             visible.Add(Item.NewGame);
+            visible.Add(Item.Settings);
             visible.Add(Item.Controls);
             if (QuitAvailable) visible.Add(Item.Quit);
             foreach (var kv in buttons) kv.Value.gameObject.SetActive(visible.Contains(kv.Key));
@@ -339,16 +359,25 @@ namespace ParcelFactory.Game
             }
             var kb = Keyboard.current;
             var pad = Gamepad.current;
-            bool esc = kb != null && kb.escapeKey.wasPressedThisFrame;
-            if (ControlsOpen)
-            {
-                if (esc || (pad != null && pad.buttonEast.wasPressedThisFrame)) SetControls(false);
-                return;
-            }
+            bool esc = (kb != null && kb.escapeKey.wasPressedThisFrame) || (pad != null && pad.buttonEast.wasPressedThisFrame);
             bool up = (kb != null && (kb.upArrowKey.wasPressedThisFrame || kb.wKey.wasPressedThisFrame)) || (pad != null && pad.dpad.up.wasPressedThisFrame);
             bool down = (kb != null && (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame)) || (pad != null && pad.dpad.down.wasPressedThisFrame);
-            bool go = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame || kb.eKey.wasPressedThisFrame))
-                || (pad != null && pad.buttonSouth.wasPressedThisFrame);
+            bool left = (kb != null && (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame)) || (pad != null && pad.dpad.left.wasPressedThisFrame);
+            bool right = (kb != null && (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame)) || (pad != null && pad.dpad.right.wasPressedThisFrame);
+            bool enter = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame)) || (pad != null && pad.buttonSouth.wasPressedThisFrame); // 카드에서는 게임패드 A도 적용
+            bool go = enter || (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.eKey.wasPressedThisFrame)) || (pad != null && pad.buttonSouth.wasPressedThisFrame);
+            HandleKeys(up, down, left, right, SettingsOpen ? enter : go, esc);
+        }
+
+        /// <summary>
+        /// 키 입력 한 프레임. Esc 우선순위: 설정 카드 → 조작법 카드 → (인게임이면) 계속하기. 카드가 열려 있으면 Esc는 그 카드만 닫는다.
+        /// 설정 카드가 열려 있으면 ↑/↓/←/→/Enter도 카드로 간다.
+        /// </summary>
+        public void HandleKeys(bool up, bool down, bool left, bool right, bool go, bool esc)
+        {
+            if (!IsOpen) return;
+            if (SettingsOpen) { Settings.HandleKeys(up, down, left, right, go, esc); return; }
+            if (ControlsOpen) { if (esc) SetControls(false); return; }
             if (up) MoveSelection(-1);
             else if (down) MoveSelection(1);
             else if (go) Activate();

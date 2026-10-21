@@ -100,6 +100,95 @@ namespace ParcelFactory.Game
         public void SetText(string s) => UiKit.SetNumText(Text, s, false);
     }
 
+    /// <summary>슬라이더(스펙 13.3): 6px 알약 트랙, 앰버 채움, 지름 16 원 손잡이, 오른쪽 값(Sora). 0~100 정수, 클릭·드래그로 바꾼다.</summary>
+    public sealed class UiSlider : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
+    {
+        public RectTransform Track, Knob;
+        public Image Fill;
+        public Text ValueText;
+        public int Min = 0, Max = 100;
+        public int Value { get; private set; }
+        /// <summary>사용자가 값을 바꿨을 때(SetValue(notify: false)는 부르지 않는다).</summary>
+        public event Action<int> Changed;
+        /// <summary>눌렀을 때(설정 카드가 그 행을 선택한다).</summary>
+        public event Action Pressed;
+        /// <summary>손을 뗐을 때(드래그 끝: 설정 카드가 이때 디스크에 저장한다).</summary>
+        public event Action Released;
+
+        public void SetValue(int v, bool notify)
+        {
+            v = Mathf.Clamp(v, Min, Max);
+            bool changed = v != Value;
+            Value = v;
+            float t = Max > Min ? (v - Min) / (float)(Max - Min) : 0f;
+            float w = Track.rect.width > 0f ? Track.rect.width : Track.sizeDelta.x;
+            Fill.rectTransform.sizeDelta = new Vector2(Mathf.Max(w * t, 0f), 0f);
+            Knob.anchoredPosition = new Vector2(w * t, 0f);
+            if (ValueText != null) ValueText.text = v.ToString();
+            if (changed && notify) Changed?.Invoke(v);
+        }
+
+        public void OnPointerDown(PointerEventData e) { Pressed?.Invoke(); FromPointer(e); }
+        public void OnDrag(PointerEventData e) => FromPointer(e);
+        public void OnPointerUp(PointerEventData e) => Released?.Invoke();
+
+        private void FromPointer(PointerEventData e)
+        {
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(Track, e.position, e.pressEventCamera, out var lp)) return;
+            float w = Track.rect.width;
+            if (w <= 0f) return;
+            float t = Mathf.Clamp01((lp.x + Track.pivot.x * w) / w);
+            SetValue(Mathf.RoundToInt(Mathf.Lerp(Min, Max, t)), true);
+        }
+    }
+
+    /// <summary>세그먼트(스펙 13.3): 칸 여러 개 중 하나, 선택 칸 앰버.</summary>
+    public sealed class UiSegment : MonoBehaviour
+    {
+        public Button[] Cells;
+        public int Selected { get; private set; }
+        public event Action<int> Changed;
+
+        public void SetSelected(int i, bool notify)
+        {
+            i = Mathf.Clamp(i, 0, Cells.Length - 1);
+            bool changed = i != Selected;
+            Selected = i;
+            for (int k = 0; k < Cells.Length; k++) UiKit.SetButtonStyle(Cells[k], k == i ? BtnStyle.On : BtnStyle.Normal);
+            if (changed && notify) Changed?.Invoke(i);
+        }
+    }
+
+    /// <summary>스테퍼(스펙 13.3): ‹ 값 › — 양쪽 화살표 버튼으로 목록을 넘긴다(끝에서 멈춘다).</summary>
+    public sealed class UiStepper : MonoBehaviour
+    {
+        public Button Prev, Next;
+        public Text ValueText;
+        public int Index { get; private set; }
+        public int Count { get; private set; }
+        public event Action<int> Changed;
+        private Func<int, string> label;
+
+        public void SetItems(int count, Func<int, string> labelOf, int index)
+        {
+            Count = Mathf.Max(count, 0); label = labelOf;
+            SetIndex(index, false);
+        }
+
+        public void SetIndex(int i, bool notify)
+        {
+            i = Count == 0 ? 0 : Mathf.Clamp(i, 0, Count - 1);
+            bool changed = i != Index;
+            Index = i;
+            ValueText.text = Count > 0 && label != null ? label(i) : "–";
+            Prev.interactable = i > 0; Next.interactable = i < Count - 1;
+            Prev.GetComponent<UiButton>().Apply(); Next.GetComponent<UiButton>().Apply();
+            if (changed && notify) Changed?.Invoke(i);
+        }
+
+        public void Step(int d) => SetIndex(Index + d, true);
+    }
+
     public static partial class UiKit
     {
         /// <summary>키캡 겉 크기(시안 .key는 content-box라 테두리·패딩을 더해 20 높이, 최소 30 폭으로 그려진다).</summary>
@@ -264,6 +353,53 @@ namespace ParcelFactory.Game
                 t.rectTransform.offsetMin = new Vector2(18f, 0f); t.rectTransform.offsetMax = new Vector2(-18f, -18f);
             }
             return card;
+        }
+
+        /// <summary>슬라이더: 트랙 폭 trackWidth, 오른쪽에 값(Sora SemiBold 13, 폭 32).</summary>
+        public static UiSlider Slider(string name, Transform parent, float trackWidth)
+        {
+            var rt = Rect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(trackWidth + 12f + 32f, 24f));
+            var hit = rt.gameObject.AddComponent<Image>(); hit.color = new Color(0f, 0f, 0f, 0f); // 손잡이 주변까지 클릭을 받는 투명 판
+            var track = Box("Track", rt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(trackWidth, 6f), KeyBg, 3).rectTransform;
+            var fill = Box("Fill", track, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(0f, 0f), Accent, 3);
+            var knobImg = Box("Knob", track, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(16f, 16f), Fg, 8);
+            AddShadow(knobImg.rectTransform, 8, Elevation.Low);
+            var value = Label("Value", rt, "0", 13, Fg, TextAnchor.MiddleRight, Fonts.Num);
+            Place(value.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(32f, 24f));
+            var s = rt.gameObject.AddComponent<UiSlider>();
+            s.Track = track; s.Fill = fill; s.Knob = knobImg.rectTransform; s.ValueText = value;
+            return s;
+        }
+
+        /// <summary>세그먼트: 칸 labels를 같은 폭으로 나란히(간격 4). 칸은 버튼 모양(선택 칸 앰버).</summary>
+        public static UiSegment Segment(string name, Transform parent, string[] labels, float width, float height = 30f)
+        {
+            var rt = Rect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(width, height));
+            var g = Row(rt, 4f, new RectOffset(0, 0, 0, 0)); g.childForceExpandWidth = true; g.childAlignment = TextAnchor.MiddleCenter;
+            var seg = rt.gameObject.AddComponent<UiSegment>();
+            seg.Cells = new Button[labels.Length];
+            float cw = (width - 4f * (labels.Length - 1)) / labels.Length;
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int idx = i;
+                seg.Cells[i] = Btn("Cell" + i, rt, labels[i], () => seg.SetSelected(idx, true), fontSize: 12, height: height, fixedSize: new Vector2(cw, height), radius: 8, padX: 0, elevation: Elevation.None);
+            }
+            seg.SetSelected(0, false);
+            return seg;
+        }
+
+        /// <summary>스테퍼: ‹ 버튼 · 값(Sora SemiBold 13) · › 버튼.</summary>
+        public static UiStepper Stepper(string name, Transform parent, float width, float height = 30f)
+        {
+            var rt = Rect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(width, height));
+            var st = rt.gameObject.AddComponent<UiStepper>();
+            st.Prev = Btn("Prev", rt, "‹", () => st.Step(-1), font: Fonts.NumBold, fontSize: 20, fixedSize: new Vector2(height, height), radius: 8, padX: 0, elevation: Elevation.None);
+            Place((RectTransform)st.Prev.transform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(height, height));
+            st.Next = Btn("Next", rt, "›", () => st.Step(1), font: Fonts.NumBold, fontSize: 20, fixedSize: new Vector2(height, height), radius: 8, padX: 0, elevation: Elevation.None);
+            Place((RectTransform)st.Next.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(height, height));
+            st.ValueText = Label("Value", rt, "", 13, Fg, TextAnchor.MiddleCenter, Fonts.Num);
+            st.ValueText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            return st;
         }
 
         /// <summary>자식 하나를 부모 위쪽(top px 아래)에 높이 h, 좌우 여백 pad로 놓는다.</summary>

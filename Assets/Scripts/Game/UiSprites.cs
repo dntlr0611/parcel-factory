@@ -85,6 +85,31 @@ namespace ParcelFactory.Game
             return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), BasePpu * S, 0, SpriteMeshType.FullRect);
         });
 
+        /// <summary>설정 아이콘(가로줄 3개 + 손잡이 원, 64px 흰색). 아이콘 묶음에 톱니가 없어 코드로 그린다.</summary>
+        public static Sprite SlidersIcon() => Get("icon-sliders", () =>
+        {
+            const int n = 64;
+            var tex = NewTex(n, n);
+            var px = new Color32[n * n];
+            float[] ys = { 46f, 32f, 18f }, ks = { 22f, 42f, 28f };
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float px0 = x + 0.5f, py0 = y + 0.5f, d = float.MaxValue;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        float cx = Mathf.Clamp(px0, 10f, 54f);
+                        float line = new Vector2(px0 - cx, py0 - ys[i]).magnitude - 2.5f;  // 굵기 5 캡슐
+                        float ring = Mathf.Abs(new Vector2(px0 - ks[i], py0 - ys[i]).magnitude - 6f) - 2.5f; // 손잡이 링
+                        float hole = 4f - new Vector2(px0 - ks[i], py0 - ys[i]).magnitude; // 링 안쪽은 선을 지운다
+                        d = Mathf.Min(d, Mathf.Min(Mathf.Max(line, hole), ring));
+                    }
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - d) * 255f));
+                }
+            tex.SetPixels32(px); tex.Apply(false, false);
+            return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), BasePpu, 0, SpriteMeshType.FullRect);
+        });
+
         private static Sprite Get(string key, System.Func<Sprite> make)
         {
             if (cache.TryGetValue(key, out var s) && s != null) return s;

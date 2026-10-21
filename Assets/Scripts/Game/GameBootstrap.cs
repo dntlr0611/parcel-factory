@@ -24,6 +24,9 @@ namespace ParcelFactory.Game
         public Panels Panels { get; private set; }
         /// <summary>시작 화면(스펙 12.1). 부팅 직후 StartScreen.ShowOnBoot이면 뜬다.</summary>
         public StartScreen StartScreen { get; private set; }
+        /// <summary>환경설정(스펙 13). 부팅 때 PlayerPrefs에서 읽고 화면 값을 적용한다.</summary>
+        public GameSettings Settings { get; private set; }
+        public AudioDirector Audio { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
 
@@ -41,6 +44,8 @@ namespace ParcelFactory.Game
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
+            Settings = GameSettings.Load();
+            if (Settings.DisplaySaved) Settings.ApplyDisplay(this); // 저장된 화면 값이 없으면 첫 실행 화면을 그대로 둔다
             Catalog = Resources.Load<ModelCatalog>("PF_Catalog");
             if (Catalog == null) Debug.LogError("PF_Catalog not found. Run CatalogBuilder.BuildAll in the editor.");
             WorldRoot = new GameObject("World").transform;
@@ -63,9 +68,14 @@ namespace ParcelFactory.Game
             StatusBars = gameObject.AddComponent<StatusBars>();
             Panels = gameObject.AddComponent<Panels>();
             StartScreen = gameObject.AddComponent<StartScreen>();
+            Audio = gameObject.AddComponent<AudioDirector>();
             // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);
         }
+
+        // 슬라이더 드래그 중의 소리 값은 메모리에만 있다. 앱이 내려가거나 끝날 때 디스크에 쓴다.
+        private void OnApplicationPause(bool paused) { if (paused && Settings != null) Settings.Flush(); }
+        private void OnApplicationQuit() { if (Settings != null) Settings.Flush(); }
 
         public void StartNewGame() => ReplaceSession(new GameSession());
 

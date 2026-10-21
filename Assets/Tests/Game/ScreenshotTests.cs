@@ -237,6 +237,39 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
+        /// <summary>설정 카드(스펙 13.3): 시작 화면 위에 연 카드, 첫 행(음악) 선택. docs/design/unity-settings.png.</summary>
+        [UnityTest]
+        public IEnumerator Capture_Settings()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var prefs = SettingsTests.BackupPrefs();
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                boot.StartScreen.Show(false);
+                boot.StartScreen.OpenSettings();
+                var card = boot.StartScreen.Settings;
+                Assert.IsTrue(card.IsOpen, "settings card hidden");
+                Assert.AreEqual((int)SettingsCard.Row.Music, card.SelectedRow, "음악 행이 선택돼 열린다(앰버 테두리)");
+                yield return new WaitForSeconds(0.5f);
+                yield return Capture(boot, "unity-settings.png", Width, Height);
+                boot.StartScreen.Hide();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+                SettingsTests.RestorePrefs(prefs);
+            }
+            yield return null;
+        }
+
         /// <summary>
         /// 브릿지 교차(스펙 11.12): 데모 라인(입고 → 레일 → 검사대 → 레일 → 파랑 팔레트) 옆, 부지 확장 1(9×9)에서
         /// 브릿지 (3,4) 북쪽. 동쪽 줄 (2,4)→(3,4)→(4,4)→빨강 팔레트(5,4)는 아랫길, 북쪽 줄 (3,3)→(3,4)→(3,5)→(3,6)은 윗길.

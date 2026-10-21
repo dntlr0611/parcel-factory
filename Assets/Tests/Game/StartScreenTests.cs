@@ -74,14 +74,14 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual(minute, boot.Session.Clock.MinuteOfDay, "clock must not run behind the start screen");
 
                 // 조작법: ↓로 선택 이동 후 실행 → 조작 카드, 닫기로 돌아온다.
-                start.MoveSelection(1);
+                start.MoveSelection(2); // 새 게임 → 설정 → 조작법
                 Assert.AreEqual(StartScreen.Item.Controls, start.Selected);
                 start.Activate();
                 Assert.IsTrue(start.ControlsOpen);
                 boot.transform.Find("StartScreen/Controls/Card/Close").GetComponent<Button>().onClick.Invoke();
                 Assert.IsFalse(start.ControlsOpen);
                 Assert.IsTrue(start.IsOpen);
-                start.MoveSelection(-1);
+                start.MoveSelection(-2);
                 Assert.AreEqual(StartScreen.Item.NewGame, start.Selected);
 
                 var old = boot.Session;
