@@ -12,7 +12,8 @@ namespace ParcelFactory.Core
 
     public static class SaveSerializer
     {
-        public const int CurrentVersion = 6;
+        /// <summary>v7: 택배 Air(스펙 14.4). v6 저장도 읽는다(Air = false, 항공 도크는 부지 확장 2 복원 때 다시 생긴다).</summary>
+        public const int CurrentVersion = 7;
         /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
         public const int MinReadableVersion = 6;
 
@@ -70,6 +71,8 @@ namespace ParcelFactory.Core
                         PalletKind = c.PalletKind.ToString(),
                         Pallet = pile,
                         RedDirection = c.RedDirection?.ToString(),
+                        Mode = c.Type == CellType.Splitter || c.Type == CellType.Scanner ? c.Mode.ToString() : null,
+                        AirDirection = c.AirDirection?.ToString(),
                     });
                 }
             }
@@ -121,9 +124,19 @@ namespace ParcelFactory.Core
                     if (s.Grid.Get(x, y).IsBuilding) s.Grid.Clear(x, y);
 
             int maxId = -1;
+            // v6 저장(스펙 14.1): 부지 확장 2 뒤 (11,7)·(11,9)는 빈 칸이었다. 지금은 Grant(Plot2)가 항공 도크로 만들었으므로
+            // 그 칸에 지어 둔 설치물은 설치비 전액 환불로 철거하고, 그 위(팔레트 더미·브릿지 아랫길 포함)의 택배는 소실로 센다.
+            int droppedParcels = 0, refund = 0;
+            bool AirDockTile(int x, int y) => st.Version < 7 && s.Grid.InBounds(x, y) && Cell.IsAirDock(s.Grid.Get(x, y).Type);
             foreach (var c in st.Cells)
             {
                 var type = ParseDefined<CellType>(c.Type);
+                if (AirDockTile(c.X, c.Y))
+                {
+                    refund += BuildingCosts.Cost(type);
+                    droppedParcels += c.Pallet?.Count ?? 0;
+                    continue;
+                }
                 var dir = ParseDefined<Direction>(c.Direction);
                 if (float.IsNaN(c.DemolishRemaining) || c.DemolishRemaining < 0f || c.DemolishRemaining > BuildService.DemolishSeconds)
                     throw new SaveVersionException($"invalid DemolishRemaining {c.DemolishRemaining} at ({c.X},{c.Y})");
@@ -156,10 +169,24 @@ namespace ParcelFactory.Core
                         throw new SaveVersionException($"non-splitter cell ({c.X},{c.Y}) has a red direction");
                     cell.RedDirection = ParseDefined<Direction>(c.RedDirection);
                 }
+                if (c.Mode != null)
+                {
+                    var mode = ParseDefined<RouteMode>(c.Mode);
+                    if (mode != RouteMode.Inspect && type != CellType.Splitter && type != CellType.Scanner)
+                        throw new SaveVersionException($"cell ({c.X},{c.Y}) of type {type} has mode {mode}");
+                    cell.Mode = mode;
+                }
+                if (c.AirDirection != null)
+                {
+                    if (type != CellType.Scanner)
+                        throw new SaveVersionException($"non-scanner cell ({c.X},{c.Y}) has an air exit");
+                    cell.AirDirection = ParseDefined<Direction>(c.AirDirection);
+                }
             }
 
             foreach (var p in st.Packages)
             {
+                if (AirDockTile(p.X, p.Y)) { droppedParcels++; continue; }
                 if (!s.Grid.InBounds(p.X, p.Y))
                     throw new SaveVersionException($"package {p.Id} out of bounds ({p.X},{p.Y})");
                 var target = s.Grid.Get(p.X, p.Y);
@@ -191,7 +218,8 @@ namespace ParcelFactory.Core
 
             s.Sim.NextId = st.NextPackageId;
             s.Sim.DeliveredCount = st.DeliveredCount;
-            s.Sim.LostCount = st.LostCount;
+            s.Sim.LostCount = st.LostCount + droppedParcels;
+            if (refund > 0) s.Economy.Earn(refund);
             s.Spawner.Timer = st.SpawnTimer;
             s.Paused = st.Paused;
             s.Speed = st.Speed;
@@ -218,7 +246,7 @@ namespace ParcelFactory.Core
             Id = p.Id, Kind = p.Kind.ToString(), X = p.X, Y = p.Y,
             Progress = p.Progress, Heading = p.Heading.ToString(), EntryHeading = p.EntryHeading.ToString(),
             Lane = p.Lane.ToString(),
-            Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected,
+            Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected, Air = p.Air, Waybill = p.Waybill,
             LabelDestination = p.Label?.Destination, LabelWeight = p.Label?.Weight ?? 0,
             LabelMethod = p.Label?.Method, LabelScale = p.Label?.Scale ?? 0,
         };
@@ -238,7 +266,7 @@ namespace ParcelFactory.Core
                 Heading = ParseDefined<Direction>(p.Heading),
                 EntryHeading = ParseDefined<Direction>(p.EntryHeading),
                 Lane = p.Lane == null ? Lane.Upper : ParseDefined<Lane>(p.Lane),
-                Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected,
+                Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected, Air = p.Air, Waybill = p.Waybill,
                 Label = new PackageLabel { Destination = p.LabelDestination ?? "", Weight = p.LabelWeight, Method = p.LabelMethod ?? "", Scale = p.LabelScale },
             };
         }

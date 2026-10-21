@@ -14,13 +14,13 @@ namespace ParcelFactory.Game
     /// <summary>설정이 둘인 부품(분배기·팔레트)에서 어느 쪽인가. Primary = 파랑, Secondary = 빨강.</summary>
     public enum ConfigWhich { Primary, Secondary }
 
-    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~7).
+    /// <summary>키보드·게임패드·화면 버튼 입력을 코어 호출로 바꾼다. 핫바는 부품 종류당 한 칸(키 1~8).
     /// 방향은 순환하지 않는다(스펙 11.8): R → 화살표, 분배기는 R → 1/2 → 화살표, 팔레트는 R → 1(파랑)/2(빨강).
     /// R을 누를 때 바라보는 칸에 설치된 부품이 있으면 그 부품을 그 자리에서 바꾸고, 아니면 손에 든 도구를 바꾼다.
     /// 팔레트 도구는 방향 대신 종류: East = 파랑, West = 빨강(Tool.KindOf).</summary>
     public sealed class InputController : MonoBehaviour
     {
-        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Bridge, CellType.Pallet, CellType.Table, CellType.Splitter, CellType.Scanner };
+        public static readonly CellType[] SlotOrder = { CellType.Conveyor, CellType.FastConveyor, CellType.Bridge, CellType.Pallet, CellType.Table, CellType.Labeler, CellType.Splitter, CellType.Scanner };
         public static int SlotCount => SlotOrder.Length;
 
         public Tool? SelectedTool { get; private set; }
@@ -51,6 +51,8 @@ namespace ParcelFactory.Game
         public CellType ConfigType { get; private set; }
         /// <summary>분배기 도구로 설치할 때 함께 적용할 빨간 출구(없으면 자동 규칙).</summary>
         public Direction? ToolSplitterRed { get; private set; }
+        /// <summary>분배기·검사기 도구로 설치할 때 함께 적용할 모드(스펙 14.5, R → 3). 미리보기도 이 모드 색으로 그린다.</summary>
+        public RouteMode ToolMode { get; private set; }
         public event Action ConfigChanged;
         private readonly HashSet<Direction> prevDirs = new HashSet<Direction>(); // 지난 프레임에 눌려 있던 방향(키·스틱·D-패드 합산 벡터의 축별)
         private readonly HashSet<Direction> curDirs = new HashSet<Direction>();
@@ -75,7 +77,7 @@ namespace ParcelFactory.Game
             shop = Button("Shop", "<Keyboard>/b", "<Gamepad>/select");
             status = Button("Status", "<Keyboard>/c", null);
             help = Button("Help", "<Keyboard>/o", null);
-            escape = Button("Escape", "<Keyboard>/escape", null);
+            escape = Button("Escape", "<Keyboard>/escape", "<Gamepad>/buttonEast"); // 게임패드 B로도 카드·패널을 닫는다
             runAction = Button("Run", "<Keyboard>/space", "<Gamepad>/leftTrigger");
             runAction.AddBinding("<Gamepad>/leftShoulder");
             for (int i = 0; i < slots.Length; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
@@ -132,7 +134,8 @@ namespace ParcelFactory.Game
         private void Update()
         {
             if (S == null) return;
-            if (escape.WasPressedThisFrame()) PressEscape();
+            // Esc·B는 한 프레임에 한 단계만(스펙 11.9). B는 빈손(clear)에도 묶여 있어, 여기서 끝내야 패널을 닫고 도구까지 내려놓지 않는다.
+            if (escape.WasPressedThisFrame()) { PressEscape(); return; }
             // 상점·상태창이 유일하게 열려 있으면 B·C 키가 닫기(또는 서로 바꾸기) 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
             bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
@@ -159,7 +162,7 @@ namespace ParcelFactory.Game
 
             for (int i = 0; i < slots.Length; i++) if (slots[i].WasPressedThisFrame()) SelectSlot(i);
             if (rotate.WasPressedThisFrame()) BeginConfig();
-            if (ConfigMode != ConfigMode.None) { StopMoving(); return; } // 1~7 재탭·R로 방금 설정 모드에 들어갔다
+            if (ConfigMode != ConfigMode.None) { StopMoving(); return; } // 1~8 재탭·R로 방금 설정 모드에 들어갔다
             if (clear.WasPressedThisFrame()) ClearTool();
             if (interact.WasPressedThisFrame()) Interact();
             if (demolish.WasPressedThisFrame()) Demolish();
@@ -238,6 +241,8 @@ namespace ParcelFactory.Game
             // 분배기 도구에 빨간 출구를 정해 두었으면 설치 직후 그 칸에 적용한다(파랑과 같으면 코어가 거절 → 자동 규칙).
             if (r == InteractResult.Placed && tool.HasValue && tool.Value.Type == CellType.Splitter && ToolSplitterRed.HasValue)
                 S.Build.SetSplitterRed(fx, fy, ToolSplitterRed.Value);
+            if (r == InteractResult.Placed && tool.HasValue && HasMode(tool.Value.Type) && ToolMode == RouteMode.Air)
+                S.Build.SetMode(fx, fy, RouteMode.Air);
             Interacted?.Invoke(r);
         }
 
@@ -268,10 +273,11 @@ namespace ParcelFactory.Game
             return lastDir.TryGetValue(type, out var d) && dirs.Contains(d) ? d : dirs[0];
         }
 
-        /// <summary>핫바 슬롯 선택(키 1~7·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지(파랑/빨강), 그 밖에는 설정을 취소하고 그 슬롯을 고른다
+        /// <summary>핫바 슬롯 선택(키 1~8·화면 탭). 설정 모드에서는: PickSlot이면 1·2가 선택지(파랑/빨강), 그 밖에는 설정을 취소하고 그 슬롯을 고른다
         /// (이미 고른 슬롯이면 취소만 하고 설정 모드에 다시 들어가지 않는다). 평소에 이미 고른 슬롯을 다시 고르면 설정 모드에 들어간다(= R).</summary>
         public void SelectSlot(int i)
         {
+            if (i == 2 && ConfigMode != ConfigMode.None && HasMode(ConfigType)) { ToggleMode(); return; } // R → 3: 분배기·검사기 모드(스펙 14.5)
             if (ConfigMode == ConfigMode.PickSlot && (i == 0 || i == 1)) { ApplyConfigSlot(i + 1); return; }
             bool wasConfig = ConfigMode != ConfigMode.None;
             CancelConfig();
@@ -280,6 +286,7 @@ namespace ParcelFactory.Game
             var type = available[i];
             if (SelectedTool.HasValue && SelectedTool.Value.Type == type) { if (!wasConfig) BeginConfig(); return; }
             ToolSplitterRed = null; // 다른 종류를 고르면 분배기 도구의 빨간 출구 설정은 버린다
+            ToolMode = RouteMode.Inspect;
             var dir = PreferredDirection(type);
             SelectedTool = new Tool(type, dir);
             ToolChanged?.Invoke();
@@ -290,15 +297,49 @@ namespace ParcelFactory.Game
             CancelConfig();
             SelectedTool = null;
             ToolSplitterRed = null;
+            ToolMode = RouteMode.Inspect;
             ToolChanged?.Invoke();
         }
 
         /// <summary>설정할 수 있는 부품(레일·고속·브릿지(윗길 방향)·검사대·자동 검사기·분배기·팔레트). 입고구·트럭 도크는 바꿀 수 없다.</summary>
         public static bool IsConfigurable(CellType t) =>
-            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Bridge || t == CellType.Table || t == CellType.Scanner || t == CellType.Splitter || t == CellType.Pallet;
+            t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Bridge || t == CellType.Table || t == CellType.Scanner || t == CellType.Splitter || t == CellType.Pallet ||
+            t == CellType.Labeler;
 
         /// <summary>설정이 둘인 부품: 먼저 1(파랑)/2(빨강)을 고른다.</summary>
         public static bool HasTwoSettings(CellType t) => t == CellType.Splitter || t == CellType.Pallet;
+
+        /// <summary>모드(검사/항공, 스펙 14.5)가 있는 설치 부품: R → 3으로 바꾼다.</summary>
+        public static bool HasMode(CellType t) => t == CellType.Splitter || t == CellType.Scanner;
+
+        public const string ModeLockedMessage = "부지 확장 2 이후 사용 가능";
+
+        /// <summary>R → 3: 바라보는 분배기·검사기(또는 손에 든 그 도구)의 모드를 검사 ↔ 항공으로 바꾸고 설정 모드를 끝낸다.
+        /// 부지 확장 2 전이면 토스트만.</summary>
+        public void ToggleMode()
+        {
+            if (S == null || ConfigMode == ConfigMode.None || !HasMode(ConfigType)) return;
+            string name = ConfigType == CellType.Splitter ? "분배기" : "검사기";
+            if (configTarget == ConfigTarget.Tool)
+            {
+                if (S.Grid.UnlockedSize < FactoryGrid.Width) Feedback(ModeLockedMessage);
+                else
+                {
+                    ToolMode = ToolMode == RouteMode.Air ? RouteMode.Inspect : RouteMode.Air;
+                    Feedback(name + " 모드: " + (ToolMode == RouteMode.Air ? "항공" : "검사"), true);
+                    ToolChanged?.Invoke();
+                }
+                EndConfig();
+                return;
+            }
+            var (x, y) = ConfigCell;
+            var next = S.Grid.Get(x, y).Mode == RouteMode.Air ? RouteMode.Inspect : RouteMode.Air;
+            var r = S.Build.SetMode(x, y, next);
+            if (r == ReconfigureResult.Ok)
+                Feedback(name + " 모드: " + (next == RouteMode.Air ? "항공" : "검사"), true);
+            else Feedback(ResultMessage(r));
+            EndConfig();
+        }
 
         /// <summary>R: 바라보는 칸에 설정 가능한 부품이 있으면 그 칸, 아니면 손에 든 도구를 대상으로 설정 모드에 들어간다.</summary>
         public void BeginConfig()
@@ -318,13 +359,17 @@ namespace ParcelFactory.Game
             }
             else { Feedback("설정할 대상이 없습니다"); return; }
             ConfigWhich = ConfigWhich.Primary;
-            ConfigMode = HasTwoSettings(ConfigType) ? ConfigMode.PickSlot : ConfigMode.PickDirection;
+            // 항공 모드 검사기는 출구가 둘이라 1(일반)/2(항공)을 먼저 고른다(스펙 14.5).
+            bool airScanner = configTarget == ConfigTarget.Cell && ConfigType == CellType.Scanner && S.Grid.Get(ConfigCell.x, ConfigCell.y).Mode == RouteMode.Air;
+            ConfigMode = HasTwoSettings(ConfigType) || airScanner ? ConfigMode.PickSlot : ConfigMode.PickDirection;
             ConfigChanged?.Invoke();
         }
 
-        /// <summary>PickSlot에서 1(파랑) 또는 2(빨강). 팔레트는 곧바로 적용하고 끝, 분배기는 방향 입력으로 넘어간다.</summary>
+        /// <summary>PickSlot에서 1(파랑) 또는 2(빨강). 팔레트는 곧바로 적용하고 끝, 분배기는 방향 입력으로 넘어간다.
+        /// 3은 분배기·검사기 칸의 모드 전환(스펙 14.5).</summary>
         public void ApplyConfigSlot(int n)
         {
+            if (n == 3 && ConfigMode != ConfigMode.None && HasMode(ConfigType)) { ToggleMode(); return; }
             if (ConfigMode != ConfigMode.PickSlot || (n != 1 && n != 2)) return;
             ConfigWhich = n == 1 ? ConfigWhich.Primary : ConfigWhich.Secondary;
             if (ConfigType != CellType.Pallet) { ConfigMode = ConfigMode.PickDirection; ConfigChanged?.Invoke(); return; }
@@ -343,6 +388,7 @@ namespace ParcelFactory.Game
         {
             if (ConfigMode != ConfigMode.PickDirection || S == null) return;
             bool red = ConfigType == CellType.Splitter && ConfigWhich == ConfigWhich.Secondary;
+            bool airExit = ConfigType == CellType.Scanner && ConfigWhich == ConfigWhich.Secondary; // 항공 모드 검사기의 2번(항공) 출구
             if (configTarget == ConfigTarget.Tool)
             {
                 if (!SelectedTool.HasValue || SelectedTool.Value.Type != ConfigType) { EndConfig(); return; }
@@ -357,8 +403,11 @@ namespace ParcelFactory.Game
             else
             {
                 var (x, y) = ConfigCell;
-                var r = red ? S.Build.SetSplitterRed(x, y, d) : S.Build.SetDirection(x, y, d);
-                Feedback(r == ReconfigureResult.Ok ? (red ? "빨간 출구 " : "방향 변경 ") + HudController.Arrow(d) : ResultMessage(r), r == ReconfigureResult.Ok);
+                bool airMode = S.Grid.Get(x, y).Mode == RouteMode.Air;
+                var r = red ? S.Build.SetSplitterRed(x, y, d) : airExit ? S.Build.SetScannerAirExit(x, y, d) : S.Build.SetDirection(x, y, d);
+                string what = airExit ? "항공 출구 " : red ? (airMode ? "반품 출구 " : "빨간 출구 ")
+                    : airMode ? (ConfigType == CellType.Scanner ? "일반 출구 " : "정상 출구 ") : "방향 변경 ";
+                Feedback(r == ReconfigureResult.Ok ? what + HudController.Arrow(d) : ResultMessage(r), r == ReconfigureResult.Ok);
             }
             EndConfig();
         }
@@ -394,9 +443,11 @@ namespace ParcelFactory.Game
             switch (r)
             {
                 case ReconfigureResult.NotOwned: return "해금되지 않은 방향입니다";
+                case ReconfigureResult.RequiresPlot2: return ModeLockedMessage;
                 case ReconfigureResult.Invalid:
                     var (x, y) = ConfigCell;
                     if (S.Grid.InBounds(x, y) && S.Grid.Get(x, y).Demolishing) return "해체 중입니다";
+                    if (ConfigType == CellType.Scanner && ConfigWhich == ConfigWhich.Secondary) return "일반 출구와 같은 방향입니다";
                     return ConfigType == CellType.Splitter && ConfigWhich == ConfigWhich.Secondary ? SameAsBlueMessage : "같은 방향으로는 설정할 수 없습니다";
                 default: return "설정할 수 없는 대상입니다";
             }

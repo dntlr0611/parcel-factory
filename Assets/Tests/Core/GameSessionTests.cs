@@ -102,6 +102,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(InteractResult.InspectionRequired, s.Worker.Interact(null));
             Assert.IsTrue(s.Worker.Inspect(false));
             Assert.AreEqual(InteractResult.PickedUp, s.Worker.Interact(null));
+            s.Worker.Worker.Carrying.Waybill = true; // 운송장 부착(스펙 15)은 LabelerTests에서 따로 다룬다
             s.Worker.Worker.X = 4; s.Worker.Worker.Y = 2; s.Worker.Worker.Facing = Direction.East; // 파랑 팔레트 (5,2)
             Assert.AreEqual(InteractResult.PutDown, s.Worker.Interact(null));
             Assert.AreEqual(1, s.Sim.PalletCount(5, 2));

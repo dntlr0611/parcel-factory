@@ -82,24 +82,24 @@ namespace ParcelFactory.Game
         public Cell Cell;
         public ModelCatalog Catalog;
         private Transform pile;
-        private readonly List<GameObject> boxes = new List<GameObject>();
+        private readonly List<BoxMarks> boxes = new List<BoxMarks>();
 
         private void LateUpdate()
         {
             if (Cell == null) return;
             if (pile == null) { pile = new GameObject("Pile").transform; pile.SetParent(transform, false); }
             int n = Cell.Pallet.Count;
-            while (boxes.Count < n) boxes.Add(PackageViews.MakeBox(Catalog, pile)); // 레일·운반 상자와 같은 크기(box-small 0.8배)
+            while (boxes.Count < n) boxes.Add(PackageViews.MakeBox(Catalog, pile).GetComponent<BoxMarks>()); // 레일·운반 상자와 같은 크기(box-small 0.8배)
             for (int i = 0; i < boxes.Count; i++)
             {
                 bool on = i < n;
-                if (boxes[i].activeSelf != on) boxes[i].SetActive(on);
+                if (boxes[i].gameObject.activeSelf != on) boxes[i].gameObject.SetActive(on);
                 if (!on) continue;
                 int layer = i / PackageViews.PalletPerLayer, slot = i % PackageViews.PalletPerLayer;
                 boxes[i].transform.localPosition = new Vector3(slot == 0 ? -0.22f : 0.22f, PackageViews.SurfaceHeight(CellType.Pallet) + PackageViews.PalletLayerHeight * layer, 0f);
                 boxes[i].transform.localRotation = Quaternion.identity;
                 var p = Cell.Pallet[i];
-                PackageViews.SetMarks(boxes[i], p);
+                boxes[i].Set(p);
             }
         }
     }
@@ -133,7 +133,9 @@ namespace ParcelFactory.Game
             {
                 var dir = (Direction)d;
                 int nx = x + dir.Dx(), ny = y + dir.Dy();
-                if (bound.Grid.InBounds(nx, ny) && bound.Grid.Get(nx, ny).Type == CellType.Splitter) Rebuild(nx, ny);
+                if (!bound.Grid.InBounds(nx, ny)) continue;
+                var nt = bound.Grid.Get(nx, ny).Type;
+                if (nt == CellType.Splitter || nt == CellType.Scanner) Rebuild(nx, ny); // 검사기 항공 출구 기본값도 이웃에 달렸다(스펙 14.5)
             }
         }
 
@@ -177,6 +179,33 @@ namespace ParcelFactory.Game
         public static readonly Color SplitterHub = new Color(0x7A / 255f, 0x5C / 255f, 0xC9 / 255f);
         public static readonly Color SplitterBlue = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f);
         public static readonly Color SplitterRed = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+        /// <summary>검사기 항공 모드 화살표 색(스펙 14.5): 1번 일반 = 흰색, 2번 항공 = 항공 마크 파랑 #2F86EB.</summary>
+        public static readonly Color AirGroundArrow = Color.white;
+        public static Color AirExitArrow => WorldBuilder.AirBlue;
+        /// <summary>분배기 항공 모드 화살표 색(스펙 14.5): 1번 정상 = 초록(항공 출고 트럭), 2번 반품 = 노랑(항공 반품 트럭).</summary>
+        public static Color AirOkArrow => WorldBuilder.AirOutletColor;
+        public static Color AirReturnArrow => WorldBuilder.AirReturnColor;
+
+        /// <summary>출구 화살표 이름별 색(뷰·미리보기 공용). 분배기 BlueArrow/RedArrow는 모드에 따라 파랑·빨강 또는 초록·노랑.</summary>
+        public static Color ArrowColor(string name, RouteMode mode)
+        {
+            switch (name)
+            {
+                case "BlueArrow": return mode == RouteMode.Air ? AirOkArrow : SplitterBlue;
+                case "RedArrow": return mode == RouteMode.Air ? AirReturnArrow : SplitterRed;
+                case "GroundArrow": return AirGroundArrow;
+                case "AirArrow": return AirExitArrow;
+                default: return Color.white;
+            }
+        }
+
+        private static Material ArrowMat(Color c, bool connected)
+        {
+            if (connected) return MaterialLibrary.Emissive(c, 0.5f);
+            c.a = 0.4f;
+            return MaterialLibrary.Transparent(c);
+        }
+
         /// <summary>브릿지 기둥 색(#5A5F66).</summary>
         public static readonly Color BridgePost = new Color(0x5A / 255f, 0x5F / 255f, 0x66 / 255f);
 
@@ -196,16 +225,26 @@ namespace ParcelFactory.Game
             bool blueConnected = true, redConnected = true;
             if (c.Type == CellType.Splitter)
                 ConveyorSim.SplitterRoutes(bound.Grid, x, y, null, out blue, out red, out blueConnected, out redConnected);
-            return Build(cat, c.Type, c.Direction, c.PalletKind, blue, red, blueConnected, redConnected, c);
+            else if (c.Type == CellType.Scanner && c.Mode == RouteMode.Air)
+            {
+                ConveyorSim.ScannerRoutes(bound.Grid, x, y, out blue, out var air);
+                red = air;
+                var outs = ConveyorSim.SplitterOutputs(bound.Grid, x, y, null);
+                blueConnected = outs.Contains(blue);
+                redConnected = outs.Contains(air);
+            }
+            return Build(cat, c.Type, c.Direction, c.PalletKind, blue, red, blueConnected, redConnected, c, c.Mode);
         }
 
         /// <summary>설치 미리보기(스펙 11.9)용: 실제 칸 뷰와 같은 모델을 parent 아래에 만든다. 분배기는 파란 화살표 = dir, 빨간 화살표 = red(있을 때만).
         /// 팔레트 더미(PalletView)는 붙이지 않는다. 재질·그림자·충돌체 처리는 호출하는 쪽(PlacementGhost)이 한다.</summary>
-        public static GameObject BuildPreview(Transform parent, CellType type, Direction dir, PalletKind kind, Direction? red)
+        public static GameObject BuildPreview(Transform parent, CellType type, Direction dir, PalletKind kind, Direction? red, RouteMode mode = RouteMode.Inspect)
         {
             var boot = GameBootstrap.Instance;
             if (boot == null || boot.Catalog == null) return null;
-            var go = Build(boot.Catalog, type, dir, kind, dir, red, true, true, null);
+            // 검사기 항공 모드 미리보기: 항공 출구는 기본값(오른쪽)으로 보인다(설치 때 실제 이웃으로 다시 정한다).
+            if (type == CellType.Scanner && mode == RouteMode.Air && !red.HasValue) red = dir.TurnRight();
+            var go = Build(boot.Catalog, type, dir, kind, dir, red, true, true, null, mode);
             if (go == null) return null;
             go.transform.SetParent(parent, false);
             return go;
@@ -213,7 +252,7 @@ namespace ParcelFactory.Game
 
         /// <summary>칸 종류·방향·팔레트 종류로 모델을 만든다. cell이 있으면 팔레트에 더미 뷰(PalletView)를 붙인다.</summary>
         private static GameObject Build(ModelCatalog cat, CellType type, Direction direction, PalletKind palletKind,
-            Direction blue, Direction? red, bool blueConnected, bool redConnected, Cell cell)
+            Direction blue, Direction? red, bool blueConnected, bool redConnected, Cell cell, RouteMode mode)
         {
             var go = new GameObject(type.ToString());
             var facing = Grid3D.Facing(direction);
@@ -251,6 +290,14 @@ namespace ParcelFactory.Game
                         laser.transform.localScale = new Vector3(0.8f, 0.5f, 0.02f);
                         laser.GetComponent<Renderer>().material = MaterialLibrary.Transparent(new Color(1f, 0.2f, 0.2f, 0.45f));
                         Destroy(laser.GetComponent<Collider>());
+                        if (mode == RouteMode.Air && red.HasValue)
+                        {
+                            // 항공 모드(스펙 14.5): 1번(일반) 흰 화살표, 2번(항공) 파란 화살표. 나갈 곳이 없으면 흐리게.
+                            // 아치·레이저(높이 0.85까지)에 가리지 않도록 그 위에 띄운다.
+                            const float top = 0.9f;
+                            SplitterArrow(go.transform, "GroundArrow", blue, top, ArrowMat(ArrowColor("GroundArrow", mode), blueConnected));
+                            SplitterArrow(go.transform, "AirArrow", red.Value, top, ArrowMat(ArrowColor("AirArrow", mode), redConnected));
+                        }
                     }
                     break;
                 }
@@ -285,10 +332,9 @@ namespace ParcelFactory.Game
                     Box("SplitterHub", go.transform, new Vector3(0f, top / 2f, 0f), new Vector3(0.9f, top, 0.9f), MaterialLibrary.Lit(SplitterHub, 0.3f));
                     Box("SplitterPlate", go.transform, new Vector3(0f, top + 0.005f, 0f), new Vector3(0.72f, 0.01f, 0.72f), MaterialLibrary.Lit(new Color(0.16f, 0.14f, 0.2f), 0.2f));
                     // 빨간 출구는 명시 설정(RedDirection, 스펙 11.8)이면 연결되지 않아도 흐리게 보인다. 자동 규칙이면 연결된 출구가 있을 때만.
-                    var dimBlue = SplitterBlue; dimBlue.a = 0.4f;
-                    var dimRed = SplitterRed; dimRed.a = 0.4f;
-                    SplitterArrow(go.transform, "BlueArrow", blue, top, blueConnected ? MaterialLibrary.Emissive(SplitterBlue, 0.5f) : MaterialLibrary.Transparent(dimBlue));
-                    if (red.HasValue) SplitterArrow(go.transform, "RedArrow", red.Value, top, redConnected ? MaterialLibrary.Emissive(SplitterRed, 0.5f) : MaterialLibrary.Transparent(dimRed));
+                    // 항공 모드(스펙 14.5)는 같은 두 출구(정상/반품)를 초록·노랑으로 그린다.
+                    SplitterArrow(go.transform, "BlueArrow", blue, top, ArrowMat(ArrowColor("BlueArrow", mode), blueConnected));
+                    if (red.HasValue) SplitterArrow(go.transform, "RedArrow", red.Value, top, ArrowMat(ArrowColor("RedArrow", mode), redConnected));
                     break;
                 }
                 case CellType.Pallet:
@@ -316,11 +362,27 @@ namespace ParcelFactory.Game
                     break;
                 }
                 case CellType.Table:
+                case CellType.Labeler:
                 {
                     // 강철 작업대: 몸체 0.9×0.56×0.9 + 밝은 상판 0.96×0.04×0.96, 윗면 = 택배 표면 높이(0.6).
                     float top = PackageViews.SurfaceHeight(CellType.Table);
                     Box("TableBody", go.transform, new Vector3(0f, (top - 0.04f) / 2f, 0f), new Vector3(0.9f, top - 0.04f, 0.9f), MaterialLibrary.Lit(new Color(0x8E / 255f, 0x94 / 255f, 0x9B / 255f), 0.3f));
                     Box("TableTop", go.transform, new Vector3(0f, top - 0.02f, 0f), new Vector3(0.96f, 0.04f, 0.96f), MaterialLibrary.Lit(new Color(0xC9 / 255f, 0xCD / 255f, 0xD2 / 255f), 0.35f));
+                    if (type == CellType.Labeler)
+                    {
+                        // 운송장 부착대(스펙 15.1): 같은 작업대 + 뒤쪽(북) 가장자리에 운송장 롤(흰 원통, 가로) + 옆에 작은 프린터(어두운 상자 + 흰 출력구).
+                        var roll = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                        roll.name = "WaybillRoll";
+                        Destroy(roll.GetComponent<Collider>());
+                        roll.transform.SetParent(go.transform, false);
+                        roll.transform.localPosition = new Vector3(-0.18f, top + 0.09f, 0.33f);
+                        roll.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                        roll.transform.localScale = new Vector3(0.18f, 0.16f, 0.18f);
+                        roll.GetComponent<Renderer>().sharedMaterial = MaterialLibrary.Lit(new Color(0.96f, 0.95f, 0.92f), 0.2f);
+                        Box("Printer", go.transform, new Vector3(0.22f, top + 0.07f, 0.33f), new Vector3(0.3f, 0.14f, 0.22f), MaterialLibrary.Lit(new Color(0.18f, 0.2f, 0.23f), 0.4f));
+                        Box("PrinterSlot", go.transform, new Vector3(0.22f, top + 0.1f, 0.215f), new Vector3(0.2f, 0.02f, 0.01f), MaterialLibrary.Emissive(new Color(0.95f, 0.95f, 0.9f), 0.4f));
+                        break;
+                    }
                     // 검사 화면: 상판 뒤쪽(북쪽) 가장자리에 카메라를 향해 세운다. 택배를 가리지 않도록 작게.
                     var panel = Model(cat, "screen-panel-flat", go.transform, new Vector3(0f, top, 0.3f), Quaternion.Euler(0f, 180f, 0f), 0.4f);
                     panel.name = "TableScreen";

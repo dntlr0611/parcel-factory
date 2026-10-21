@@ -2,10 +2,13 @@ using System.Collections.Generic;
 
 namespace ParcelFactory.Core
 {
-    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet, Table, Scanner, ReturnDock, Pallet, Bridge }
+    public enum CellType { Empty, Locked, Conveyor, FastConveyor, Splitter, Inlet, Outlet, Table, Scanner, ReturnDock, Pallet, Bridge, AirOutlet, AirReturnDock, Labeler }
 
     /// <summary>팔레트 종류. 색은 안내용이며 판정과 무관하다(스펙 10.2).</summary>
     public enum PalletKind { None, Blue, Red }
+
+    /// <summary>분배기·자동 검사기의 분류 모드(스펙 14.5). Inspect = 검사 결과(기본), Air = 운송 수단(항공/일반).</summary>
+    public enum RouteMode { Inspect, Air }
 
     public sealed class Cell
     {
@@ -27,6 +30,10 @@ namespace ParcelFactory.Core
         public readonly List<Package> Pallet = new List<Package>();
         /// <summary>분배기의 명시 빨간 출구(스펙 11.8). null이면 자동 규칙(11.7). 분배기가 아니면 null.</summary>
         public Direction? RedDirection;
+        /// <summary>분배기·자동 검사기의 모드(스펙 14.5). 다른 칸은 항상 Inspect.</summary>
+        public RouteMode Mode = RouteMode.Inspect;
+        /// <summary>자동 검사기의 항공 출구(2번 출구, 스펙 14.5). 항공 모드로 처음 바꿀 때 정해진다. 검사기가 아니면 null.</summary>
+        public Direction? AirDirection;
 
         public bool IsOccupied => OccupantId >= 0;
 
@@ -48,16 +55,22 @@ namespace ParcelFactory.Core
         public bool IsTrack =>
             Type == CellType.Conveyor || Type == CellType.FastConveyor ||
             Type == CellType.Splitter || Type == CellType.Inlet ||
-            Type == CellType.Table || Type == CellType.Scanner || Type == CellType.Bridge;
+            Type == CellType.Table || Type == CellType.Scanner || Type == CellType.Bridge || Type == CellType.Labeler;
 
         /// <summary>플레이어가 설치·해체할 수 있는 셀.</summary>
         public bool IsBuilding =>
             Type == CellType.Conveyor || Type == CellType.FastConveyor ||
             Type == CellType.Splitter || Type == CellType.Table || Type == CellType.Scanner ||
-            Type == CellType.Pallet || Type == CellType.Bridge;
+            Type == CellType.Pallet || Type == CellType.Bridge || Type == CellType.Labeler;
 
-        /// <summary>택배를 받아 판정하는 셀(트럭 도크: 출고구, 반품구).</summary>
-        public bool IsDock => Type == CellType.Outlet || Type == CellType.ReturnDock;
+        /// <summary>택배를 받아 판정하는 셀(트럭 도크: 출고구, 반품구, 항공 출고·반품 — 스펙 14.1).</summary>
+        public bool IsDock => IsDockType(Type);
+
+        public static bool IsDockType(CellType t) =>
+            t == CellType.Outlet || t == CellType.ReturnDock || IsAirDock(t);
+
+        /// <summary>항공 트럭 도크(스펙 14.1). 부지 확장 2(12×12)에서 생긴다.</summary>
+        public static bool IsAirDock(CellType t) => t == CellType.AirOutlet || t == CellType.AirReturnDock;
 
         public float Speed => Type == CellType.FastConveyor ? 2f : 1f;
     }

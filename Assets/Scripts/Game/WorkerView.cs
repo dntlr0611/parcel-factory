@@ -13,6 +13,7 @@ namespace ParcelFactory.Game
         public Transform CarryAnchor { get; private set; }
 
         private GameObject carried;
+        private BoxMarks carriedMarks;
         private Transform cursor;
         private Renderer cursorRenderer;
         private Vector3 lastPos;
@@ -37,6 +38,7 @@ namespace ParcelFactory.Game
             CarryAnchor.SetParent(transform, false);
             CarryAnchor.localPosition = new Vector3(0f, 1.22f, 0f);
             carried = PackageViews.MakeBox(boot.Catalog, CarryAnchor);
+            carriedMarks = carried.GetComponent<BoxMarks>();
             carried.SetActive(false);
 
             var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -102,7 +104,7 @@ namespace ParcelFactory.Game
             }
 
             carried.SetActive(w.Carrying != null);
-            if (w.Carrying != null) PackageViews.SetMarks(carried, w.Carrying);
+            if (w.Carrying != null) carriedMarks.Set(w.Carrying);
 
             // 잠긴 칸도 걸을 수 있는 바닥이므로 커서를 보인다. 설치 불가는 Preview(Locked)로 커서 색을 바꿔 알린다.
             var (fx, fy) = ws.FacingTile();

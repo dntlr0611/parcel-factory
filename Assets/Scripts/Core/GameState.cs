@@ -58,6 +58,10 @@ namespace ParcelFactory.Core
         public List<PackageState> Pallet;
         /// <summary>분배기의 명시 빨간 출구(스펙 11.8). 설정 안 됐거나 분배기가 아니면 null. 선택 필드라 버전은 v6 그대로.</summary>
         public string RedDirection;
+        /// <summary>분배기·자동 검사기 모드 "Inspect"/"Air"(v7, 스펙 14.5). 없으면(null) Inspect.</summary>
+        public string Mode;
+        /// <summary>자동 검사기의 항공 출구(v7). 정해지지 않았거나 검사기가 아니면 null.</summary>
+        public string AirDirection;
     }
 
     public sealed class PackageState
@@ -75,6 +79,10 @@ namespace ParcelFactory.Core
         public bool Bad;
         public bool Inspected;
         public bool Rejected;
+        /// <summary>항공 택배(v7, 스펙 14.4). v6 저장에는 없으므로 false로 읽힌다.</summary>
+        public bool Air;
+        /// <summary>운송장(v7, 스펙 15.3). 없으면 false.</summary>
+        public bool Waybill;
         public string LabelDestination;
         public int LabelWeight;
         public string LabelMethod;

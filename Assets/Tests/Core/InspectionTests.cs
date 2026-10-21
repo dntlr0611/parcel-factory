@@ -17,7 +17,7 @@ namespace ParcelFactory.Core.Tests
         }
 
         private static Package Pkg(bool bad, bool inspected, bool rejected) =>
-            new Package { Id = 1, Bad = bad, Inspected = inspected, Rejected = rejected, Label = new PackageLabel { Weight = 2, Scale = bad ? 6 : 2 } };
+            new Package { Id = 1, Bad = bad, Inspected = inspected, Rejected = rejected, Waybill = true, Label = new PackageLabel { Weight = 2, Scale = bad ? 6 : 2 } }; // 9.3 표는 운송장이 붙은 경우(스펙 15.3)
 
         [Test]
         public void Scoring_OutletMatchesSpecTable()
@@ -123,6 +123,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 1; x <= 10; x++) grid.Place(x, 4, CellType.Conveyor, Direction.East);
             Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
             p.Inspect(true);
+            p.Waybill = true; // 운송장(스펙 15)
             DeliveryOutcome seen = DeliveryOutcome.Delivered; int seenDelta = 0;
             sim.PackageDelivered += (pk, o, d) => { seen = o; seenDelta = d; };
             for (int i = 0; i < 14; i++) sim.Tick(1f);
@@ -209,6 +210,7 @@ namespace ParcelFactory.Core.Tests
             var sim = NewSim(0.0);
             var p = new PackageFactory(new Random(1), 0.0).Create(5, 0, 0, Direction.East);
             p.Inspect(false);
+            p.Waybill = true; // 운송장(스펙 15)
             Assert.AreEqual(30, sim.DeliverCarried(p, CellType.Outlet));
             Assert.AreEqual(30, economy.Money);
             Assert.AreEqual(1, sim.DeliveredCount);

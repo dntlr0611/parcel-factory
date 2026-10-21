@@ -12,6 +12,7 @@ namespace ParcelFactory.Core.Tests
             var p = new PackageFactory(new Random(id), 0.0).Create(id, 0, 0, Direction.East);
             p.Bad = bad;
             if (reject.HasValue) p.Inspect(reject.Value);
+            p.Waybill = true; // 운송장(스펙 15): EXP 테스트는 정상 처리된 택배 기준
             return p;
         }
 
@@ -300,7 +301,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V6_RoundTripsExpLevelsAndDayStartExp()
         {
-            Assert.AreEqual(6, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(7, SaveSerializer.CurrentVersion);
             var s = new GameSession();
             s.Progression.AddExp(500);
             s.Progression.TryUpgrade(Stat.Stamina);
@@ -313,7 +314,7 @@ namespace ParcelFactory.Core.Tests
             s.Progression.AddExp(14);
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(6, st.Version);
+            Assert.AreEqual(7, st.Version);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.AreEqual(s.Progression.Exp, r.Progression.Exp);
             Assert.AreEqual(2, r.Progression.Level(Stat.Stamina));

@@ -39,6 +39,7 @@ namespace ParcelFactory.Core
         {
             Grid = new FactoryGrid();
             Economy = economy;
+            ownsFactory = factory == null;
             Sim = new ConveyorSim(Grid, Economy, factory);
             Spawner = new Spawner(Grid, Sim);
             Toolbar = new Toolbar();
@@ -48,8 +49,24 @@ namespace ParcelFactory.Core
             Sim.PackageDelivered += OnPackageDelivered;
             Sim.Inspected += OnInspected;
             Progression.Upgraded += OnUpgraded;
+            Unlocks.Unlocked += OnUnlocked;
+            UpdateAirChance();
             CaptureDayStart();
         }
+
+        /// <summary>항공 택배는 부지 확장 2를 가진 동안에만 25% 생긴다(스펙 14.2). 저장 복원(Grant)도 같은 이벤트로 켠다.</summary>
+        private void OnUnlocked(UnlockId id)
+        {
+            if (id == UnlockId.Plot2) UpdateAirChance();
+        }
+
+        /// <summary>세션이 직접 만든 팩토리만 바꾼다. 주입한 팩토리(테스트 등)의 항공 확률은 그대로 둔다.</summary>
+        private void UpdateAirChance()
+        {
+            if (ownsFactory) Sim.Factory.AirChance = Unlocks.IsPurchased(UnlockId.Plot2) ? PackageFactory.AirChanceAfterPlot2 : 0.0;
+        }
+
+        private readonly bool ownsFactory;
 
         /// <summary>EXP 적립(스펙 11.5): 정상 출고 +10, 불량 반품 +8. 실패 판정은 0.</summary>
         private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)

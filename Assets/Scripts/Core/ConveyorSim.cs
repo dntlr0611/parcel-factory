@@ -13,6 +13,10 @@ namespace ParcelFactory.Core
         private readonly List<Package> packages = new List<Package>();
 
         public IReadOnlyList<Package> Packages => packages;
+        /// <summary>새 택배를 만드는 팩토리. GameSession이 부지 확장 2 이후 AirChance를 켠다(스펙 14.2).</summary>
+        public PackageFactory Factory => factory;
+        /// <summary>가장 최근 판정이 난 도크 종류. PackageDelivered 핸들러 안에서 그 판정의 도크다(금액 팝업 위치용).</summary>
+        public CellType LastDeliveredDock { get; private set; } = CellType.Empty;
         public int NextId { get; set; } = 1;
         /// <summary>성공 판정(+15, +5) 횟수.</summary>
         public int DeliveredCount { get; set; }
@@ -103,6 +107,21 @@ namespace ParcelFactory.Core
         public bool IsAwaitingInspection(Package p) =>
             !p.Inspected && grid.Get(p.X, p.Y).Type == CellType.Table;
 
+        /// <summary>운송장 부착대 위에서 운송장을 기다리는 택배인가(스펙 15.1): 검사됐고 운송장이 없을 때만 멈춘다.</summary>
+        public bool IsAwaitingLabel(Package p) =>
+            p.Inspected && !p.Waybill && grid.Get(p.X, p.Y).Type == CellType.Labeler;
+
+        /// <summary>운송장 부착대에서 운송장을 기다리는 택배 수(HUD 칩 "운송장 대기 n").</summary>
+        public int AwaitingLabelCount
+        {
+            get { int n = 0; foreach (var p in packages) if (IsAwaitingLabel(p)) n++; return n; }
+        }
+
+        /// <summary>항공 모드 검사기가 택배를 붙잡기 시작한 틱에 한 번 발생한다(스펙 14.5). 그 검사기가 풀렸다가 다시 막히면 또 발생한다.
+        /// Tick 끝에서 발생하므로 핸들러는 읽기만 해야 한다.</summary>
+        public event Action<int, int> ScannerBlocked;
+        private HashSet<(int, int)> holding = new HashSet<(int, int)>(), holdingNext = new HashSet<(int, int)>();
+
         public int AwaitingInspectionCount
         {
             get { int n = 0; foreach (var p in packages) if (IsAwaitingInspection(p)) n++; return n; }
@@ -143,7 +162,7 @@ namespace ParcelFactory.Core
             p.EntryHeading = p.Heading;
             cell.SetOccupant(p.Lane, p.Id);
             packages.Add(p);
-            if (cell.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); } // 스캐너는 놓는 순간에도 판정한다
+            if (cell.Type == CellType.Scanner) Scan(p); // 스캐너는 놓는 순간에도 판정한다
         }
 
         /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다.</summary>
@@ -264,6 +283,33 @@ namespace ParcelFactory.Core
             return EntryLane(bridge, entry) == Lane.Lower ? entry : bridge.Direction.TurnRight();
         }
 
+        /// <summary>운송 수단(항공/일반)으로 가르는 칸 = 항공 모드 자동 검사기(스펙 14.5). 이 칸에서는 정해진 출구가 막히거나
+        /// 받을 수 없는 칸이면 소실하지 않고 기다린다(다른 출구로 새지 않는다). 항공 모드 분배기는 검사 모드와 같은 규칙이라 해당 없다.</summary>
+        public static bool IsCarrierSorter(Cell c) => c.Mode == RouteMode.Air && c.Type == CellType.Scanner;
+
+        /// <summary>자동 검사기 항공 출구의 기본값(스펙 14.5): 1번 출구(Direction)의 오른쪽, 그 칸이 택배를 받을 수 없는 곳이면 왼쪽,
+        /// 둘 다 아니면 격자 안쪽인 쪽(오른쪽 우선).</summary>
+        public static Direction DefaultScannerAirExit(FactoryGrid grid, int x, int y)
+        {
+            var d = grid.Get(x, y).Direction;
+            foreach (var cand in new[] { d.TurnRight(), d.TurnLeft() })
+            {
+                int nx = x + cand.Dx(), ny = y + cand.Dy();
+                if (grid.InBounds(nx, ny) && AcceptsFromSplitter(grid.Get(nx, ny))) return cand;
+            }
+            var right = d.TurnRight();
+            return grid.InBounds(x + right.Dx(), y + right.Dy()) ? right : d.TurnLeft();
+        }
+
+        /// <summary>자동 검사기의 두 출구(스펙 14.5): ground = 1번(Direction), air = 명시 AirDirection(1번과 다를 때) 또는 기본 규칙.
+        /// 검사 모드에서는 air를 쓰지 않는다.</summary>
+        public static void ScannerRoutes(FactoryGrid grid, int x, int y, out Direction ground, out Direction air)
+        {
+            var c = grid.Get(x, y);
+            ground = c.Direction;
+            air = c.AirDirection.HasValue && c.AirDirection.Value != ground ? c.AirDirection.Value : DefaultScannerAirExit(grid, x, y);
+        }
+
         /// <summary>분배기가 출구로 삼는 칸. 반입구(Inlet)는 트랙이지만 들어가면 소실되므로 제외한다.</summary>
         private static bool AcceptsFromSplitter(Cell c) =>
             (c.IsTrack && c.Type != CellType.Inlet) || c.Type == CellType.Pallet || c.IsDock;
@@ -275,7 +321,14 @@ namespace ParcelFactory.Core
         {
             var cell = grid.Get(x, y);
             if (cell.Type == CellType.Bridge) return BridgeHeading(cell, EntryLane(cell, incoming), incoming);
+            if (cell.Type == CellType.Scanner)
+            {
+                if (cell.Mode != RouteMode.Air || package == null || !package.Air) return cell.Direction;
+                ScannerRoutes(grid, x, y, out _, out var airExit);
+                return airExit;
+            }
             if (cell.Type != CellType.Splitter) return cell.Direction;
+            // 분배기 항공 모드(스펙 14.5)는 색만 다르고 가르는 규칙은 검사 모드와 같다.
             SplitterRoutes(grid, x, y, incoming, out var blue, out var red, out var blueConnected);
             bool rejected = package != null && package.Inspected && package.Rejected;
             if (rejected && red.HasValue) return red.Value;
@@ -293,10 +346,12 @@ namespace ParcelFactory.Core
                 if (p.Progress < 1f - ArriveEpsilon) continue;
                 p.Progress = 1f;
                 if (cell.Type == CellType.Table && !p.Inspected) continue; // 검사 전까지 검사대에서 대기
+                if (IsAwaitingLabel(p)) continue; // 운송장을 붙이기 전까지 부착대에서 대기(스펙 15.1)
 
                 int nx = p.X + p.Heading.Dx();
                 int ny = p.Y + p.Heading.Dy();
-                if (!grid.InBounds(nx, ny)) { Lose(i, p); i--; continue; }
+                bool hold = IsCarrierSorter(cell); // 항공 모드 검사기는 나갈 곳이 없으면 기다린다(스펙 14.5)
+                if (!grid.InBounds(nx, ny)) { if (hold) continue; Lose(i, p); i--; continue; }
 
                 var next = grid.Get(nx, ny);
                 if (next.IsDock) { Deliver(i, p, next.Type); i--; continue; }
@@ -309,7 +364,7 @@ namespace ParcelFactory.Core
                     Stack(p, next, nx, ny); // 흐름에서 빠져 더미로. 팔레트에서 레일로 유출은 없다.
                     continue;
                 }
-                if (!next.IsTrack || next.Type == CellType.Inlet) { Lose(i, p); i--; continue; }
+                if (!next.IsTrack || next.Type == CellType.Inlet) { if (hold) continue; Lose(i, p); i--; continue; }
                 var lane = EntryLane(next, p.Heading); // 브릿지면 평행 → 윗길, 수직 → 아랫길(스펙 11.12)
                 if (next.OccupantOf(lane) >= 0 || next.Demolishing) continue; // 대기(차선별)
 
@@ -321,8 +376,30 @@ namespace ParcelFactory.Core
                 p.Progress = 0f;
                 p.EntryHeading = p.Heading;
                 p.Heading = HeadingFor(nx, ny, p.Heading, p);
-                if (next.Type == CellType.Scanner && !p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
+                if (next.Type == CellType.Scanner) Scan(p);
             }
+            UpdateHolding();
+        }
+
+        /// <summary>틱 끝에 진행도 1로 남아 있는 항공 모드 검사기 위 택배 = 출구가 막혀 기다리는 중. 새로 막힌 검사기만 알린다.</summary>
+        private void UpdateHolding()
+        {
+            holdingNext.Clear();
+            foreach (var p in packages)
+                if (p.Progress >= 1f && IsCarrierSorter(grid.Get(p.X, p.Y))) holdingNext.Add((p.X, p.Y));
+            foreach (var k in holdingNext)
+                if (!holding.Contains(k)) ScannerBlocked?.Invoke(k.Item1, k.Item2);
+            var t = holding; holding = holdingNext; holdingNext = t;
+        }
+
+        /// <summary>항공 모드 검사기 (x, y)가 지금 택배를 붙잡고 있는가(마지막 틱 기준). 미니 상태바용.</summary>
+        public bool IsHolding(int x, int y) => holding.Contains((x, y));
+
+        /// <summary>자동 검사기: 아직 판정 안 된 택배를 정확히 판정하고(사람 판정은 그대로), 운송장도 붙인다(스펙 15.3).</summary>
+        private void Scan(Package p)
+        {
+            if (!p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
+            p.Waybill = true;
         }
 
         /// <summary>칸 위의 택배를 모두 소실 처리한다. 팔레트 더미도 비운다(해체는 더미가 있으면 막히지만 안전망).</summary>
@@ -346,6 +423,7 @@ namespace ParcelFactory.Core
         {
             var outcome = DeliveryScoring.Outcome(p, dockType);
             int delta = DeliveryScoring.Delta(outcome);
+            LastDeliveredDock = dockType;
             economy.Adjust(delta);
             if (DeliveryScoring.IsSuccess(outcome)) DeliveredCount++;
             PackageDelivered?.Invoke(p, outcome, delta);

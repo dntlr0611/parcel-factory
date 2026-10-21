@@ -110,6 +110,28 @@ namespace ParcelFactory.Game
             return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), BasePpu, 0, SpriteMeshType.FullRect);
         });
 
+        /// <summary>운송장 부착대 아이콘(64px 흰색): 머리띠가 굵은 종이 한 장 + 바코드 줄 3개. 아이콘 묶음에 없어 코드로 그린다(스펙 15.1).</summary>
+        public static Sprite WaybillIcon() => Get("icon-waybill", () =>
+        {
+            const int n = 64;
+            var tex = NewTex(n, n);
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    var p = new Vector2(x + 0.5f - 32f, y + 0.5f - 32f);
+                    float outer = Sdf(p, new Vector2(22f, 26f), 5f);
+                    float sheet = Mathf.Abs(outer + 2.5f) - 2.5f;                                  // 종이 테두리(두께 5)
+                    float band = Sdf(p - new Vector2(0f, 15f), new Vector2(20f, 6f), 1f);          // 머리띠
+                    float d = Mathf.Min(sheet, band);
+                    for (int i = 0; i < 3; i++)                                                     // 바코드 줄
+                        d = Mathf.Min(d, Sdf(p - new Vector2(-8f + i * 8f, -8f), new Vector2(i == 1 ? 1.5f : 2.5f, 9f), 0.5f));
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - d) * 255f));
+                }
+            tex.SetPixels32(px); tex.Apply(false, false);
+            return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), BasePpu, 0, SpriteMeshType.FullRect);
+        });
+
         private static Sprite Get(string key, System.Func<Sprite> make)
         {
             if (cache.TryGetValue(key, out var s) && s != null) return s;

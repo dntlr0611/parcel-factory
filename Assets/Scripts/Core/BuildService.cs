@@ -5,7 +5,7 @@ namespace ParcelFactory.Core
     public enum BuildResult { Ok, Locked, Occupied, NotOwned, NotEnoughMoney, NotDemolishable, AlreadyDemolishing }
 
     /// <summary>설치된 부품 재설정 결과(스펙 11.8). NotOwned = 툴바가 그 방향을 보유하지 않음(레일·고속만 해당).</summary>
-    public enum ReconfigureResult { Ok, NotConfigurable, Invalid, NotOwned }
+    public enum ReconfigureResult { Ok, NotConfigurable, Invalid, NotOwned, RequiresPlot2 }
 
     public sealed class BuildService
     {
@@ -68,7 +68,7 @@ namespace ParcelFactory.Core
 
         private static bool HasDirectionSetting(CellType t) =>
             t == CellType.Conveyor || t == CellType.FastConveyor || t == CellType.Table ||
-            t == CellType.Scanner || t == CellType.Splitter || t == CellType.Bridge;
+            t == CellType.Scanner || t == CellType.Splitter || t == CellType.Bridge || t == CellType.Labeler;
 
         /// <summary>설치된 레일·고속·검사대·자동 검사기·분배기(파랑)·브릿지(윗길)의 방향을 그 자리에서 바꾼다(스펙 11.8). 비용 없음.
         /// 그 칸 위 택배의 Heading도 새로 정한다. 실제로 바뀐 경우에만 CellChanged.</summary>
@@ -81,6 +81,9 @@ namespace ParcelFactory.Core
             if (c.Direction == dir) return ReconfigureResult.Ok;
             if (!toolbar.Owns(c.Type, dir)) return ReconfigureResult.NotOwned;
             c.Direction = dir;
+            // 항공 모드 검사기: 1번 출구가 항공 출구와 겹치면 항공 출구를 새 1번 기준 기본값으로 옮긴다(스펙 14.5).
+            if (c.Type == CellType.Scanner && c.Mode == RouteMode.Air && c.AirDirection == dir)
+                c.AirDirection = ConveyorSim.DefaultScannerAirExit(grid, x, y);
             sim.RefreshHeadingsAt(x, y);
             CellChanged?.Invoke(x, y);
             return ReconfigureResult.Ok;
@@ -97,6 +100,38 @@ namespace ParcelFactory.Core
                 return ReconfigureResult.Invalid;
             if (c.RedDirection == dir) return ReconfigureResult.Ok;
             c.RedDirection = dir;
+            sim.RefreshHeadingsAt(x, y);
+            CellChanged?.Invoke(x, y);
+            return ReconfigureResult.Ok;
+        }
+
+        /// <summary>분배기·자동 검사기의 모드를 바꾼다(스펙 14.5, 무료). 격자 전체(부지 확장 2)가 열리기 전에는 RequiresPlot2.
+        /// 검사기를 항공 모드로 처음 바꾸면 항공 출구를 기본 규칙(오른쪽, 안 되면 왼쪽)으로 정한다. 그 칸 위 택배의 진행 방향도 다시 정한다.</summary>
+        public ReconfigureResult SetMode(int x, int y, RouteMode mode)
+        {
+            if (!grid.InBounds(x, y) || !Enum.IsDefined(typeof(RouteMode), mode)) return ReconfigureResult.NotConfigurable;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Splitter && c.Type != CellType.Scanner) return ReconfigureResult.NotConfigurable;
+            if (c.Demolishing) return ReconfigureResult.Invalid;
+            if (grid.UnlockedSize < FactoryGrid.Width) return ReconfigureResult.RequiresPlot2;
+            if (c.Mode == mode) return ReconfigureResult.Ok;
+            c.Mode = mode;
+            if (mode == RouteMode.Air && c.Type == CellType.Scanner && !c.AirDirection.HasValue)
+                c.AirDirection = ConveyorSim.DefaultScannerAirExit(grid, x, y);
+            sim.RefreshHeadingsAt(x, y);
+            CellChanged?.Invoke(x, y);
+            return ReconfigureResult.Ok;
+        }
+
+        /// <summary>자동 검사기의 항공 출구(2번)를 정한다(스펙 14.5). 1번 출구(Direction)와 같으면 Invalid.</summary>
+        public ReconfigureResult SetScannerAirExit(int x, int y, Direction dir)
+        {
+            if (!grid.InBounds(x, y)) return ReconfigureResult.NotConfigurable;
+            var c = grid.Get(x, y);
+            if (c.Type != CellType.Scanner) return ReconfigureResult.NotConfigurable;
+            if (c.Demolishing || !Enum.IsDefined(typeof(Direction), dir) || dir == c.Direction) return ReconfigureResult.Invalid;
+            if (c.AirDirection == dir) return ReconfigureResult.Ok;
+            c.AirDirection = dir;
             sim.RefreshHeadingsAt(x, y);
             CellChanged?.Invoke(x, y);
             return ReconfigureResult.Ok;

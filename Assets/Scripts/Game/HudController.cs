@@ -12,7 +12,7 @@ namespace ParcelFactory.Game
         public bool TouchMode { get; private set; }
         public Font Font => UiKit.DefaultFont;
 
-        private Text money, cur, moneyLbl, expText, delivered, lost, waiting, workerText, promptText, toastText, helpText;
+        private Text money, cur, moneyLbl, expText, delivered, lost, waiting, labelWaiting, workerText, promptText, toastText, helpText;
         private Button pauseBtn, speedBtn;
         private RectTransform topLeft, chips, hotbar, hotbarFrame, prompt, toast, help, touchPad, touchButtons, status, stamina, promptKey;
         private Image toastBar, promptBorder, promptTailLineImg;
@@ -57,6 +57,9 @@ namespace ParcelFactory.Game
         private Text touchRotateLabel, bannerText;
         private RectTransform banner;
         public const string DirectionBannerText = "방향 입력: ← ↑ → ↓  (Esc 취소)", SlotBannerText = "1 파랑 · 2 빨강 선택  (Esc 취소)";
+        /// <summary>분배기·검사기 칸 설정 배너(스펙 14.5: "3 모드" 추가). 항공 모드는 1 일반 · 2 항공.</summary>
+        public const string SplitterSlotBannerText = "1 파랑 · 2 빨강 · 3 모드  (Esc 취소)", AirSplitterSlotBannerText = "1 초록 · 2 노랑 · 3 모드  (Esc 취소)",
+            AirSlotBannerText = "1 일반 · 2 항공 · 3 모드  (Esc 취소)", ScannerDirectionBannerText = "방향 입력: ← ↑ → ↓ · 3 모드  (Esc 취소)";
         private InputController input;
         // 근무 시계(스펙 11.1): 상단 중앙 "1일차 09:00", 점심이면 옆에 노란 "점심시간", 퇴근이면 "퇴근" 배지.
         private Text clockText, badgeText;
@@ -65,6 +68,8 @@ namespace ParcelFactory.Game
         // 체력 바(스펙 11.3): 상태줄 왼쪽 140×10. 50 초과 초록, 20 초과 노랑, 그 외 빨강. 20 아래면 깜빡인다.
         public const float StaminaBarWidth = 140f, StaminaBarHeight = 10f, StaminaPulseBelow = 20f;
         public const string ExhaustedToast = "지쳤습니다. 잠시 쉬세요", ExhaustedPrompt = "집기 (지침)";
+        /// <summary>운송장 부착대(스펙 15.1): 미검사 택배를 올리려 할 때 토스트, 부착 대기 택배 앞 프롬프트.</summary>
+        public const string NeedsInspectionMessage = "먼저 검사하세요", LabelPrompt = "운송장 붙이기", WaybillAttachedToast = "운송장 부착";
         // 시안 배치(1280×800 기준 px): 핫바 bottom 16, 슬롯 72, 상태줄 bottom 104(핫바 바로 위), 설정 배너 bottom 142. 터치 모드는 96 올린다.
         private const float SlotSize = 72f, HotbarPad = 8f, HotbarGap = 8f, HotbarY = 16f, StatusY = 106f, StatusH = 28f, BannerY = 144f, TouchLift = 96f;
 
@@ -73,19 +78,22 @@ namespace ParcelFactory.Game
             "<color=#f4f3ee>WASD/방향키</color> 이동 · <color=#f4f3ee>E</color> 집기·놓기·설치·검사 · <color=#f4f3ee>X</color> 해체\n" +
             "<color=#f4f3ee>Space</color> 달리기(체력 소모)\n" +
             "<color=#f4f3ee>B</color> 상점 · <color=#f4f3ee>C</color> 상태창(EXP 강화) · <color=#f4f3ee>P</color> 일시정지 · <color=#f4f3ee>T</color> 배속\n" +
-            "<color=#f4f3ee>1~7</color> 도구 선택 · <color=#f4f3ee>Q·Esc</color> 빈손\n" +
+            "<color=#f4f3ee>1~8</color> 도구 선택 · <color=#f4f3ee>Q·Esc</color> 빈손\n" +
             "<color=#f4f3ee>R</color> 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n" +
-            "검사대 위 택배는 검사 전까지 멈춥니다.\n" +
+            "검사대 위 택배는 검사 전까지 멈춥니다. 검사한 택배는 부착대에서 E로 운송장을 끌어다 붙이세요(운송장 없이 출고 −20 · 반품 −10).\n" +
             "팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n" +
             "입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n" +
             "택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 벌점입니다.\n" +
             "분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배\n" +
-            "브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)";
+            "브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)\n" +
+            "부지 확장 2 이후: 파란 비행기 마크 = 항공 택배 → 항공 트럭(초록 출고 · 노랑 반품). 운송 수단이 틀리면 −10\n" +
+            "분배기·검사기 <color=#f4f3ee>R → 3</color> 모드(검사/항공): 검사기 항공 모드는 흰 화살표 = 일반 · 파란 화살표 = 항공 택배, 분배기 항공 모드는 초록 = 정상 · 노랑 = 반품";
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
-            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Bridge, "브릿지" }, { CellType.Pallet, "팔레트" }, { CellType.Table, "검사대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
-            { CellType.Inlet, "입고구" }, { CellType.Outlet, "출고구" }, { CellType.ReturnDock, "반품구" }, { CellType.Empty, "빈 칸" }, { CellType.Locked, "잠긴 칸" },
+            { CellType.Conveyor, "레일" }, { CellType.FastConveyor, "고속 레일" }, { CellType.Bridge, "브릿지" }, { CellType.Pallet, "팔레트" }, { CellType.Table, "검사대" }, { CellType.Labeler, "부착대" }, { CellType.Splitter, "분배기" }, { CellType.Scanner, "자동 검사기" },
+            { CellType.Inlet, "입고구" }, { CellType.Outlet, "출고구" }, { CellType.ReturnDock, "반품구" },
+            { CellType.AirOutlet, "항공 출고" }, { CellType.AirReturnDock, "항공 반품" }, { CellType.Empty, "빈 칸" }, { CellType.Locked, "잠긴 칸" },
         };
         public static string Name(CellType t) => Names.TryGetValue(t, out var n) ? n : t.ToString();
         public static string Arrow(Direction d) => d == Direction.North ? "↑" : d == Direction.East ? "→" : d == Direction.South ? "↓" : "←";
@@ -105,11 +113,14 @@ namespace ParcelFactory.Game
                 case CellType.Bridge: return new Color32(0x8a, 0x9a, 0x5b, 0xff);
                 case CellType.Pallet: return new Color32(0x9a, 0x6b, 0x40, 0xff);
                 case CellType.Table: return new Color32(0xb0, 0x7a, 0x44, 0xff);
+                case CellType.Labeler: return new Color32(0x5f, 0x8f, 0x8a, 0xff); // 운송장 부착대(스펙 15.1)
                 case CellType.Splitter: return new Color32(0x7a, 0x62, 0xc0, 0xff);
                 case CellType.Scanner: return new Color32(0x4e, 0x86, 0xe8, 0xff);
                 default: return UiKit.Muted;
             }
         }
+
+        public const string LabelerIconName = "tool-labeler";
 
         public static string ToolIcon(CellType t)
         {
@@ -120,6 +131,7 @@ namespace ParcelFactory.Game
                 case CellType.Bridge: return "tool-bridge";
                 case CellType.Pallet: return "tool-pallet";
                 case CellType.Table: return "tool-table";
+                case CellType.Labeler: return LabelerIconName; // 아이콘 묶음에 없어 코드로 그린다(UiSprites.WaybillIcon)
                 case CellType.Splitter: return "tool-splitter";
                 case CellType.Scanner: return "tool-scanner";
                 default: return "ui-parcel";
@@ -172,6 +184,7 @@ namespace ParcelFactory.Game
             if (boundSession != null)
             {
                 boundSession.Sim.PackageDelivered -= OnPackageDelivered;
+                boundSession.Sim.ScannerBlocked -= OnScannerBlocked;
                 boundSession.Build.CellChanged -= OnCellChanged;
                 boundSession.Progression.ExpChanged -= OnExpChanged;
             }
@@ -181,6 +194,7 @@ namespace ParcelFactory.Game
             expFlashUntil = 0f;
             if (boundSession == null) return;
             boundSession.Sim.PackageDelivered += OnPackageDelivered;
+            boundSession.Sim.ScannerBlocked += OnScannerBlocked;
             boundSession.Build.CellChanged += OnCellChanged;
             boundSession.Progression.ExpChanged += OnExpChanged;
             lastExp = boundSession.Progression.Exp;
@@ -212,9 +226,31 @@ namespace ParcelFactory.Game
 
         private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
         {
-            Toast(DeliveryMessage(outcome), DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
-            bool outlet = DockOf(outcome) == CellType.Outlet;
-            SpawnMoneyPopup(outlet ? FactoryGrid.OutletX : FactoryGrid.ReturnDockX, outlet ? FactoryGrid.OutletY : FactoryGrid.ReturnDockY, delta);
+            var msg = DeliveryMessage(outcome);
+            if (p.Air && outcome != DeliveryOutcome.WrongCarrier) msg = AirTag + " " + msg;
+            Toast(msg, DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
+            var (dx, dy) = DockTile(boundSession.Sim.LastDeliveredDock);
+            SpawnMoneyPopup(dx, dy, delta);
+        }
+
+        /// <summary>항공 모드 검사기가 처음 막혔을 때(스펙 14.5).</summary>
+        public const string ScannerBlockedToast = "검사기 출구가 막혔습니다";
+
+        private void OnScannerBlocked(int x, int y) => Toast(ScannerBlockedToast, ToastKind.Bad);
+
+        /// <summary>항공 택배 꼬리표(스펙 14.2).</summary>
+        public const string AirTag = "항공";
+
+        /// <summary>트럭 도크 칸 좌표(금액 팝업 위치). 도크가 아니면 출고 도크.</summary>
+        public static (int x, int y) DockTile(CellType dock)
+        {
+            switch (dock)
+            {
+                case CellType.ReturnDock: return (FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY);
+                case CellType.AirOutlet: return (FactoryGrid.AirOutletX, FactoryGrid.AirOutletY);
+                case CellType.AirReturnDock: return (FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY);
+                default: return (FactoryGrid.OutletX, FactoryGrid.OutletY);
+            }
         }
 
         /// <summary>
@@ -230,11 +266,6 @@ namespace ParcelFactory.Game
             pendingRefunds.Remove((x, y));
             if (c.Type == CellType.Empty) SpawnMoneyPopup(x, y, refund);
         }
-
-        /// <summary>배송 결과가 어느 도크에서 났는가.</summary>
-        public static CellType DockOf(DeliveryOutcome o) =>
-            o == DeliveryOutcome.Delivered || o == DeliveryOutcome.UninspectedToOutlet || o == DeliveryOutcome.RejectedToOutlet || o == DeliveryOutcome.BadToOutlet
-                ? CellType.Outlet : CellType.ReturnDock;
 
         /// <summary>금액 표기: +30, −10(유니코드 마이너스).</summary>
         public static string Signed(int delta) => delta >= 0 ? "+" + delta : "−" + (-delta);
@@ -252,6 +283,9 @@ namespace ParcelFactory.Game
                 case DeliveryOutcome.BadToOutlet: return "불량을 승인해 출고 −30";
                 case DeliveryOutcome.GoodToReturn: return "정상 택배를 반품 −5";
                 case DeliveryOutcome.ApprovedToReturn: return "승인한 택배를 반품 −5";
+                case DeliveryOutcome.WrongCarrier: return WrongCarrierLabel;
+                case DeliveryOutcome.NoWaybillToOutlet: return "출고 " + Signed(DeliveryScoring.Delta(o)) + " · 운송장 없음";
+                case DeliveryOutcome.NoWaybillToReturn: return "반품 " + Signed(DeliveryScoring.Delta(o)) + " · 운송장 없음";
                 default: return o.ToString();
             }
         }
@@ -279,6 +313,8 @@ namespace ParcelFactory.Game
             delivered = UiKit.Chip("Delivered", chips, UiKit.Good, "배송", "0");
             lost = UiKit.Chip("Lost", chips, UiKit.Bad, "소실", "0");
             waiting = UiKit.Chip("Waiting", chips, UiKit.Accent, "검사 대기", "0");
+            labelWaiting = UiKit.Chip("LabelWaiting", chips, UiKit.Accent, "운송장 대기", "0"); // 스펙 15: 0이면 숨긴다
+            labelWaiting.transform.parent.gameObject.SetActive(false);
             LayoutMoney();
         }
 
@@ -461,9 +497,31 @@ namespace ParcelFactory.Game
         public static string BannerText(ConfigMode mode) =>
             mode == ConfigMode.PickDirection ? DirectionBannerText : mode == ConfigMode.PickSlot ? SlotBannerText : null;
 
+        /// <summary>설정 대상 칸까지 본 배너 문구. 분배기·검사기 칸이면 "3 모드"가 붙는다(스펙 14.5).</summary>
+        public static string BannerText(ConfigMode mode, CellType? cellType, RouteMode cellMode)
+        {
+            if (mode == ConfigMode.None || !cellType.HasValue || !InputController.HasMode(cellType.Value)) return BannerText(mode);
+            if (mode == ConfigMode.PickSlot)
+                return cellType.Value == CellType.Scanner ? AirSlotBannerText : cellMode == RouteMode.Air ? AirSplitterSlotBannerText : SplitterSlotBannerText;
+            return cellType.Value == CellType.Scanner && cellMode == RouteMode.Inspect ? ScannerDirectionBannerText : DirectionBannerText;
+        }
+
         private void UpdateBanner()
         {
-            var text = BannerText(input.ConfigMode);
+            CellType? cellType = null;
+            var cellMode = RouteMode.Inspect;
+            if (input.ConfigTargetIsCell && boundSession != null && boundSession.Grid.InBounds(input.ConfigCell.x, input.ConfigCell.y))
+            {
+                var c = boundSession.Grid.Get(input.ConfigCell.x, input.ConfigCell.y);
+                cellType = c.Type;
+                cellMode = c.Mode;
+            }
+            else if (input.ConfigMode != ConfigMode.None && input.SelectedTool.HasValue)
+            {
+                cellType = input.SelectedTool.Value.Type; // 도구도 R → 3으로 모드를 고른다
+                cellMode = input.ToolMode;
+            }
+            var text = BannerText(input.ConfigMode, cellType, cellMode);
             bool show = text != null;
             if (banner.gameObject.activeSelf != show) banner.gameObject.SetActive(show);
             if (!show || bannerText.text == text) return;
@@ -624,13 +682,14 @@ namespace ParcelFactory.Game
             {
                 case InteractResult.NoFloor: Toast("바닥이 없는 곳입니다"); break;
                 case InteractResult.CannotPutHere: Toast(CannotPutMessage()); break;
-                case InteractResult.NoTool: Toast("도구를 고르세요 (1~7)"); break;
+                case InteractResult.NoTool: Toast("도구를 고르세요 (1~8)"); break;
                 case InteractResult.Locked: Toast("아직 사지 않은 부지입니다"); break;
                 case InteractResult.Occupied: Toast("이미 무언가 있습니다"); break;
                 case InteractResult.NotOwned: Toast("해금되지 않은 방향입니다"); break;
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다", ToastKind.Bad); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
                 case InteractResult.Exhausted: Toast(ExhaustedToast, ToastKind.Bad); break;
+                case InteractResult.NeedsInspection: Toast(NeedsInspectionMessage, ToastKind.Bad); break;
                 case InteractResult.Placed:
                     var tool = input.SelectedTool;
                     var s = GameBootstrap.Instance.Session;
@@ -651,6 +710,32 @@ namespace ParcelFactory.Game
             if (outlet) return rejected ? "출고 (거부한 택배 " + Signed(d) + ")" : "출고 " + Signed(d);
             return rejected ? "반품 " + Signed(d) : "반품 (승인한 택배 " + Signed(d) + ")";
         }
+
+        /// <summary>운송 수단이 틀린 배송(스펙 14.3) 문구.</summary>
+        public static readonly string WrongCarrierLabel = "운송 수단 틀림 " + Signed(DeliveryScoring.Delta(DeliveryOutcome.WrongCarrier));
+
+        /// <summary>도크 종류와 항공 여부까지 본 트럭 도크 프롬프트(스펙 14.2–14.3): 운송 수단이 틀리면 "운송 수단 틀림 −10",
+        /// 항공 택배를 항공 트럭에 넣으면 "항공 출고 +30"처럼 꼬리표를 붙인다. 항공 도크는 대응하는 일반 도크 문구.</summary>
+        public static string DeliverLabel(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true)
+        {
+            if (air != Cell.IsAirDock(dock)) return WrongCarrierLabel;
+            bool outlet = IsOutletDock(dock);
+            // 운송장 없음(스펙 15.3): 미검사 다음 순서. "출고 −20 · 운송장 없음"
+            var label = inspected && !waybill
+                ? (outlet ? "출고 " : "반품 ") + Signed(DeliveryScoring.Delta(outlet ? DeliveryOutcome.NoWaybillToOutlet : DeliveryOutcome.NoWaybillToReturn)) + " · 운송장 없음"
+                : DeliverLabel(outlet, inspected, rejected);
+            return air ? AirTag + " " + label : label;
+        }
+
+        public static int ExpectedDelta(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true)
+        {
+            if (air != Cell.IsAirDock(dock)) return DeliveryScoring.Delta(DeliveryOutcome.WrongCarrier);
+            bool outlet = IsOutletDock(dock);
+            if (inspected && !waybill) return DeliveryScoring.Delta(outlet ? DeliveryOutcome.NoWaybillToOutlet : DeliveryOutcome.NoWaybillToReturn);
+            return ExpectedDelta(outlet, inspected, rejected);
+        }
+
+        private static bool IsOutletDock(CellType dock) => dock == CellType.Outlet || dock == CellType.AirOutlet;
 
         /// <summary>프롬프트용 예상 증감. 검사 판정이 옳다고 가정한 결과(불량 여부는 보지 않음)의 DeliveryScoring.Delta.</summary>
         public static int ExpectedDelta(bool outlet, bool inspected, bool rejected)
@@ -799,6 +884,10 @@ namespace ParcelFactory.Game
             SetChip(delivered, s.Sim.DeliveredCount);
             SetChip(lost, s.Sim.LostCount);
             SetChip(waiting, s.Sim.AwaitingInspectionCount);
+            int labels = s.Sim.AwaitingLabelCount;
+            var labelChip = labelWaiting.transform.parent.gameObject;
+            if (labelChip.activeSelf != labels > 0) { labelChip.SetActive(labels > 0); LayoutRebuilder.MarkLayoutForRebuild(chips); }
+            if (labels > 0) SetChip(labelWaiting, labels);
             LayoutMoney();
             UiKit.SetButtonLook(pauseBtn, s.Paused);
             UiKit.SetButtonText(speedBtn, s.Speed >= 2f ? "2x" : "1x");
@@ -810,9 +899,9 @@ namespace ParcelFactory.Game
             UpdateClock(s.Clock);
             UpdateStamina(w.Stamina, s.Worker.EffectiveMaxStamina, s.Worker.IsRunning);
             var tool = input.SelectedTool;
-            var statusLine = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ("택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
+            var statusLine = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ((w.Carrying.Air ? AirTag + " " : "") + "택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R 설정")
-                : "빈손 · 1~7로 도구 선택");
+                : "빈손 · 1~8로 도구 선택");
             if (workerText.text != statusLine)
             {
                 workerText.text = statusLine;
@@ -837,11 +926,13 @@ namespace ParcelFactory.Game
                 case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
                 case InteractResult.PutDown: label = "놓기"; break;
                 case InteractResult.Delivered:
-                    bool toOutlet = s.Grid.Get(fx, fy).Type == CellType.Outlet;
-                    label = DeliverLabel(toOutlet, w.Carrying.Inspected, w.Carrying.Rejected);
-                    textColor = ExpectedDelta(toOutlet, w.Carrying.Inspected, w.Carrying.Rejected) >= 0 ? UiKit.Good : UiKit.Bad;
+                    var dock = s.Grid.Get(fx, fy).Type;
+                    label = DeliverLabel(dock, w.Carrying.Air, w.Carrying.Inspected, w.Carrying.Rejected, w.Carrying.Waybill);
+                    textColor = ExpectedDelta(dock, w.Carrying.Air, w.Carrying.Inspected, w.Carrying.Rejected, w.Carrying.Waybill) >= 0 ? UiKit.Good : UiKit.Bad;
                     break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
+                case InteractResult.LabelRequired: label = LabelPrompt; break;
+                case InteractResult.NeedsInspection: label = NeedsInspectionMessage; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Exhausted: label = ExhaustedPrompt; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Placed: label = PlaceLabel(tool.Value, true, input.ToolSplitterRed); break;
                 case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false, input.ToolSplitterRed); canAct = false; textColor = UiKit.Bad; break;

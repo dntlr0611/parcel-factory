@@ -22,6 +22,10 @@ namespace ParcelFactory.Core
         Standing,
         /// <summary>스태미나 0이라 택배를 집을 수 없음(스펙 11.3). 내려놓기·출고는 막지 않는다.</summary>
         Exhausted,
+        /// <summary>부착대 위 택배가 운송장을 기다린다(스펙 15.1): 운송장 카드를 연다.</summary>
+        LabelRequired,
+        /// <summary>검사 안 된 택배를 부착대에 올리려 함(스펙 15.1): "먼저 검사하세요".</summary>
+        NeedsInspection,
     }
 
     /// <summary>작업자 규칙: 건물 안 12×12 전체를 연속 좌표로 걷고(레일·도크·잠긴 칸 위 통과, 스펙 10.3),
@@ -55,6 +59,8 @@ namespace ParcelFactory.Core
         public float EffectiveSpeed => Speed * Progression.SpeedMultiplier;
         /// <summary>검사대에서 검사를 기다리는 택배. 검사 카드 UI가 이를 보고 Inspect를 호출한다.</summary>
         public Package PendingInspection { get; private set; }
+        /// <summary>부착대에서 운송장을 기다리는 택배(스펙 15.2). 운송장 카드가 이를 보고 AttachWaybill을 호출한다.</summary>
+        public Package PendingLabel { get; private set; }
 
         /// <summary>걷는 속도 배율: 스태미나가 SlowBelow 아래면 lerp(0.5, 1, stamina/SlowBelow), 아니면 1.</summary>
         public float SpeedFactor
@@ -93,6 +99,7 @@ namespace ParcelFactory.Core
                 case CellType.Scanner:
                 case CellType.Splitter:
                 case CellType.Pallet:
+                case CellType.Labeler:
                     return false;
                 default:
                     return true;
@@ -145,6 +152,7 @@ namespace ParcelFactory.Core
             {
                 movedSinceRest = true;
                 CancelInspection();
+                CancelLabel();
                 // 달려서 움직인 프레임만 소모한다(걷기는 소모 없음, 양 축 모두 막히면 소모 없음).
                 if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * dt);
             }
@@ -211,6 +219,7 @@ namespace ParcelFactory.Core
                 if (fc.IsDock) return InteractResult.Delivered;
                 if (fc.Type == CellType.Pallet)
                     return !fc.IsPalletFull && !fc.Demolishing ? InteractResult.PutDown : InteractResult.CannotPutHere;
+                if (fc.Type == CellType.Labeler && !Worker.Carrying.Inspected && fc.HasFreeLane && !fc.Demolishing) return InteractResult.NeedsInspection;
                 if (fc.IsTrack && fc.HasFreeLane && !fc.Demolishing) return InteractResult.PutDown; // 브릿지는 빈 차선이 하나라도 있으면
                 return InteractResult.CannotPutHere;
             }
@@ -219,7 +228,11 @@ namespace ParcelFactory.Core
 
             var p = sim.PackageAt(fx, fy);
             if (p != null)
-                return (fc.Type == CellType.Table && !p.Inspected) ? InteractResult.InspectionRequired : PickUpOrExhausted();
+            {
+                if (fc.Type == CellType.Table && !p.Inspected) return InteractResult.InspectionRequired;
+                if (sim.IsAwaitingLabel(p)) return InteractResult.LabelRequired;
+                return PickUpOrExhausted();
+            }
 
             if (!tool.HasValue) return InteractResult.NoTool;
             if (!IsWalkable(tool.Value.Type) && Overlaps(fx, fy)) return InteractResult.Standing;
@@ -249,6 +262,9 @@ namespace ParcelFactory.Core
                     break;
                 case InteractResult.InspectionRequired:
                     PendingInspection = sim.PackageAt(fx, fy);
+                    break;
+                case InteractResult.LabelRequired:
+                    PendingLabel = sim.PackageAt(fx, fy);
                     break;
                 case InteractResult.PickedUp:
                     Package p;
@@ -292,6 +308,21 @@ namespace ParcelFactory.Core
         }
 
         public void CancelInspection() => PendingInspection = null;
+
+        /// <summary>대기 중인 운송장 부착을 확정한다(스펙 15.2). 택배가 부착대를 떠났거나 작업자가 그 칸을 바라보지 않으면 false.</summary>
+        public bool AttachWaybill()
+        {
+            var p = PendingLabel;
+            PendingLabel = null;
+            if (p == null) return false;
+            var (fx, fy) = FacingTile();
+            if (fx != p.X || fy != p.Y) return false;
+            if (sim.PackageAt(p.X, p.Y) != p || !sim.IsAwaitingLabel(p)) return false;
+            p.Waybill = true;
+            return true;
+        }
+
+        public void CancelLabel() => PendingLabel = null;
 
         public BuildResult TryDemolishFacing()
         {

@@ -77,7 +77,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsNull(GameObject.Find("World/Docks/Dock_delivery/Lane"), "pallet→door lanes should be gone");
                 Assert.IsNotNull(GameObject.Find("World/Docks/Dock_delivery/StopLine"), "truck dock stop line missing");
 
-                Assert.AreEqual(3, boot.Input.AvailableSlots().Count); // Conveyor + Pallet + Table (Pallet, Table owned by default)
+                Assert.AreEqual(4, boot.Input.AvailableSlots().Count); // Conveyor + Pallet + Table + Labeler (Pallet, Table, Labeler owned by default)
                 Assert.AreEqual(ParcelFactory.Core.CellType.Pallet, boot.Input.AvailableSlots()[1]);
                 boot.Input.SelectSlot(1);
                 Assert.AreEqual(ParcelFactory.Core.Direction.East, boot.Input.SelectedTool.Value.Direction); // 파랑
@@ -203,7 +203,7 @@ namespace ParcelFactory.Game.Tests
                 input.BeginConfig();
                 Assert.AreEqual(ConfigMode.PickSlot, input.ConfigMode);
                 yield return null;
-                Assert.AreEqual(HudController.SlotBannerText, banner.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
+                Assert.AreEqual(HudController.SplitterSlotBannerText, banner.Find("Text").GetComponent<UnityEngine.UI.Text>().text);
                 // PickSlot에서는 화살표를 눌러도 걷지 않고 모드도 그대로다.
                 input.SetPad(ParcelFactory.Core.Direction.West, true);
                 yield return null; yield return null;
@@ -514,7 +514,7 @@ namespace ParcelFactory.Game.Tests
                 var s2 = boot.Session;
                 s2.Paused = true;
                 var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s2.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
-                q.Bad = false; q.Inspect(false);
+                q.Bad = false; q.Inspect(false); q.Waybill = true; // 운송장(스펙 15)
                 s2.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
                 Assert.AreEqual("정상 출고 +30", boot.Hud.LastToast);
                 LogAssert.NoUnexpectedReceived();
@@ -589,7 +589,7 @@ namespace ParcelFactory.Game.Tests
 
                 // 배송 팝업: +30 초록.
                 var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
-                q.Bad = false; q.Inspect(false);
+                q.Bad = false; q.Inspect(false); q.Waybill = true; // 운송장(스펙 15)
                 s.Sim.DeliverCarried(q, ParcelFactory.Core.CellType.Outlet);
                 bool sawDelivery = false;
                 foreach (var t in boot.Hud.Root.GetComponentsInChildren<UnityEngine.UI.Text>())
@@ -598,7 +598,7 @@ namespace ParcelFactory.Game.Tests
 
                 // 승인했지만 실제로는 불량인 택배: 프롬프트는 "출고 +30"(불량을 드러내지 않음), 지급·토스트는 진짜 결과 −30.
                 var bad = new ParcelFactory.Core.PackageFactory(new System.Random(4)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
-                bad.Bad = true; bad.Inspect(false);
+                bad.Bad = true; bad.Inspect(false); bad.Waybill = true;
                 s.Worker.Worker.Carrying = bad;
                 s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.East;
                 yield return null;
@@ -811,7 +811,7 @@ namespace ParcelFactory.Game.Tests
 
                 // 검사한 정상 택배를 손으로 출고 → EXP +10, 라벨 갱신·초록 깜빡임.
                 var q = new ParcelFactory.Core.PackageFactory(new System.Random(3)).Create(s.Sim.NextId++, 10, 2, ParcelFactory.Core.Direction.East);
-                q.Bad = false; q.Inspect(false);
+                q.Bad = false; q.Inspect(false); q.Waybill = true; // 운송장(스펙 15)
                 s.Worker.Worker.Carrying = q;
                 s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = ParcelFactory.Core.Direction.East;
                 boot.Input.Interact();
@@ -1137,16 +1137,16 @@ namespace ParcelFactory.Game.Tests
                 s.Toolbar.Add(ParcelFactory.Core.CellType.Conveyor, ParcelFactory.Core.Direction.North);
                 yield return null;
 
-                // 핫바 7칸, 브릿지는 세 번째(키 3)
-                Assert.AreEqual(7, InputController.SlotCount);
+                // 핫바 8칸(운송장 부착대 포함, 스펙 15.1), 브릿지는 세 번째(키 3)
+                Assert.AreEqual(8, InputController.SlotCount);
                 var slots = input.AvailableSlots();
-                Assert.AreEqual(7, slots.Count, string.Join(",", slots));
+                Assert.AreEqual(8, slots.Count, string.Join(",", slots));
                 Assert.AreEqual(ParcelFactory.Core.CellType.Bridge, slots[2]);
                 Assert.IsTrue(InputController.IsConfigurable(ParcelFactory.Core.CellType.Bridge));
                 var hotbar = boot.Hud.Root.Find("Hotbar") as RectTransform;
                 int shownSlots = 0;
                 foreach (Transform t in hotbar) if (t.gameObject.activeSelf) shownSlots++;
-                Assert.AreEqual(7, shownSlots);
+                Assert.AreEqual(8, shownSlots);
                 Assert.AreEqual("브릿지", hotbar.Find("Slot3").GetComponentInChildren<UnityEngine.UI.Text>().text);
 
                 // 터치 모드: 7칸 핫바가 캔버스 안에 있고 터치 버튼과 겹치지 않는다

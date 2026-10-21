@@ -61,6 +61,66 @@ namespace ParcelFactory.Game
             return cache[key] = m;
         }
 
+        /// <summary>
+        /// 텍스처 데칼(알파 컷아웃, 스펙 14 항공 마크·표지판): 텍스처 색 그대로, 방향광과 무관하게 읽히도록 같은 텍스처로 glow배 발광한다.
+        /// 템플릿 PF_Cutout(Lit + _ALPHATEST_ON + _EMISSION)을 복제한다.
+        /// </summary>
+        public static Material Decal(Texture tex, float glow = 0.6f)
+        {
+            string key = $"decal:{(tex != null ? tex.GetInstanceID() : 0)}:{glow}";
+            if (cache.TryGetValue(key, out var m)) return m;
+            m = FromTemplate("PF_Cutout", "Universal Render Pipeline/Lit");
+            m.name = "Decal-" + (tex != null ? tex.name : "none");
+            m.SetColor("_BaseColor", Color.white);
+            m.SetTexture("_BaseMap", tex);
+            m.SetFloat("_Smoothness", 0.2f);
+            m.SetFloat("_Metallic", 0f);
+            m.SetFloat("_AlphaClip", 1f);
+            m.SetFloat("_Cutoff", 0.5f);
+            m.EnableKeyword("_ALPHATEST_ON");
+            m.EnableKeyword("_EMISSION");
+            m.SetTexture("_EmissionMap", tex);
+            m.SetColor("_EmissionColor", Color.white * glow);
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            m.SetOverrideTag("RenderType", "TransparentCutout");
+            m.renderQueue = (int)RenderQueue.AlphaTest;
+            return cache[key] = m;
+        }
+
+        /// <summary>WaybillTex 머리띠 색: 출고 파랑, 반품 빨강(카드의 운송장과 같은 색, 스펙 15.2).</summary>
+        public static readonly Color WaybillOutBand = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f), WaybillReturnBand = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+
+        /// <summary>상자 윗면 운송장(스펙 15.3): 128×84 흰 종이, 위 22px 머리띠(출고 파랑/반품 빨강), 회색 글줄 2개, 아래 바코드 줄.</summary>
+        public static Material Waybill(bool returnBand)
+        {
+            var cached = returnBand ? waybillReturn : waybillOut; // 문자열 키 없이(매 프레임 부르는 곳이 있다)
+            if (cached != null) return cached;
+            Material m;
+            const int w = 128, h = 84;
+            var buf = new Color[w * h];
+            var paper = new Color(0.97f, 0.96f, 0.93f, 1f);
+            for (int i = 0; i < buf.Length; i++) buf[i] = paper;
+            FillRect(buf, w, h, 0, h - 22, w, 22, returnBand ? WaybillReturnBand : WaybillOutBand); // y = 0이 아래 행
+            var ink = new Color(0.35f, 0.35f, 0.38f, 1f);
+            FillRect(buf, w, h, 10, h - 34, 70, 5, ink);
+            FillRect(buf, w, h, 10, h - 44, 46, 4, ink);
+            var bar = new Color(0.1f, 0.1f, 0.12f, 1f);
+            var rng = new System.Random(9);
+            for (int x = 10; x < w - 10;)
+            {
+                int bw = 2 + rng.Next(4);
+                FillRect(buf, w, h, x, 8, bw, 22, bar);
+                x += bw + 2 + rng.Next(3);
+            }
+            var tex = MakeTexture(w, h, buf, TextureWrapMode.Clamp, "Waybill" + (returnBand ? "Return" : "Out"));
+            m = new Material(Lit(Color.white, 0.15f)) { name = tex.name };
+            m.SetTexture("_BaseMap", tex);
+            if (returnBand) waybillReturn = m; else waybillOut = m;
+            return m;
+        }
+
+        private static Material waybillOut, waybillReturn;
+
         /// <summary>n×n 칸 창고 바닥: 기본색 tone + 미세 노이즈 + 칸마다 어두운 이음새(2px)와 밝은 하이라이트(1px). 칸당 64px.</summary>
         public static Material Concrete(int tiles, Color baseTone)
         {

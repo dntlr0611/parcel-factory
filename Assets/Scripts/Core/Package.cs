@@ -36,6 +36,10 @@ namespace ParcelFactory.Core
         public bool Inspected;
         /// <summary>검사 결과 거부됨. Inspected가 true일 때만 의미 있다.</summary>
         public bool Rejected;
+        /// <summary>항공 택배(스펙 14.2). 겉 라벨이라 검사 전에도 보인다. 항공 트럭으로만 보내야 한다.</summary>
+        public bool Air;
+        /// <summary>운송장이 붙었는가(스펙 15). 부착대에서 작업자가 붙이거나 자동 검사기가 붙인다.</summary>
+        public bool Waybill;
         public PackageLabel Label;
 
         public void Inspect(bool reject)

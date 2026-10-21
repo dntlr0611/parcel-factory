@@ -27,7 +27,7 @@ namespace ParcelFactory.Game
         private static readonly Color LaneColor = Hex(0xE9C94A);
 
         private ModelCatalog cat;
-        private Transform root, lotRoot;
+        private Transform root, lotRoot, wallsRoot, eastWall, airDocks;
         private GameSession bound;
         private int framedSize = -1, framedW, framedH;
 
@@ -50,9 +50,14 @@ namespace ParcelFactory.Game
             bound = session;
             bound.Unlocks.Unlocked += OnUnlocked;
             RebuildLot(session);
+            RebuildEastSide(session);
         }
 
-        private void OnUnlocked(UnlockId _) => RebuildLot(bound);
+        private void OnUnlocked(UnlockId id)
+        {
+            RebuildLot(bound);
+            if (id == UnlockId.Plot2) RebuildEastSide(bound); // 항공 도크는 부지 확장 2에서만 생긴다(세션 교체는 Bind가 다시 만든다)
+        }
 
         private static Color Hex(int rgb) => new Color(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
 
@@ -215,11 +220,11 @@ namespace ParcelFactory.Game
 
         private void BuildWalls()
         {
-            var walls = Group("Walls");
+            var walls = wallsRoot = Group("Walls");
             const float h = HalfBuilding;
             WallRun(walls, -h, h, h, h); // 북쪽 전체. 남쪽(카메라 쪽)은 트임.
             SideWall(walls, -h, new[] { RowZ(FactoryGrid.InletY) });
-            SideWall(walls, h, new[] { RowZ(FactoryGrid.OutletY), RowZ(FactoryGrid.ReturnDockY) });
+            // 동쪽 벽은 항공 도크(스펙 14.1) 유무에 따라 출입구가 달라 RebuildEastSide에서 만든다.
             var darkMat = MaterialLibrary.Lit(WallDark, 0.15f);
             foreach (var (x, z) in new[] { (h, h), (-h, h), (h, -h), (-h, -h) })
                 Box("CornerPillar", walls, new Vector3(x, (WallHeight + 0.3f) / 2f, z), new Vector3(0.5f, WallHeight + 0.3f, 0.5f), darkMat);
@@ -285,10 +290,72 @@ namespace ParcelFactory.Game
             Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true, Hex(0xD95A4A));
         }
 
-        private void Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw, bool truck, Color bodyColor)
+        /// <summary>항공 트럭 색(스펙 14.1): 항공 출고 초록, 항공 반품 노랑.</summary>
+        public static readonly Color AirOutletColor = Hex(0x36B565), AirReturnColor = Hex(0xF2C230);
+
+        /// <summary>
+        /// 동쪽 벽과 항공 도크(스펙 14.1). 벽 출입구는 출고·반품 줄에 더해, 격자에 항공 도크 칸이 있으면(부지 확장 2 이후) 그 줄에도 낸다.
+        /// 항공 도크는 기존 트럭 도크와 같은 모양(슬래브·신호등·정지선·후진 주차 트럭)에 트럭 위 비행기 표지판을 단다.
+        /// 확장 전에는 벽이 막혀 있고 항공 트럭도 없다. 세션 교체(불러오기)와 해금 때 다시 만든다.
+        /// </summary>
+        private void RebuildEastSide(GameSession session)
+        {
+            if (wallsRoot == null) return;
+            if (eastWall != null) Destroy(eastWall.gameObject);
+            if (airDocks != null) Destroy(airDocks.gameObject);
+            eastWall = new GameObject("East").transform;
+            eastWall.SetParent(wallsRoot, false);
+            airDocks = Group("AirDocks");
+
+            var rows = new List<float> { RowZ(FactoryGrid.OutletY), RowZ(FactoryGrid.ReturnDockY) };
+            bool airOut = session.Grid.Get(FactoryGrid.AirOutletX, FactoryGrid.AirOutletY).Type == CellType.AirOutlet;
+            bool airRet = session.Grid.Get(FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY).Type == CellType.AirReturnDock;
+            if (airOut) rows.Add(RowZ(FactoryGrid.AirOutletY));
+            if (airRet) rows.Add(RowZ(FactoryGrid.AirReturnDockY));
+            SideWall(eastWall, HalfBuilding, rows);
+
+            if (airOut)
+                AirSign(Dock(airDocks, FactoryGrid.AirOutletX, FactoryGrid.AirOutletY, AirOutletColor, "delivery", 8.6f, 90f, truck: true, AirOutletColor, "Dock_air-outlet"), AirOutletColor);
+            if (airRet)
+                AirSign(Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "truck", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return"), AirReturnColor);
+        }
+
+        /// <summary>트럭 지붕 위 비행기 표지판: 기둥 + 트럭 색 테두리 + 파란 판 + 흰 비행기(ui-air). 판은 카메라를 향해 기운다.</summary>
+        private static void AirSign(GameObject car, Color frameColor)
+        {
+            var rs = car.GetComponentsInChildren<Renderer>();
+            if (rs.Length == 0) return;
+            var b = rs[0].bounds;
+            foreach (var r in rs) b.Encapsulate(r.bounds);
+            var sign = new GameObject("AirSign").transform;
+            sign.SetParent(car.transform.parent, false);
+            sign.position = new Vector3(b.center.x, b.max.y, b.center.z);
+            const float post = 0.28f, size = 0.86f;
+            Box("Post", sign, new Vector3(0f, post / 2f, 0f), new Vector3(0.08f, post, 0.08f), MaterialLibrary.Lit(WallDark, 0.2f));
+            var board = new GameObject("Board").transform;
+            board.SetParent(sign, false);
+            board.localPosition = new Vector3(0f, post + size / 2f, 0f);
+            board.rotation = Quaternion.LookRotation(-CameraDir, Vector3.up); // 로컬 −z(Quad 앞면)가 카메라 쪽
+            Box("Frame", board, new Vector3(0f, 0f, 0.03f), new Vector3(size + 0.1f, size + 0.1f, 0.06f), MaterialLibrary.Lit(frameColor, 0.3f));
+            Box("Panel", board, new Vector3(0f, 0f, -0.005f), new Vector3(size, size, 0.02f), MaterialLibrary.Lit(AirBlue, 0.3f), castShadow: false);
+            var icon = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            icon.name = "Icon";
+            Destroy(icon.GetComponent<Collider>());
+            icon.transform.SetParent(board, false);
+            icon.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+            icon.transform.localScale = new Vector3(size * 0.78f, size * 0.78f, 1f);
+            var ir = icon.GetComponent<Renderer>();
+            ir.sharedMaterial = MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/ui-air"), 0.8f);
+            ir.shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        /// <summary>항공 마크 파랑(mark-air.png의 #2F86EB).</summary>
+        public static readonly Color AirBlue = Hex(0x2F86EB);
+
+        private GameObject Dock(Transform parent, int gx, int gy, Color color, string vehicle, float vehicleX, float vehicleYaw, bool truck, Color bodyColor, string name = null)
         {
             var tile = Grid3D.Tile(gx, gy);
-            var d = new GameObject("Dock_" + vehicle).transform;
+            var d = new GameObject(name ?? "Dock_" + vehicle).transform;
             d.SetParent(parent, false);
             Box("DockSlab", d, tile + new Vector3(0f, 0.11f, 0f), new Vector3(1f, 0.22f, 1f), MaterialLibrary.Lit(color, 0.25f));
             Box("DockMark", d, tile + new Vector3(0f, 0.23f, 0f), new Vector3(0.72f, 0.02f, 0.72f), MaterialLibrary.Lit(Hex(0xF5F0E6), 0.2f), castShadow: false);
@@ -316,6 +383,7 @@ namespace ParcelFactory.Game
                     Box("Lane", d, new Vector3(cx, 0f, tile.z + 0.42f), new Vector3(len, 0.012f, 0.06f), laneMat, castShadow: false);
                 }
             }
+            return car;
         }
 
         // ---------------- 차량 도색 ----------------

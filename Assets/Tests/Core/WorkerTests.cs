@@ -214,6 +214,7 @@ namespace ParcelFactory.Core.Tests
         {
             Assert.IsTrue(sim.TrySpawn(0, 2, PackageKind.Normal, out var p));
             p.Inspect(false);
+            p.Waybill = true; // 운송장(스펙 15)
             ws.Worker.X = 0; ws.Worker.Y = 3; ws.Worker.Facing = Direction.South;
             Assert.AreEqual(InteractResult.PickedUp, ws.Interact(null));
             ws.Worker.X = 10; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East; // 트럭 도크 출고 (11,2)
@@ -337,6 +338,7 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(sim.TrySpawn(2, 3, PackageKind.Normal, out var p));
             Assert.AreEqual(InteractResult.InspectionRequired, ws.Preview(null)); AssertUnchanged(190, 1, null);
             p.Inspect(false);
+            p.Waybill = true; // 운송장(스펙 15)
             Assert.AreEqual(InteractResult.PickedUp, ws.Preview(null)); AssertUnchanged(190, 1, null);
             Assert.AreEqual(InteractResult.PickedUp, ws.Interact(null));
             Assert.AreSame(p, ws.Worker.Carrying);
@@ -376,6 +378,7 @@ namespace ParcelFactory.Core.Tests
         {
             var bad = new PackageFactory(new Random(1), 1.0).Create(50, 0, 0, Direction.East);
             bad.Inspect(true);
+            bad.Waybill = true; // 운송장(스펙 15)
             ws.Worker.Carrying = bad;
             ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));

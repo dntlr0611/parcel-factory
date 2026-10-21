@@ -15,6 +15,7 @@ namespace ParcelFactory.Core
                 case CellType.Scanner: return 120;
                 case CellType.Pallet: return 20;
                 case CellType.Bridge: return 40;
+                case CellType.Labeler: return 20; // 운송장 부착대(스펙 15.1)
                 default: throw new ArgumentException($"{type} is not buildable", nameof(type));
             }
         }

@@ -27,3 +27,10 @@ I = {
 for k,(vb,body) in I.items():
     open(f'svg/{k}.html','w').write(f'<html><body style="margin:0;background:transparent"><svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="64" height="64" style="display:block">{body}</svg></body></html>')
 print(' '.join(I))
+
+
+# 항공 택배(스펙 14): 흰 비행기 아이콘과 상자 윗면 마크(파란 둥근 사각 + 흰 테두리, 128px)
+PLANE='M12 2.5c.9 0 1.5.8 1.5 1.8V9l7.5 4.3v2.2l-7.5-2.2v4.6l2 1.5V21l-3.5-1-3.5 1v-1.6l2-1.5v-4.6L3 15.5v-2.2L10.5 9V4.3c0-1 .6-1.8 1.5-1.8z'
+open('svg/ui-air.html','w').write(f'<html><body style="margin:0;background:transparent"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" style="display:block"><path d="{PLANE}" fill="#fff"/></svg></body></html>')
+open('svg/mark-air.html','w').write(f'<html><body style="margin:0;background:transparent"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="128" height="128" style="display:block"><rect x="1.5" y="1.5" width="29" height="29" rx="6" fill="#2f86eb" stroke="#fff" stroke-width="2"/><g transform="translate(5 5) scale(0.9167)"><path d="{PLANE}" fill="#fff"/></g></svg></body></html>')
+# mark-air는 --window-size=128,128로 굽는다.

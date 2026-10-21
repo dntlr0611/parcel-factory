@@ -11,6 +11,10 @@ namespace ParcelFactory.Game
     public sealed class Panels : MonoBehaviour
     {
         private RectTransform shop, status, inspect, demolish, summary, shopList, statusList;
+        /// <summary>검사 카드 배송 방법 줄의 비행기 아이콘(항공 택배일 때만, 스펙 14.2).</summary>
+        private Image iMethodAir;
+        /// <summary>검사 카드의 운송장 상태(스펙 15.3).</summary>
+        private Text iWaybill;
         private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, statusExp, sTitle, sDelivered, sLost, sInspected, sMoney, sExp;
         /// <summary>상태창 행 순서.</summary>
         public static readonly Stat[] StatOrder = { Stat.Stamina, Stat.Speed, Stat.Regen };
@@ -18,13 +22,16 @@ namespace ParcelFactory.Game
         private InputController input;
         private HudController hud;
 
-        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || StatusOpen || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen;
+        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || StatusOpen || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen || WaybillOpen;
+        /// <summary>운송장 카드(스펙 15.2).</summary>
+        public WaybillCard Waybill { get; private set; }
+        public bool WaybillOpen => Waybill != null && Waybill.IsOpen;
         /// <summary>상점만 열려 있는가. 이때는 B 키·상점 버튼이 상점을 닫는 토글로 동작한다.</summary>
-        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen;
+        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen;
         /// <summary>작업자 상태창이 떠 있는가.</summary>
         public bool StatusOpen => status != null && status.gameObject.activeSelf;
         /// <summary>상태창만 열려 있는가. 이때는 C 키·상태 버튼이 상태창을 닫는 토글로 동작한다(B는 상점으로 바꾼다).</summary>
-        public bool StatusIsOnlyOpen => StatusOpen && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen;
+        public bool StatusIsOnlyOpen => StatusOpen && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen;
         /// <summary>하루 요약 패널이 떠 있는가.</summary>
         public bool SummaryOpen => summary != null && summary.gameObject.activeSelf;
         private bool lastAnyOpen;
@@ -36,10 +43,17 @@ namespace ParcelFactory.Game
             var boot = GameBootstrap.Instance;
             input = boot.Input; hud = boot.Hud;
             BuildShop(); BuildStatus(); BuildInspect(); BuildDemolish(); BuildSummary();
+            Waybill = gameObject.AddComponent<WaybillCard>();
+            Waybill.Build(hud.Root);
+            Waybill.Closed += Sync;
             input.ToggleShop += ToggleShop;
             input.ToggleStatus += ToggleStatus;
             input.Escape += CloseAll;
-            input.Interacted += r => { if (r == InteractResult.InspectionRequired) OpenInspect(); };
+            input.Interacted += r =>
+            {
+                if (r == InteractResult.InspectionRequired) OpenInspect();
+                else if (r == InteractResult.LabelRequired) OpenWaybill();
+            };
             WatchEconomy(boot.Session);
             WatchSession(boot.Session);
             boot.SessionReplaced += s => { WatchEconomy(s); WatchSession(s); CloseAll(); };
@@ -87,6 +101,7 @@ namespace ParcelFactory.Game
         {
             var session = GameBootstrap.Instance.Session;
             if (inspect.gameObject.activeSelf && session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
+            if (WaybillOpen && !Waybill.Attached && session.Worker.PendingLabel == null) Waybill.Close(); // 다른 경로로 대기가 풀렸다
             if (SummaryOpen && session.Clock.IsOpen) summary.gameObject.SetActive(false); // 다른 경로로 다음 날이 시작됐다
             Sync();
         }
@@ -98,6 +113,16 @@ namespace ParcelFactory.Game
             status.gameObject.SetActive(false);
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             demolish.gameObject.SetActive(false); pendingDemolish = null;
+            if (WaybillOpen && !Waybill.Attached) Waybill.Close();
+            Sync();
+        }
+
+        /// <summary>부착대에서 E(LabelRequired): 대기 택배로 운송장 카드를 연다(스펙 15.2).</summary>
+        private void OpenWaybill()
+        {
+            var p = GameBootstrap.Instance.Session.Worker.PendingLabel;
+            if (p == null) return;
+            Waybill.Open(p);
             Sync();
         }
 
@@ -279,6 +304,8 @@ namespace ParcelFactory.Game
             var idKey = UiKit.Keycap(card, "#1", 20f, 11, "IdKey");
             UiKit.Place((RectTransform)idKey.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-CardPad, -CardPad), new Vector2(30f, 20f));
             iId = idKey.Text; iId.name = "Id";
+            iWaybill = UiKit.Label("WaybillState", card, "운송장 없음", 12, UiKit.Muted, TextAnchor.MiddleRight, Fonts.Bold);
+            UiKit.Place(iWaybill.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-CardPad - 30f - 8f, -CardPad), new Vector2(120f, 20f));
             var paper = UiKit.Box("Paper", card, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(CardPad + 22f + 12f)), new Vector2(-2f * CardPad, paperH), UiKit.Paper, UiKit.RButton).rectTransform;
             UiKit.AddBorder(paper, UiKit.RButton, UiKit.PaperLine);
             Text Row(string n, string lbl, float y, Color c)
@@ -288,6 +315,11 @@ namespace ParcelFactory.Game
                 return v;
             }
             iDest = Row("Dest", "목적지", 12f, UiKit.PaperInk); iWeight = Row("Weight", "표기 무게", 12f + 29f, UiKit.PaperInk); iMethod = Row("Method", "배송 방법", 12f + 58f, UiKit.PaperInk);
+            var airRt = UiKit.Rect("MethodAir", paper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(-14f, -(12f + 58f + 11f)), new Vector2(16f, 16f));
+            iMethodAir = airRt.gameObject.AddComponent<Image>();
+            iMethodAir.sprite = UiKit.Icon("ui-air"); iMethodAir.preserveAspect = true; iMethodAir.raycastTarget = false;
+            iMethodAir.color = WorldBuilder.AirBlue;
+            airRt.gameObject.SetActive(false);
             var dash = UiKit.Rect("Dash", paper, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(12f + 87f + 2f)), new Vector2(-28f, 1f));
             var dashImg = dash.gameObject.AddComponent<Image>(); dashImg.sprite = UiSprites.Dash(); dashImg.type = Image.Type.Tiled; dashImg.color = UiKit.PaperDash; dashImg.raycastTarget = false;
             iScale = Row("Scale", "저울 실측", 12f + 87f + 10f, UiKit.Danger);
@@ -307,6 +339,11 @@ namespace ParcelFactory.Game
             iId.text = "#" + p.Id;
             UiKit.SetNumText(iDest, p.Label.Destination, false); UiKit.SetNumText(iWeight, p.Label.Weight + " kg", false);
             UiKit.SetNumText(iMethod, p.Label.Method, false); UiKit.SetNumText(iScale, p.Label.Scale + " kg", false);
+            // 항공이면 배송 방법 글자 왼쪽에 비행기 아이콘(값은 오른쪽 정렬, 오른쪽 여백 14).
+            iMethodAir.gameObject.SetActive(p.Air);
+            iWaybill.text = p.Waybill ? "운송장 ✓" : "운송장 없음"; // 스펙 15.3
+            iWaybill.color = p.Waybill ? UiKit.Good : UiKit.Muted;
+            if (p.Air) iMethodAir.rectTransform.anchoredPosition = new Vector2(-(14f + Mathf.Ceil(iMethod.preferredWidth) + 6f), iMethodAir.rectTransform.anchoredPosition.y);
             inspect.gameObject.SetActive(true);
             Sync();
         }
@@ -363,6 +400,7 @@ namespace ParcelFactory.Game
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
             UiKit.SetNumText(sExp, d.Exp.ToString(), true);
             summary.gameObject.SetActive(true);
+            summary.SetAsLastSibling(); // 운송장 카드 등 나중에 만든 모달보다 위에
             input.ClearPad();
             Sync();
         }

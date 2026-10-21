@@ -297,9 +297,10 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(new Tool(CellType.Pallet, Direction.East), tools[2]);
             Assert.AreEqual(new Tool(CellType.Pallet, Direction.West), tools[3]);
             Assert.AreEqual(CellType.Table, tools[4].Type);
-            Assert.AreEqual(CellType.Splitter, tools[8].Type);
-            Assert.AreEqual(CellType.Scanner, tools[12].Type);
-            Assert.AreEqual(16, tools.Count);
+            Assert.AreEqual(CellType.Labeler, tools[8].Type); // 운송장 부착대(스펙 15.1)
+            Assert.AreEqual(CellType.Splitter, tools[12].Type);
+            Assert.AreEqual(CellType.Scanner, tools[16].Type);
+            Assert.AreEqual(20, tools.Count);
         }
 
         [Test]
@@ -333,6 +334,7 @@ namespace ParcelFactory.Core.Tests
         {
             var good = Loose();
             good.Inspect(false);
+            good.Waybill = true; // 운송장(스펙 15)
             ws.Worker.Carrying = good;
             ws.Worker.X = 10; ws.Worker.Y = 2; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Preview(null));
@@ -342,6 +344,7 @@ namespace ParcelFactory.Core.Tests
 
             var bad = Loose(bad: true);
             bad.Inspect(true);
+            bad.Waybill = true; // 운송장(스펙 15)
             ws.Worker.Carrying = bad;
             ws.Worker.X = 10; ws.Worker.Y = 4; ws.Worker.Facing = Direction.East;
             Assert.AreEqual(InteractResult.Delivered, ws.Interact(null));
@@ -358,6 +361,7 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(BuildResult.Occupied, build.Check(11, 2, CellType.Conveyor, Direction.East));
             Assert.IsTrue(sim.TrySpawn(10, 2, PackageKind.Normal, out var p));
             p.Inspect(false);
+            p.Waybill = true; // 운송장(스펙 15)
             DeliveryOutcome seen = DeliveryOutcome.GoodToReturn;
             sim.PackageDelivered += (pk, o, d) => seen = o;
             sim.Tick(1f);
@@ -406,7 +410,7 @@ namespace ParcelFactory.Core.Tests
             s.Sim.NextId = 3;
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(6, st.Version);
+            Assert.AreEqual(7, st.Version);
             var json = SaveSerializer.ToJson(st);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(json));
 
@@ -452,7 +456,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V3_IsRejected()
         {
-            Assert.AreEqual(6, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(7, SaveSerializer.CurrentVersion);
             Assert.AreEqual(6, SaveSerializer.MinReadableVersion);
             var st = SaveSerializer.Capture(new GameSession());
             st.Version = 3;

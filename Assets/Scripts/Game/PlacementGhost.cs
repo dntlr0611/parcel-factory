@@ -25,7 +25,7 @@ namespace ParcelFactory.Game
         public int Rebuilds { get; private set; }
 
         private GameObject model;
-        private (int x, int y, CellType type, Direction dir, Direction? red, bool ok)? key;
+        private (int x, int y, CellType type, Direction dir, Direction? red, RouteMode mode, bool ok)? key;
 
         private void LateUpdate() => Refresh();
 
@@ -42,7 +42,8 @@ namespace ParcelFactory.Game
             var tool = input.SelectedTool.Value;
             Direction? red = tool.Type == CellType.Splitter ? input.ToolSplitterRed : null;
             bool ok = s.Worker.Preview(tool) == InteractResult.Placed;
-            var k = (fx, fy, tool.Type, tool.Direction, red, ok);
+            var mode = InputController.HasMode(tool.Type) ? input.ToolMode : RouteMode.Inspect; // 항공 모드 색(스펙 14.5)
+            var k = (fx, fy, tool.Type, tool.Direction, red, mode, ok);
             if (model != null && key.HasValue && key.Value.Equals(k))
             {
                 if (!model.activeSelf) model.SetActive(true);
@@ -51,14 +52,14 @@ namespace ParcelFactory.Game
             Build(k);
         }
 
-        private void Build((int x, int y, CellType type, Direction dir, Direction? red, bool ok) k)
+        private void Build((int x, int y, CellType type, Direction dir, Direction? red, RouteMode mode, bool ok) k)
         {
             if (model != null) Destroy(model);
             key = k;
             Placeable = k.ok;
             Tint = k.ok ? GreenTint : RedTint;
             var kind = k.type == CellType.Pallet ? Tool.KindOf(k.dir) : PalletKind.None;
-            model = CellViews.BuildPreview(transform, k.type, k.dir, kind, k.red);
+            model = CellViews.BuildPreview(transform, k.type, k.dir, kind, k.red, k.mode);
             if (model == null) return;
             model.name = "Ghost";
             // 바닥과 겹쳐 깜빡이지 않도록 살짝 띄운다.
@@ -70,8 +71,9 @@ namespace ParcelFactory.Game
             foreach (var r in model.GetComponentsInChildren<Renderer>(true))
             {
                 Material m = body;
-                if (r.gameObject.name == "BlueArrow") m = MaterialLibrary.Transparent(WithAlpha(CellViews.SplitterBlue, 0.8f));
-                else if (r.gameObject.name == "RedArrow") m = MaterialLibrary.Transparent(WithAlpha(CellViews.SplitterRed, 0.8f));
+                string n = r.gameObject.name;
+                if (n == "BlueArrow" || n == "RedArrow" || n == "GroundArrow" || n == "AirArrow")
+                    m = MaterialLibrary.Transparent(WithAlpha(CellViews.ArrowColor(n, k.mode), 0.8f));
                 else if (r.TryGetComponent<MeshFilter>(out var mf) && mf.sharedMesh == ChevronMesh.Get()) m = arrow;
                 var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
                 for (int i = 0; i < mats.Length; i++) mats[i] = m;

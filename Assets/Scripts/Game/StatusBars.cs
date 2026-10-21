@@ -18,6 +18,10 @@ namespace ParcelFactory.Game
         public const float Lift = 0.45f, AwayFromCamera = 0.35f, Height = 18f, PadX = 16f;
         public const string FocusSuffix = " · R 설정";
         private const string DimOpen = "<color=#8E959C>", DimClose = "</color>";
+        /// <summary>항공 모드 출구 색(스펙 14.5): 1번 일반 흰색, 2번 항공 #2F86EB.</summary>
+        private const string GroundOpen = "<color=#FFFFFF>", GroundClose = "</color>", AirOpen = "<color=#2F86EB>", AirClose = "</color>";
+        /// <summary>분배기 항공 모드 출구 색: 1번 정상 초록(#36B565), 2번 반품 노랑(#F2C230) — 항공 트럭 색.</summary>
+        private const string OkOpen = "<color=#36B565>", OkClose = "</color>", ReturnOpen = "<color=#F2C230>", ReturnClose = "</color>";
         // 시안 .sbar: rgba(10,13,15,.62) + 흰색 .1 선, 글자 #e9ece6. 바라보는 대상(.sbar.on)은 .94 + 앰버 선·글자 + 앰버 빛.
         // 색 공간 보정(UiKit.DarkAlpha)은 QualitySettings를 읽으므로 MonoBehaviour 생성 중(정적 필드 초기화)에는 부를 수 없다 → 속성으로 둔다.
         private static Color PillBg => new Color(10f / 255f, 13f / 255f, 15f / 255f, UiKit.DarkAlpha(0.62f));
@@ -141,6 +145,7 @@ namespace ParcelFactory.Game
         /// <summary>
         /// 부품 상태 문구: 레일 "→", 고속 "고속 →", 브릿지 "브릿지 ↑"(윗길 방향), 검사대 "검사대" 또는 "검사 대기 1", 자동 검사기 "자동 →",
         /// 분배기 "파 → · 빨 ↓"(빨간 출구가 없거나 연결되지 않았으면 흐린 글자), 팔레트 "파랑 3/6".
+        /// 항공 모드(스펙 14.5): 분배기 "분배기 · 항공 1→ · 2↓"(1번 초록, 2번 노랑), 검사기 "검사기 · 항공 1→ · 2↓"(1번 흰색, 2번 #2F86EB).
         /// </summary>
         public static string Describe(GameSession s, int x, int y)
         {
@@ -149,8 +154,25 @@ namespace ParcelFactory.Game
             {
                 case CellType.Conveyor: return HudController.Arrow(c.Direction);
                 case CellType.FastConveyor: return "고속 " + HudController.Arrow(c.Direction);
-                case CellType.Scanner: return "자동 " + HudController.Arrow(c.Direction);
+                case CellType.Scanner:
+                {
+                    if (c.Mode != RouteMode.Air) return "자동 " + HudController.Arrow(c.Direction);
+                    ConveyorSim.ScannerRoutes(s.Grid, x, y, out var ground, out var air);
+                    // 받을 수 없는 출구, 그리고 붙잡힌 택배가 기다리는 출구는 흐리게(스펙 14.5).
+                    var outs = ConveyorSim.SplitterOutputs(s.Grid, x, y, null);
+                    var held = s.Sim.IsHolding(x, y) ? s.Sim.PackageAt(x, y) : null;
+                    bool groundOk = outs.Contains(ground) && !(held != null && held.Heading == ground);
+                    bool airOk = outs.Contains(air) && !(held != null && held.Heading == air);
+                    return "검사기 · 항공 " + (groundOk ? GroundOpen : DimOpen) + "1" + HudController.Arrow(ground) + GroundClose + " · "
+                        + (airOk ? AirOpen : DimOpen) + "2" + HudController.Arrow(air) + AirClose;
+                }
                 case CellType.Bridge: return "브릿지 " + HudController.Arrow(c.Direction); // 윗길 방향
+                case CellType.Labeler:
+                {
+                    // 운송장 부착대(스펙 15.1·15.3): "부착대", 택배가 있으면 운송장 상태를 붙인다.
+                    var p = s.Sim.PackageAt(x, y);
+                    return p == null ? "부착대" : "부착대 · " + (p.Waybill ? "운송장 ✓" : "운송장 없음");
+                }
                 case CellType.Table:
                 {
                     var p = s.Sim.PackageAt(x, y);
@@ -160,6 +182,11 @@ namespace ParcelFactory.Game
                 case CellType.Splitter:
                 {
                     ConveyorSim.SplitterRoutes(s.Grid, x, y, null, out var blue, out var red, out _, out var redConnected);
+                    if (c.Mode == RouteMode.Air) // 정상(초록) · 반품(노랑), 반품 출구가 없거나 끊기면 흐리게
+                        return "분배기 · 항공 " + OkOpen + "1" + HudController.Arrow(blue) + OkClose + " · "
+                            + (!red.HasValue ? DimOpen + "2 –" + DimClose
+                               : redConnected ? ReturnOpen + "2" + HudController.Arrow(red.Value) + ReturnClose
+                               : DimOpen + "2" + HudController.Arrow(red.Value) + DimClose);
                     string redText = !red.HasValue ? DimOpen + "빨 –" + DimClose
                         : redConnected ? "빨 " + HudController.Arrow(red.Value)
                         : DimOpen + "빨 " + HudController.Arrow(red.Value) + DimClose;

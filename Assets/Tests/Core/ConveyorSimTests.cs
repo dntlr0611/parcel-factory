@@ -110,6 +110,7 @@ namespace ParcelFactory.Core.Tests
             for (int x = 1; x <= 10; x++) Rail(x, 2, Direction.East);
             var p = SpawnAtInlet();
             p.Inspect(false);
+            p.Waybill = true; // 운송장(스펙 15)
             var delivered = new List<Package>();
             sim.PackageDelivered += (pk, outcome, delta) => delivered.Add(pk);
             for (int i = 0; i < 11; i++) sim.Tick(1f);

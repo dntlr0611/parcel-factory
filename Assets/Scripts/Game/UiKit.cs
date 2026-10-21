@@ -116,6 +116,7 @@ namespace ParcelFactory.Game
         {
             if (icons.TryGetValue(name, out var s) && s != null) return s;
             if (name == "ui-settings") return icons[name] = UiSprites.SlidersIcon(); // 아이콘 묶음에 없는 설정 아이콘은 코드로 그린다
+            if (name == HudController.LabelerIconName) return icons[name] = UiSprites.WaybillIcon(); // 운송장 부착대(스펙 15.1)
             s = Resources.Load<Sprite>("UI/Icons/" + name);
             if (s == null)
             {

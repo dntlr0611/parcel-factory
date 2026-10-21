@@ -36,6 +36,8 @@ namespace ParcelFactory.Core
         public bool BridgeOwned { get; private set; }
         /// <summary>팔레트는 시작부터 Blue(East)·Red(West) 모두 보유.</summary>
         public bool PalletOwned { get; private set; } = true;
+        /// <summary>운송장 부착대(스펙 15.1): 시작부터 4방향 모두 보유.</summary>
+        public bool LabelerOwned { get; private set; } = true;
 
         public Toolbar()
         {
@@ -51,6 +53,7 @@ namespace ParcelFactory.Core
                 case CellType.Scanner: return ScannerOwned;
                 case CellType.Bridge: return BridgeOwned;
                 case CellType.Pallet: return PalletOwned;
+                case CellType.Labeler: return LabelerOwned;
                 default: return owned.Contains(new Tool(type, direction));
             }
         }
@@ -64,11 +67,12 @@ namespace ParcelFactory.Core
                 case CellType.Scanner: ScannerOwned = true; break;
                 case CellType.Bridge: BridgeOwned = true; break;
                 case CellType.Pallet: PalletOwned = true; break;
+                case CellType.Labeler: LabelerOwned = true; break;
                 default: owned.Add(new Tool(type, direction)); break;
             }
         }
 
-        /// <summary>순서: 레일·고속 → 브릿지(4방향) → 팔레트(Blue, Red) → 검사대 → 분배기 → 자동 검사기(스펙 11.12).</summary>
+        /// <summary>순서: 레일·고속 → 브릿지(4방향) → 팔레트(Blue, Red) → 검사대 → 운송장 부착대 → 분배기 → 자동 검사기(스펙 11.12, 15.1).</summary>
         public IEnumerable<Tool> OwnedTools()
         {
             foreach (var t in owned.OrderBy(t => t.Type).ThenBy(t => t.Direction))
@@ -80,6 +84,7 @@ namespace ParcelFactory.Core
                 yield return new Tool(CellType.Pallet, Direction.West);
             }
             if (TableOwned) foreach (Direction d in Enum.GetValues(typeof(Direction))) yield return new Tool(CellType.Table, d);
+            if (LabelerOwned) foreach (Direction d in Enum.GetValues(typeof(Direction))) yield return new Tool(CellType.Labeler, d);
             if (SplitterOwned) foreach (Direction d in Enum.GetValues(typeof(Direction))) yield return new Tool(CellType.Splitter, d);
             if (ScannerOwned) foreach (Direction d in Enum.GetValues(typeof(Direction))) yield return new Tool(CellType.Scanner, d);
         }

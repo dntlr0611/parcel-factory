@@ -17,7 +17,8 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(t.Owns(CellType.Table, Direction.West));
             Assert.IsFalse(t.Owns(CellType.Scanner, Direction.East));
             Assert.IsTrue(t.Owns(CellType.Pallet, Direction.East));
-            Assert.AreEqual(7, t.OwnedTools().Count()); // 레일 → + 팔레트 2 + 검사대 4
+            Assert.IsTrue(t.Owns(CellType.Labeler, Direction.North));
+            Assert.AreEqual(11, t.OwnedTools().Count()); // 레일 → + 팔레트 2 + 검사대 4 + 부착대 4(스펙 15.1)
         }
 
         [Test]
@@ -36,7 +37,7 @@ namespace ParcelFactory.Core.Tests
             t.Add(CellType.Splitter, Direction.East);
             Assert.IsTrue(t.SplitterOwned);
             Assert.IsTrue(t.Owns(CellType.Splitter, Direction.West));
-            Assert.AreEqual(11, t.OwnedTools().Count());
+            Assert.AreEqual(15, t.OwnedTools().Count());
         }
 
         [Test]
@@ -47,11 +48,12 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(t.ScannerOwned);
             Assert.IsTrue(t.Owns(CellType.Scanner, Direction.South));
             var tools = t.OwnedTools().ToList();
-            Assert.AreEqual(11, tools.Count);
+            Assert.AreEqual(15, tools.Count);
             Assert.AreEqual(CellType.Conveyor, tools[0].Type);
             Assert.AreEqual(CellType.Pallet, tools[1].Type);
             Assert.AreEqual(CellType.Table, tools[3].Type);
-            Assert.AreEqual(CellType.Scanner, tools[7].Type);
+            Assert.AreEqual(CellType.Labeler, tools[7].Type);
+            Assert.AreEqual(CellType.Scanner, tools[11].Type);
         }
 
         [Test]
@@ -71,10 +73,10 @@ namespace ParcelFactory.Core.Tests
             CollectionAssert.AreEqual(new[]
             {
                 CellType.Conveyor, CellType.FastConveyor, CellType.Bridge, CellType.Pallet,
-                CellType.Table, CellType.Splitter, CellType.Scanner,
+                CellType.Table, CellType.Labeler, CellType.Splitter, CellType.Scanner,
             }, types);
             var tools = t.OwnedTools().ToList();
-            Assert.AreEqual(3 + 4 + 2 + 4 + 4 + 4, tools.Count);
+            Assert.AreEqual(3 + 4 + 2 + 4 + 4 + 4 + 4, tools.Count);
             CollectionAssert.AreEqual(
                 new[] { Direction.North, Direction.East, Direction.South, Direction.West },
                 tools.Where(x => x.Type == CellType.Bridge).Select(x => x.Direction).ToList());

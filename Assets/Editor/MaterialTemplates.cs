@@ -41,6 +41,18 @@ namespace ParcelFactory.EditorTools
             emi.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             Save(emi, "PF_Emissive");
 
+            // 알파 컷아웃 + 텍스처 발광(항공 마크·표지판 데칼, 스펙 14). _ALPHATEST_ON·_EMISSION 변형을 빌드에 남긴다.
+            var cut = new Material(lit);
+            cut.SetFloat("_AlphaClip", 1f);
+            cut.SetFloat("_Cutoff", 0.5f);
+            cut.EnableKeyword("_ALPHATEST_ON");
+            cut.EnableKeyword("_EMISSION");
+            cut.SetColor("_EmissionColor", Color.white);
+            cut.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            cut.SetOverrideTag("RenderType", "TransparentCutout");
+            cut.renderQueue = (int)RenderQueue.AlphaTest;
+            Save(cut, "PF_Cutout");
+
             AssetDatabase.SaveAssets();
             Debug.Log("[MaterialTemplates] built");
         }
