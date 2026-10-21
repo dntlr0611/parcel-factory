@@ -142,7 +142,10 @@ namespace ParcelFactory.Game
             PendingFullscreen = s.Fullscreen;
             PendingResolution = s.Resolution;
             ModeSegment.SetSelected(s.Fullscreen ? 1 : 0, false);
-            Populate(s.Fullscreen, s.Resolution, true);
+            Populate(s.Fullscreen, s.Resolution);
+            // 비교 기준: 저장된 화면 값. 한 번도 저장하지 않았으면(지금 창 크기가 일반 해상도가 아닐 수 있다) 고른 일반 해상도를 기준으로 삼아 열자마자 적용이 켜지지 않게 한다.
+            baseFullscreen = s.DisplaySaved ? s.Fullscreen : PendingFullscreen;
+            baseResolution = s.DisplaySaved ? s.Resolution : PendingResolution;
             Canvas.ForceUpdateCanvases();
             LayoutRebuilder.ForceRebuildLayoutImmediate(body);
             MusicSlider.SetValue(s.Music, false);
@@ -166,24 +169,22 @@ namespace ParcelFactory.Game
         /// <summary>카드가 놓인 빈 영역의 왼쪽 끝(테스트용).</summary>
         public float AreaLeft => area.offsetMin.x;
 
-        /// <summary>모드에 맞는 해상도 후보로 스테퍼를 채우고 target에 가장 가까운 후보를 고른다.
-        /// 창 모드인데 target이 창 상한을 넘으면(전체 화면 크기에서 바꾼 경우) 기본 창 크기(모니터 70%)에 가장 가까운 후보.
-        /// keepExact(카드를 열 때): 저장된 크기가 후보에 없어도(손으로 바꾼 창 등) 목록에 넣어 그대로 고른다 → 열자마자 적용이 켜지지 않는다.</summary>
-        private void Populate(bool fullscreen, Vector2Int target, bool keepExact = false)
+        /// <summary>모드에 맞는 일반 해상도 후보로 스테퍼를 채우고 target에 가장 가까운 후보를 고른다(스펙 13.2).
+        /// 창 모드인데 target이 창 상한을 넘으면(전체 화면 크기에서 바꾼 경우) 기본 창 크기(1920×1080 또는 상한 안 최대)에 가장 가까운 후보.
+        /// 저장된 크기가 일반 해상도가 아니면(이전 버전 값·손으로 바꾼 창) 가장 가까운 일반 해상도를 고른다. 이때는 적용이 켜진다.</summary>
+        private void Populate(bool fullscreen, Vector2Int target)
         {
             options = GameSettings.CurrentResolutionOptions(fullscreen);
             var monitor = GameSettings.Monitor;
-            if (keepExact && target.x > 0 && target.y > 0 && !options.Contains(target))
-            {
-                options.Add(target);
-                options.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
-            }
-            else if (!keepExact && !fullscreen && monitor.x > 0 && !GameSettings.FitsWindowed(target, monitor)) target = GameSettings.DefaultWindowed(monitor);
+            if (!fullscreen && monitor.x > 0 && !GameSettings.FitsWindowed(target, monitor)) target = GameSettings.DefaultWindowed(monitor);
             int index = options.Count > 0 ? GameSettings.Nearest(options, target) : 0;
-            ResolutionStepper.SetItems(options.Count, i => GameSettings.ResolutionLabel(options[i]), index);
+            ResolutionStepper.SetItems(options.Count, i => Label(options[i], fullscreen, monitor), index);
             PendingFullscreen = fullscreen;
             PendingResolution = options.Count > 0 ? options[ResolutionStepper.Index] : target;
         }
+
+        private static string Label(Vector2Int r, bool fullscreen, Vector2Int monitor) =>
+            fullscreen && GameSettings.IsNative(r, monitor) ? GameSettings.ResolutionLabel(r) + " · 네이티브" : GameSettings.ResolutionLabel(r);
 
         /// <summary>세그먼트로 모드를 바꾸면 후보를 다시 채우고 가장 가까운 후보로 맞춘다.</summary>
         private void SetPendingMode(bool fullscreen)
@@ -240,11 +241,15 @@ namespace ParcelFactory.Game
         {
             if (!DisplayChanged) return;
             boot.Settings.SetDisplay(PendingFullscreen, PendingResolution, boot);
+            baseFullscreen = PendingFullscreen; baseResolution = PendingResolution;
             RefreshApply();
         }
 
-        /// <summary>적용 대기 중인 화면 변경이 있는가(적용 버튼 활성 조건).</summary>
-        public bool DisplayChanged => boot != null && (PendingFullscreen != boot.Settings.Fullscreen || PendingResolution != boot.Settings.Resolution);
+        private bool baseFullscreen;
+        private Vector2Int baseResolution;
+
+        /// <summary>화면 값이 기준(저장된 값, 저장 전이면 카드를 열 때 고른 값)과 다른가 → 적용 활성.</summary>
+        public bool DisplayChanged => boot != null && (PendingFullscreen != baseFullscreen || PendingResolution != baseResolution);
 
         private void RefreshApply()
         {

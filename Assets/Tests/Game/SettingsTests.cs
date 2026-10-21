@@ -135,37 +135,48 @@ namespace ParcelFactory.Game.Tests
         }
 
         [Test]
-        public void ResolutionOptions_Fullscreen_DedupesPlusMonitor_Sorted()
+        public void ResolutionOptions_Fullscreen_StandardUpToMonitor_PlusNative_Sorted()
         {
-            var supported = new[] { new Vector2Int(1920, 1080), new Vector2Int(1920, 1080), new Vector2Int(1280, 800) };
-            var full = GameSettings.ResolutionOptions(true, supported, new Vector2Int(2560, 1600));
-            CollectionAssert.AreEqual(new[] { new Vector2Int(1280, 800), new Vector2Int(1920, 1080), new Vector2Int(2560, 1600) }, full);
+            var odd = new[] { new Vector2Int(3024, 1890), new Vector2Int(1512, 945), new Vector2Int(1920, 1080) };
+            var full = GameSettings.ResolutionOptions(true, odd, new Vector2Int(2560, 1600));
+            CollectionAssert.AreEqual(new[]
+            {
+                new Vector2Int(1280, 720), new Vector2Int(1280, 800), new Vector2Int(1366, 768), new Vector2Int(1440, 900),
+                new Vector2Int(1600, 900), new Vector2Int(1680, 1050), new Vector2Int(1920, 1080), new Vector2Int(1920, 1200),
+                new Vector2Int(2560, 1440), new Vector2Int(2560, 1600),
+            }, full, "only standard 16:9/16:10 sizes; Screen.resolutions values like 3024×1890 are ignored");
             Assert.AreEqual("1920 × 1080", GameSettings.ResolutionLabel(new Vector2Int(1920, 1080)));
+
+            var retina = new Vector2Int(3024, 1964);
+            var rFull = GameSettings.ResolutionOptions(true, odd, retina);
+            CollectionAssert.Contains(rFull, retina, "fullscreen keeps the monitor's native size");
+            CollectionAssert.DoesNotContain(rFull, new Vector2Int(3024, 1890));
+            CollectionAssert.DoesNotContain(rFull, new Vector2Int(3840, 2160), "larger than the monitor");
+            Assert.IsTrue(GameSettings.IsNative(retina, retina));
         }
 
         [Test]
-        public void ResolutionOptions_Windowed_FitCap_NoRawMonitor_PresetsOnlyWhenLargeEnough()
+        public void ResolutionOptions_Windowed_StandardWithinCap()
         {
             var retina = new Vector2Int(3024, 1964);
             var win = GameSettings.ResolutionOptions(false, null, retina);
             CollectionAssert.DoesNotContain(win, retina, "the raw monitor size is never a windowed size");
             foreach (var r in win)
             {
+                CollectionAssert.Contains(GameSettings.StandardResolutions, r, r + " is not a standard resolution");
                 Assert.LessOrEqual(r.y, retina.y * GameSettings.WindowedMaxHeight, r + " taller than 85%");
                 Assert.LessOrEqual(r.x, retina.x * GameSettings.WindowedMaxWidth, r + " wider than 95%");
-                Assert.AreEqual(0, r.x % 2); Assert.AreEqual(0, r.y % 2);
             }
-            CollectionAssert.DoesNotContain(win, new Vector2Int(1280, 720), "1280×720 is too small a window on a 3024×1964 monitor");
-            CollectionAssert.Contains(win, GameSettings.DefaultWindowed(retina));
-            Assert.AreEqual(new Vector2Int(2116, 1374), GameSettings.DefaultWindowed(retina), "default window = 70% of the monitor, even");
-            CollectionAssert.Contains(win, new Vector2Int(1512, 982), "50% of the monitor");
+            CollectionAssert.Contains(win, new Vector2Int(1280, 720));
+            CollectionAssert.Contains(win, new Vector2Int(2560, 1600));
+            CollectionAssert.DoesNotContain(win, new Vector2Int(3840, 2160));
+            Assert.AreEqual(new Vector2Int(1920, 1080), GameSettings.DefaultWindowed(retina), "default window is 1920×1080 when it fits");
             for (int i = 1; i < win.Count; i++) Assert.LessOrEqual(win[i - 1].x, win[i].x, "ascending");
 
             var hd = new Vector2Int(1920, 1080);
             var hdWin = GameSettings.ResolutionOptions(false, null, hd);
-            CollectionAssert.Contains(hdWin, new Vector2Int(1280, 720), "1280×720 fits a 1920×1080 monitor");
-            CollectionAssert.DoesNotContain(hdWin, hd);
-            CollectionAssert.DoesNotContain(hdWin, new Vector2Int(1920, 1080));
+            CollectionAssert.AreEqual(new[] { new Vector2Int(1280, 720), new Vector2Int(1280, 800), new Vector2Int(1366, 768), new Vector2Int(1440, 900), new Vector2Int(1600, 900) }, hdWin);
+            Assert.AreEqual(new Vector2Int(1600, 900), GameSettings.DefaultWindowed(hd), "1920×1080 does not fit a 1920×1080 window → largest that fits");
 
             // 적용 크기: 모니터보다 크면 줄이고, 창 모드면 상한 안으로(비율 유지, 짝수).
             Assert.AreEqual(hd, GameSettings.FitDisplay(new Vector2Int(3840, 2160), true, hd));
@@ -344,19 +355,20 @@ namespace ParcelFactory.Game.Tests
                 var card = start.Settings;
                 Assume.That(card.DisplayVisible, "the display group is hidden on mobile/touch");
                 Assert.AreEqual(1, card.ModeSegment.Selected);
-                CollectionAssert.AreEqual(GameSettings.SupportedOverride, card.ResolutionOptions);
+                CollectionAssert.AreEqual(GameSettings.ResolutionOptions(true, null, new Vector2Int(1920, 1080)), card.ResolutionOptions);
                 Assert.AreEqual(new Vector2Int(1920, 1080), card.PendingResolution);
-                Assert.AreEqual("1920 × 1080", card.ResolutionStepper.ValueText.text);
+                Assert.AreEqual("1920 × 1080 · 네이티브", card.ResolutionStepper.ValueText.text);
 
-                card.ModeSegment.SetSelected(0, true); // 창 모드: 1920×1080은 창 상한을 넘는다 → 기본 창 70%
+                card.ModeSegment.SetSelected(0, true); // 창 모드: 1920×1080은 창 상한을 넘는다 → 기본 창(상한 안 최대 1600×900)
                 Assert.IsFalse(card.PendingFullscreen);
                 CollectionAssert.DoesNotContain(card.ResolutionOptions, new Vector2Int(1920, 1080));
                 Assert.AreEqual(GameSettings.DefaultWindowed(new Vector2Int(1920, 1080)), card.PendingResolution);
                 Assert.AreEqual(GameSettings.ResolutionLabel(card.PendingResolution), card.ResolutionStepper.ValueText.text);
                 Assert.IsTrue(card.ApplyButton.interactable);
 
-                card.ModeSegment.SetSelected(1, true); // 다시 전체 화면: 1344×756에 가장 가까운 1280×720
-                Assert.AreEqual(new Vector2Int(1280, 720), card.PendingResolution);
+                Assert.AreEqual(new Vector2Int(1600, 900), card.PendingResolution);
+                card.ModeSegment.SetSelected(1, true); // 다시 전체 화면: 1600×900이 그대로 후보
+                Assert.AreEqual(new Vector2Int(1600, 900), card.PendingResolution);
                 if (card.ResolutionStepper.Count < 2) Assert.Ignore("need ≥2 resolution options");
                 card.ResolutionStepper.SetIndex(card.ResolutionStepper.Count - 1, true);
                 Assert.AreEqual(new Vector2Int(1920, 1080), card.PendingResolution);

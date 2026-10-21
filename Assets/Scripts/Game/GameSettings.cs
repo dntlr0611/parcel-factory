@@ -14,8 +14,15 @@ namespace ParcelFactory.Game
         public static readonly string[] Keys = { KeyMusic, KeyAmbient, KeyFullscreen, KeyResW, KeyResH };
         public const int DefaultMusic = 60, DefaultAmbient = 70, MinVolume = 0, MaxVolume = 100;
         public const int MinResolution = 320, MaxResolution = 16384;
-        /// <summary>창 모드용 기본 해상도 후보(스펙 13.2). 모니터보다 큰 것은 뺀다.</summary>
-        public static readonly Vector2Int[] WindowedDefaults = { new Vector2Int(1280, 720), new Vector2Int(1600, 900), new Vector2Int(1920, 1080), new Vector2Int(2560, 1440) };
+        /// <summary>일반 해상도(스펙 13.2): 16:9와 16:10. 후보는 이 표에서만 고른다(전체 화면은 모니터 네이티브 하나를 더한다).</summary>
+        public static readonly Vector2Int[] StandardResolutions =
+        {
+            new Vector2Int(1280, 720), new Vector2Int(1280, 800), new Vector2Int(1366, 768), new Vector2Int(1440, 900),
+            new Vector2Int(1600, 900), new Vector2Int(1680, 1050), new Vector2Int(1920, 1080), new Vector2Int(1920, 1200),
+            new Vector2Int(2560, 1440), new Vector2Int(2560, 1600), new Vector2Int(3840, 2160),
+        };
+        /// <summary>창 모드 기본 크기: 이 값이 상한 안이면 이것, 아니면 상한 안의 가장 큰 일반 해상도.</summary>
+        public static readonly Vector2Int PreferredWindowed = new Vector2Int(1920, 1080);
 
         public int Music { get; private set; } = DefaultMusic;
         public int Ambient { get; private set; } = DefaultAmbient;
@@ -34,11 +41,8 @@ namespace ParcelFactory.Game
         /// <summary>ApplyDisplay가 불린 횟수(플레이어 빌드가 아니라 실제로 바꾸지 않아도 센다). 부팅이 화면을 건드렸는지 테스트가 본다.</summary>
         public static int ApplyRequests;
 
-        /// <summary>창 모드 상한: 모니터 폭 95%, 높이 85%(메뉴 막대·Dock·창 제목줄 여유). 고정 후보는 모니터의 40% 이상일 때만.</summary>
-        public const float WindowedMaxWidth = 0.95f, WindowedMaxHeight = 0.85f, PresetMinFraction = 0.4f;
-        /// <summary>창 모드 후보: 모니터 비율 그대로 50·60·70·80%. 기본 선택은 70%.</summary>
-        public static readonly float[] WindowedFractions = { 0.5f, 0.6f, 0.7f, 0.8f };
-        public const float DefaultWindowedFraction = 0.7f;
+        /// <summary>창 모드 상한: 모니터 폭 95%, 높이 85%(메뉴 막대·Dock·창 제목줄 여유).</summary>
+        public const float WindowedMaxWidth = 0.95f, WindowedMaxHeight = 0.85f;
 
         public static int ClampVolume(int v) => Mathf.Clamp(v, MinVolume, MaxVolume);
         public static Vector2Int ClampResolution(Vector2Int r) => new Vector2Int(Mathf.Clamp(r.x, MinResolution, MaxResolution), Mathf.Clamp(r.y, MinResolution, MaxResolution));
@@ -205,27 +209,21 @@ namespace ParcelFactory.Game
             "[Settings] apply requested " + requested.x + "x" + requested.y + " " + mode + " -> screen " + Screen.width + "x" + Screen.height + " " + Screen.fullScreenMode;
 
         /// <summary>
-        /// 해상도 후보(스펙 13.2, 모두 렌더 픽셀). 전체 화면: Screen.resolutions 가로×세로 중복 제거 + 모니터 크기.
-        /// 창 모드: 모니터 비율 그대로 50·60·70·80%(짝수) + 고정 후보(1280×720 · 1600×900 · 1920×1080 · 2560×1440) 중 상한(폭 95%·높이 85%) 안이고
-        /// 가로·세로 모두 모니터의 40% 이상인 것. 모니터 크기 그대로는 창 모드 후보가 아니다. 오름차순.
+        /// 해상도 후보(스펙 13.2, 모두 렌더 픽셀). 일반 해상도 표(StandardResolutions)에서만 고른다.
+        /// 전체 화면: 모니터보다 크지 않은 일반 해상도 + 모니터 네이티브. 창 모드: 창 상한(폭 95%·높이 85%) 안의 일반 해상도.
+        /// supported(Screen.resolutions)는 쓰지 않는다(Retina에서 3024×1890 같은 비일반 값이 섞인다). 오름차순.
         /// </summary>
         public static List<Vector2Int> ResolutionOptions(bool fullscreen, IEnumerable<Vector2Int> supported, Vector2Int monitor)
         {
             var set = new HashSet<Vector2Int>();
-            if (fullscreen)
+            bool known = monitor.x > 0 && monitor.y > 0;
+            foreach (var r in StandardResolutions)
             {
-                if (supported != null)
-                    foreach (var r in supported) if (r.x > 0 && r.y > 0) set.Add(r);
-                if (monitor.x > 0 && monitor.y > 0) set.Add(monitor);
+                if (!known) { set.Add(r); continue; }
+                if (fullscreen ? (r.x <= monitor.x && r.y <= monitor.y) : FitsWindowed(r, monitor)) set.Add(r);
             }
-            else if (monitor.x > 0 && monitor.y > 0)
-            {
-                foreach (var f in WindowedFractions) set.Add(new Vector2Int(Even(monitor.x * f), Even(monitor.y * f)));
-                foreach (var r in WindowedDefaults)
-                    if (FitsWindowed(r, monitor) && r.x >= monitor.x * PresetMinFraction && r.y >= monitor.y * PresetMinFraction) set.Add(r);
-                set.Remove(monitor);
-            }
-            else foreach (var r in WindowedDefaults) set.Add(r);
+            if (fullscreen && known) set.Add(monitor);
+            if (set.Count == 0) set.Add(StandardResolutions[0]); // 아주 작은 모니터: 가장 작은 일반 해상도라도 남긴다(FitDisplay가 줄인다)
             var list = new List<Vector2Int>(set);
             list.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
             return list;
@@ -234,8 +232,16 @@ namespace ParcelFactory.Game
         /// <summary>창 모드 상한 안인가(폭 ≤ 95%, 높이 ≤ 85%).</summary>
         public static bool FitsWindowed(Vector2Int r, Vector2Int monitor) => r.x <= monitor.x * WindowedMaxWidth && r.y <= monitor.y * WindowedMaxHeight;
 
-        /// <summary>창 모드 기본 크기: 모니터의 70%.</summary>
-        public static Vector2Int DefaultWindowed(Vector2Int monitor) => new Vector2Int(Even(monitor.x * DefaultWindowedFraction), Even(monitor.y * DefaultWindowedFraction));
+        /// <summary>창 모드 기본 크기: 1920×1080이 상한 안이면 그것, 아니면 상한 안의 가장 큰 일반 해상도.</summary>
+        public static Vector2Int DefaultWindowed(Vector2Int monitor)
+        {
+            if (monitor.x <= 0 || monitor.y <= 0 || FitsWindowed(PreferredWindowed, monitor)) return PreferredWindowed;
+            var options = ResolutionOptions(false, null, monitor);
+            return options[options.Count - 1];
+        }
+
+        /// <summary>전체 화면에서 이 크기가 모니터 네이티브인가(표기에 "네이티브"를 붙인다).</summary>
+        public static bool IsNative(Vector2Int r, Vector2Int monitor) => r == monitor;
 
         /// <summary>목록에서 target에 가장 가까운 후보의 번호(가로·세로 거리).</summary>
         public static int Nearest(IList<Vector2Int> options, Vector2Int target)
