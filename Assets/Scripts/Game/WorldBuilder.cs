@@ -348,7 +348,11 @@ namespace ParcelFactory.Game
             SideWall(westWall, -HalfBuilding, rows);
         }
 
-        /// <summary>트럭 지붕 위 비행기 표지판: 기둥 + 트럭 색 테두리 + 파란 판 + 흰 비행기(ui-air). 판은 카메라를 향해 기운다.</summary>
+        /// <summary>
+        /// 트럭 지붕에 붙인 항공 마크(사용자 요청: 떠 있는 표지판 대신 지붕에 붙인다). 상자 마크와 같은 mark-air 텍스처
+        /// (파란 둥근 사각 + 흰 테두리 + 흰 비행기)를 짐칸 지붕 위에 평평하게 눕힌다. 크기는 지붕 짧은 변의 72%.
+        /// 이름(AirSign/Board/Icon)은 테스트가 찾는다.
+        /// </summary>
         private static void AirSign(GameObject car, Color frameColor)
         {
             var rs = car.GetComponentsInChildren<Renderer>();
@@ -357,23 +361,18 @@ namespace ParcelFactory.Game
             foreach (var r in rs) b.Encapsulate(r.bounds);
             var sign = new GameObject("AirSign").transform;
             sign.SetParent(car.transform.parent, false);
-            sign.position = new Vector3(b.center.x, b.max.y, b.center.z);
-            const float post = 0.28f, size = 0.86f;
-            Box("Post", sign, new Vector3(0f, post / 2f, 0f), new Vector3(0.08f, post, 0.08f), MaterialLibrary.Lit(WallDark, 0.2f));
+            sign.position = new Vector3(b.center.x, b.max.y + 0.012f, b.center.z);
             var board = new GameObject("Board").transform;
             board.SetParent(sign, false);
-            board.localPosition = new Vector3(0f, post + size / 2f, 0f);
-            board.rotation = Quaternion.LookRotation(-CameraDir, Vector3.up); // 로컬 −z(Quad 앞면)가 카메라 쪽
-            Box("Frame", board, new Vector3(0f, 0f, 0.03f), new Vector3(size + 0.1f, size + 0.1f, 0.06f), MaterialLibrary.Lit(frameColor, 0.3f));
-            Box("Panel", board, new Vector3(0f, 0f, -0.005f), new Vector3(size, size, 0.02f), MaterialLibrary.Lit(AirBlue, 0.3f), castShadow: false);
+            board.localRotation = Quaternion.Euler(90f, 0f, 0f); // Quad 앞면(−z)이 위를 보게 눕힌다
+            float size = Mathf.Min(b.size.x, b.size.z) * 0.72f;
             var icon = GameObject.CreatePrimitive(PrimitiveType.Quad);
             icon.name = "Icon";
             Destroy(icon.GetComponent<Collider>());
             icon.transform.SetParent(board, false);
-            icon.transform.localPosition = new Vector3(0f, 0f, -0.02f);
-            icon.transform.localScale = new Vector3(size * 0.78f, size * 0.78f, 1f);
+            icon.transform.localScale = new Vector3(size, size, 1f);
             var ir = icon.GetComponent<Renderer>();
-            ir.sharedMaterial = MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/ui-air"), 0.8f);
+            ir.sharedMaterial = MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-air"), 0.35f);
             ir.shadowCastingMode = ShadowCastingMode.Off;
         }
 
