@@ -14,6 +14,8 @@ namespace ParcelFactory.Game
         {
             var session = GameBootstrap.Instance != null ? GameBootstrap.Instance.Session : null;
             if (session == null) return;
+            var start = GameBootstrap.Instance.StartScreen;
+            if (start != null && start.IsOpen) return; // 시작 화면이 떠 있는 동안 틱을 멈춘다(스펙 12.1)
             accumulator += Mathf.Min(Time.deltaTime, MaxFrameSeconds);
             while (accumulator >= TickSeconds)
             {

@@ -22,6 +22,8 @@ namespace ParcelFactory.Game
         public HudController Hud { get; private set; }
         public StatusBars StatusBars { get; private set; }
         public Panels Panels { get; private set; }
+        /// <summary>시작 화면(스펙 12.1). 부팅 직후 StartScreen.ShowOnBoot이면 뜬다.</summary>
+        public StartScreen StartScreen { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
 
@@ -60,6 +62,7 @@ namespace ParcelFactory.Game
             Hud = gameObject.AddComponent<HudController>();
             StatusBars = gameObject.AddComponent<StatusBars>();
             Panels = gameObject.AddComponent<Panels>();
+            StartScreen = gameObject.AddComponent<StartScreen>();
             // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);
         }

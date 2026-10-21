@@ -101,39 +101,52 @@ namespace ParcelFactory.Game
             Sync();
         }
 
+        /// <summary>모달 카드(시안 .modal + .card): 화면 전체 막 "name" 아래 "Card"(panel-2, 반경 14, 폭 380, 패딩 18, 제목 Noto Bold 15).</summary>
         private RectTransform Card(string name, Vector2 size, string title)
         {
-            var dim = UiKit.PanelBox(name, hud.Root, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0f, 0f, 0f, 0.35f)).rectTransform;
-            var card = UiKit.PanelBox("Card", dim, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size, UiKit.Panel2).rectTransform;
-            var t = UiKit.Label("Title", card, title, 16, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
-            t.rectTransform.offsetMin = new Vector2(18f, 0f); t.rectTransform.offsetMax = new Vector2(-18f, -14f);
+            var dim = UiKit.ModalBackdrop(name, hud.Root).rectTransform;
+            UiKit.Card("Card", dim, size, title);
             dim.gameObject.SetActive(false);
             return dim;
         }
 
-        /// <summary>상점 패널 높이: 목록 위 44 + 아래 12, 항목 12개(34 + 간격 4) = 12×34 + 11×4 = 452 → 508.</summary>
-        public const float ShopHeight = 508f;
+        /// <summary>상점 서랍 높이: 머리 14 + 30 + 6, 항목 12개 × 42(버튼 30 + 위아래 6), 아래 10.</summary>
+        public const float ShopHeight = 14f + 30f + 6f + 12f * ShopRowH + 10f;
+        private const float ShopRowH = 42f, DrawerTop = 62f;
+
+        /// <summary>시안 .drawer 머리: 제목(Noto Bold 14) + 오른쪽 값 + 닫기 버튼(높이 30, 12).</summary>
+        private Text DrawerHeader(RectTransform panel, string title, string valueName, Color valueColor, Font valueFont, int valueSize)
+        {
+            var t = UiKit.Label("Title", panel, title, 14, UiKit.Fg, TextAnchor.MiddleLeft, Fonts.Bold);
+            UiKit.Top(t.rectTransform, 14f, 30f, 14f, 14f);
+            var v = UiKit.Label(valueName, panel, "", valueSize, valueColor, TextAnchor.MiddleRight, valueFont);
+            UiKit.Top(v.rectTransform, 14f, 30f, 14f, 14f + 56f + 10f);
+            var close = UiKit.Btn("Close", panel, "닫기", CloseAll, height: 30f, fontSize: 12);
+            UiKit.Place((RectTransform)close.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-14f, -14f), new Vector2(56f, 30f));
+            return v;
+        }
 
         private void BuildShop()
         {
-            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(340f, ShopHeight), UiKit.Panel2).rectTransform;
-            var title = UiKit.Label("Title", shop, "해금 상점", 16, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
-            title.rectTransform.offsetMin = new Vector2(16f, 0f); title.rectTransform.offsetMax = new Vector2(-16f, -12f);
-            shopMoney = UiKit.Label("Money", shop, "", 12, UiKit.Muted, TextAnchor.UpperRight);
-            shopMoney.rectTransform.offsetMin = new Vector2(16f, 0f); shopMoney.rectTransform.offsetMax = new Vector2(-92f, -14f);
-            var shopClose = UiKit.Button("Close", shop, "닫기", new Vector2(72f, 32f), CloseAll, null, null, 14, new Vector2(1f, 1f));
-            shopClose.GetComponent<RectTransform>().anchoredPosition = new Vector2(-46f, -26f);
-            shopList = UiKit.Rect("List", shop, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -44f), new Vector2(-24f, -56f));
-            UiKit.Column(shopList, 4f, new RectOffset(0, 0, 0, 0));
+            // 시안 .drawer: 오른쪽 16, top 62, 폭 330, 패딩 14, 행 사이 1px 선, 구매 버튼(.buy) 최소 76 · 높이 30 · Sora 12.
+            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -DrawerTop), new Vector2(330f, ShopHeight), UiKit.Panel2).rectTransform;
+            shopMoney = DrawerHeader(shop, "해금 상점", "Money", UiKit.Accent, Fonts.Bold, 12);
+            shopList = UiKit.Rect("List", shop, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(-28f, 12f * ShopRowH));
+            var col = UiKit.Column(shopList, 0f, new RectOffset(0, 0, 0, 0));
+            col.childControlHeight = true;
+            bool first = true;
             foreach (var def in UnlockCatalog.All)
             {
-                var row = UiKit.Rect("Row", shopList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, 34f));
-                UiKit.Size(row, 300f, 34f);
+                var row = UiKit.Rect("Row", shopList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, ShopRowH));
+                UiKit.Size(row, -1f, ShopRowH);
+                if (!first) UiKit.Divider("Line", row);
+                first = false;
                 var name = UiKit.Label("Name", row, def.Name, 13, UiKit.Fg, TextAnchor.MiddleLeft);
-                name.rectTransform.offsetMin = new Vector2(4f, 0f); name.rectTransform.offsetMax = new Vector2(-110f, 0f);
+                name.rectTransform.offsetMin = new Vector2(0f, 0f); name.rectTransform.offsetMax = new Vector2(-92f, 0f);
                 var id = def.Id;
-                var b = UiKit.Button("Buy", row, def.Price.ToString(), new Vector2(96f, 30f), () => { var r = GameBootstrap.Instance.Session.Unlocks.TryPurchase(id); hud.Toast(r == UnlockResult.Ok ? def.Name + " 해금" : r == UnlockResult.NotEnoughMoney ? "잔액이 부족합니다" : r == UnlockResult.RequirementMissing ? "먼저 해금해야 하는 항목이 있습니다" : "이미 보유 중입니다"); RefreshShop(); });
-                var brt = b.GetComponent<RectTransform>(); brt.anchorMin = new Vector2(1f, 0.5f); brt.anchorMax = new Vector2(1f, 0.5f); brt.pivot = new Vector2(1f, 0.5f); brt.anchoredPosition = new Vector2(-4f, 0f);
+                var b = UiKit.Btn("Buy", row, def.Price.ToString(), () => { var r = GameBootstrap.Instance.Session.Unlocks.TryPurchase(id); hud.Toast(r == UnlockResult.Ok ? def.Name + " 해금" : r == UnlockResult.NotEnoughMoney ? "잔액이 부족합니다" : r == UnlockResult.RequirementMissing ? "먼저 해금해야 하는 항목이 있습니다" : "이미 보유 중입니다", r == UnlockResult.Ok ? HudController.ToastKind.Good : HudController.ToastKind.Info); RefreshShop(); },
+                    font: Fonts.Num, fontSize: 12, height: 30f, fixedSize: new Vector2(76f, 30f));
+                UiKit.Place((RectTransform)b.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(76f, 30f));
             }
             shop.gameObject.SetActive(false);
         }
@@ -141,16 +154,16 @@ namespace ParcelFactory.Game
         private void RefreshShop()
         {
             var s = GameBootstrap.Instance.Session;
-            shopMoney.text = "잔액 " + s.Economy.Money;
+            shopMoney.text = "₩ " + s.Economy.Money;
             int i = 0;
             foreach (var def in UnlockCatalog.All)
             {
                 var row = shopList.GetChild(i++);
                 var b = row.Find("Buy").GetComponent<Button>();
                 bool owned = s.Unlocks.IsPurchased(def.Id), blocked = def.Requires.HasValue && !s.Unlocks.IsPurchased(def.Requires.Value), afford = s.Economy.CanAfford(def.Price);
-                b.GetComponentInChildren<Text>().text = owned ? "보유" : blocked ? "잠김" : def.Price.ToString();
+                UiKit.SetButtonText(b, owned ? "보유" : blocked ? "잠김" : def.Price.ToString(), num: true);
                 b.interactable = !owned && !blocked && afford;
-                UiKit.SetButtonLook(b, !owned && !blocked && afford);
+                UiKit.SetButtonStyle(b, !owned && !blocked && afford ? BtnStyle.Primary : BtnStyle.Normal);
             }
         }
 
@@ -189,30 +202,32 @@ namespace ParcelFactory.Game
 
         private void BuildStatus()
         {
-            status = UiKit.PanelBox("WorkerStatus", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -60f), new Vector2(360f, 318f), UiKit.Panel2).rectTransform;
-            var title = UiKit.Label("Title", status, "작업자 상태", 16, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
-            title.rectTransform.offsetMin = new Vector2(16f, 0f); title.rectTransform.offsetMax = new Vector2(-16f, -12f);
-            statusExp = UiKit.Label("Exp", status, "", 14, UiKit.ExpColor, TextAnchor.UpperRight, FontStyle.Bold);
-            statusExp.rectTransform.offsetMin = new Vector2(16f, 0f); statusExp.rectTransform.offsetMax = new Vector2(-92f, -13f);
-            var close = UiKit.Button("Close", status, "닫기", new Vector2(72f, 32f), CloseAll, null, null, 14, new Vector2(1f, 1f));
-            close.GetComponent<RectTransform>().anchoredPosition = new Vector2(-46f, -26f);
-            statusList = UiKit.Rect("List", status, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(-24f, -86f));
-            UiKit.Column(statusList, 6f, new RectOffset(0, 0, 0, 0));
+            // 시안 .wpanel: 서랍 폭 390, 간격 8. 행(.wrow)은 반경 10, 흰색 .05, 1px 선, 패딩 10 12.
+            const float w = 390f, rowH = 62f;
+            status = UiKit.PanelBox("WorkerStatus", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -DrawerTop), new Vector2(w, 14f + 30f + 8f + 3f * rowH + 2f * 8f + 8f + 18f + 12f), UiKit.Panel2).rectTransform;
+            var title = UiKit.Label("Title", status, "작업자 상태", 15, UiKit.Fg, TextAnchor.MiddleLeft, Fonts.Bold);
+            UiKit.Top(title.rectTransform, 14f, 30f, 14f, 14f);
+            statusExp = UiKit.Label("Exp", status, "", 13, UiKit.ExpColor, TextAnchor.MiddleRight, Fonts.NumBold);
+            UiKit.Top(statusExp.rectTransform, 14f, 30f, 14f, 14f + 56f + 10f);
+            var close = UiKit.Btn("Close", status, "닫기", CloseAll, height: 30f, fontSize: 12);
+            UiKit.Place((RectTransform)close.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-14f, -14f), new Vector2(56f, 30f));
+            statusList = UiKit.Rect("List", status, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -52f), new Vector2(-28f, 3f * rowH + 16f));
+            UiKit.Column(statusList, 8f, new RectOffset(0, 0, 0, 0));
             foreach (var st in StatOrder)
             {
                 var stat = st;
-                var row = UiKit.PanelBox("Row_" + st, statusList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, 64f), new Color(1f, 1f, 1f, 0.05f)).rectTransform;
-                UiKit.Size(row, 336f, 64f);
-                var name = UiKit.Label("Name", row, StatName(st), 15, UiKit.Fg, TextAnchor.UpperLeft, FontStyle.Bold);
-                name.rectTransform.offsetMin = new Vector2(12f, 0f); name.rectTransform.offsetMax = new Vector2(-130f, -9f);
-                var effect = UiKit.Label("Effect", row, "", 13, UiKit.ExpColor, TextAnchor.LowerLeft);
-                effect.rectTransform.offsetMin = new Vector2(12f, 10f); effect.rectTransform.offsetMax = new Vector2(-130f, 0f);
-                var level = UiKit.Label("Level", row, "", 13, UiKit.Muted, TextAnchor.UpperRight, FontStyle.Bold);
-                level.rectTransform.offsetMin = new Vector2(12f, 0f); level.rectTransform.offsetMax = new Vector2(-132f, -10f);
-                var b = UiKit.Button("Upgrade", row, "", new Vector2(116f, 40f), () => Upgrade(stat), fontSize: 14);
-                var brt = b.GetComponent<RectTransform>(); brt.anchorMin = new Vector2(1f, 0.5f); brt.anchorMax = new Vector2(1f, 0.5f); brt.pivot = new Vector2(1f, 0.5f); brt.anchoredPosition = new Vector2(-10f, 0f);
+                var row = UiKit.PanelBox("Row_" + st, statusList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, rowH), UiKit.RowBg, UiKit.RButton, UiKit.Line, UiKit.Elevation.None).rectTransform;
+                UiKit.Size(row, -1f, rowH);
+                var name = UiKit.Label("Name", row, StatName(st), 14, UiKit.Fg, TextAnchor.LowerLeft, Fonts.Bold);
+                UiKit.Top(name.rectTransform, 10f, 22f, 12f, 130f);
+                var effect = UiKit.Label("Effect", row, "", 12, UiKit.ExpColor, TextAnchor.UpperLeft);
+                UiKit.Top(effect.rectTransform, 35f, 18f, 12f, 130f);
+                var level = UiKit.Label("Level", row, "", 11, UiKit.Muted, TextAnchor.UpperRight, Fonts.Num);
+                UiKit.Top(level.rectTransform, 8f, 14f, 12f, 12f);
+                var b = UiKit.Btn("Upgrade", row, "", () => Upgrade(stat), fontSize: 12, height: 30f, fixedSize: new Vector2(108f, 30f));
+                UiKit.Place((RectTransform)b.transform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-12f, 8f), new Vector2(108f, 30f));
             }
-            var hint = UiKit.Label("Hint", status, "EXP는 정상 출고 +10 · 불량 반품 +8 · 검사 +2로 모입니다.", 12, UiKit.Muted, TextAnchor.LowerLeft);
+            var hint = UiKit.Label("Hint", status, "EXP는 정상 출고 +10 · 불량 반품 +8 · 검사 +2로 모입니다.", 11, UiKit.Muted, TextAnchor.LowerLeft);
             hint.rectTransform.offsetMin = new Vector2(16f, 12f); hint.rectTransform.offsetMax = new Vector2(-16f, 0f);
             status.gameObject.SetActive(false);
         }
@@ -239,76 +254,98 @@ namespace ParcelFactory.Game
                 row.Find("Level").GetComponent<Text>().text = "Lv " + p.Level(st) + "/" + p.MaxLevel(st);
                 var b = row.Find("Upgrade").GetComponent<Button>();
                 bool maxed = p.IsMaxed(st), can = !maxed && p.Exp >= p.Cost(st);
-                b.GetComponentInChildren<Text>().text = maxed ? "MAX" : "강화 " + p.Cost(st) + " EXP";
+                UiKit.SetButtonText(b, maxed ? "MAX" : "강화 " + p.Cost(st) + " EXP", num: true, bold: true);
                 b.interactable = can;
-                UiKit.SetButtonLook(b, can);
+                UiKit.SetButtonStyle(b, can ? BtnStyle.Primary : BtnStyle.Normal);
             }
+        }
+
+        private const float CardW = 380f, CardPad = 18f, CardBtnH = 34f;
+
+        /// <summary>카드 아래 오른쪽 정렬 버튼 줄(시안 .row-btns, 간격 8). 버튼은 내용 폭.</summary>
+        private static RectTransform ButtonRow(Transform card, TextAnchor align = TextAnchor.MiddleRight)
+        {
+            var row = UiKit.Rect("Buttons", card, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(-2f * CardPad, CardBtnH));
+            UiKit.Row(row, 8f, new RectOffset(0, 0, 0, 0)).childAlignment = align;
+            return row;
         }
 
         private void BuildInspect()
         {
-            inspect = Card("Inspect", new Vector2(380f, 300f), "택배 검사");
+            // 시안 .card + .label: 종이색 #f6f2e8 반경 10 상자(안쪽 1px #e2d9c6), 행 12/14, 저울 실측은 점선 위 빨강.
+            const float paperH = 12f + 4f * 22f + 3f * 7f + 10f + 10f;
+            inspect = Card("Inspect", new Vector2(CardW, CardPad + 22f + 12f + paperH + 12f + 36f + 12f + CardBtnH + 16f), "택배 검사");
             var card = inspect.Find("Card");
-            iId = UiKit.Label("Id", card, "", 12, UiKit.Muted, TextAnchor.UpperRight); iId.rectTransform.offsetMin = new Vector2(18f, 0f); iId.rectTransform.offsetMax = new Vector2(-18f, -16f);
-            var paper = UiKit.PanelBox("Paper", card, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(-36f, 140f), new Color(0.97f, 0.95f, 0.9f)).rectTransform;
-            Text Row(string n, string lbl, float y, Color c, bool bold = false)
+            var idKey = UiKit.Keycap(card, "#1", 20f, 11, "IdKey");
+            UiKit.Place((RectTransform)idKey.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-CardPad, -CardPad), new Vector2(30f, 20f));
+            iId = idKey.Text; iId.name = "Id";
+            var paper = UiKit.Box("Paper", card, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(CardPad + 22f + 12f)), new Vector2(-2f * CardPad, paperH), UiKit.Paper, UiKit.RButton).rectTransform;
+            UiKit.AddBorder(paper, UiKit.RButton, UiKit.PaperLine);
+            Text Row(string n, string lbl, float y, Color c)
             {
-                var l = UiKit.Label(n + "L", paper, lbl, 13, new Color(0.48f, 0.43f, 0.36f), TextAnchor.MiddleLeft); l.rectTransform.anchorMin = new Vector2(0f, 1f); l.rectTransform.anchorMax = new Vector2(1f, 1f); l.rectTransform.pivot = new Vector2(0.5f, 1f); l.rectTransform.anchoredPosition = new Vector2(0f, y); l.rectTransform.sizeDelta = new Vector2(-28f, 26f);
-                var v = UiKit.Label(n, paper, "", 13, c, TextAnchor.MiddleRight, bold ? FontStyle.Bold : FontStyle.Normal); v.rectTransform.anchorMin = new Vector2(0f, 1f); v.rectTransform.anchorMax = new Vector2(1f, 1f); v.rectTransform.pivot = new Vector2(0.5f, 1f); v.rectTransform.anchoredPosition = new Vector2(0f, y); v.rectTransform.sizeDelta = new Vector2(-28f, 26f);
+                var l = UiKit.Label(n + "L", paper, lbl, 12, UiKit.PaperMuted, TextAnchor.MiddleLeft); UiKit.Top(l.rectTransform, y, 22f, 14f, 14f);
+                var v = UiKit.Label(n, paper, "", 14, c, TextAnchor.MiddleRight, Fonts.Num); UiKit.Top(v.rectTransform, y, 22f, 14f, 14f);
                 return v;
             }
-            var dark = new Color(0.16f, 0.15f, 0.12f);
-            iDest = Row("Dest", "목적지", -8f, dark, true); iWeight = Row("Weight", "표기 무게", -38f, dark, true); iMethod = Row("Method", "배송 방법", -68f, dark, true); iScale = Row("Scale", "저울 실측", -104f, new Color(0.79f, 0.28f, 0.18f), true);
+            iDest = Row("Dest", "목적지", 12f, UiKit.PaperInk); iWeight = Row("Weight", "표기 무게", 12f + 29f, UiKit.PaperInk); iMethod = Row("Method", "배송 방법", 12f + 58f, UiKit.PaperInk);
+            var dash = UiKit.Rect("Dash", paper, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(12f + 87f + 2f)), new Vector2(-28f, 1f));
+            var dashImg = dash.gameObject.AddComponent<Image>(); dashImg.sprite = UiSprites.Dash(); dashImg.type = Image.Type.Tiled; dashImg.color = UiKit.PaperDash; dashImg.raycastTarget = false;
+            iScale = Row("Scale", "저울 실측", 12f + 87f + 10f, UiKit.Danger);
             var hint = UiKit.Label("Hint", card, "표기와 실측이 다르면 거부하세요. 거부한 택배는 반품구로 보내야 합니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
-            hint.rectTransform.anchorMin = new Vector2(0f, 0f); hint.rectTransform.anchorMax = new Vector2(1f, 0f); hint.rectTransform.pivot = new Vector2(0.5f, 0f); hint.rectTransform.anchoredPosition = new Vector2(0f, 58f); hint.rectTransform.sizeDelta = new Vector2(-36f, 40f);
-            var reject = UiKit.Button("Reject", card, "거부", new Vector2(110f, 38f), () => { GameBootstrap.Instance.Session.Worker.Inspect(true); inspect.gameObject.SetActive(false); Sync(); }, new Color(0.79f, 0.28f, 0.18f, 1f));
-            reject.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -115f);
-            var approve = UiKit.Button("Approve", card, "승인", new Vector2(110f, 38f), () => { GameBootstrap.Instance.Session.Worker.Inspect(false); inspect.gameObject.SetActive(false); Sync(); }, UiKit.Good, new Color(0.06f, 0.16f, 0.09f));
-            approve.GetComponent<RectTransform>().anchoredPosition = new Vector2(125f, -115f);
-            var cancelInspect = UiKit.Button("CancelInspect", card, "취소", new Vector2(110f, 38f), () => { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); Sync(); });
-            cancelInspect.GetComponent<RectTransform>().anchoredPosition = new Vector2(-125f, -115f);
+            hint.lineSpacing = 1.1f;
+            UiKit.Top(hint.rectTransform, CardPad + 22f + 12f + paperH + 12f, 36f, CardPad, CardPad);
+            var buttons = ButtonRow(card);
+            UiKit.Btn("CancelInspect", buttons, "취소", () => { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); Sync(); }, minWidth: 64f);
+            UiKit.Btn("Reject", buttons, "거부", () => { GameBootstrap.Instance.Session.Worker.Inspect(true); inspect.gameObject.SetActive(false); Sync(); }, style: BtnStyle.Danger, minWidth: 72f);
+            UiKit.Btn("Approve", buttons, "승인", () => { GameBootstrap.Instance.Session.Worker.Inspect(false); inspect.gameObject.SetActive(false); Sync(); }, style: BtnStyle.Ok, minWidth: 72f);
         }
 
         private void OpenInspect()
         {
             var p = GameBootstrap.Instance.Session.Worker.PendingInspection;
             if (p == null) return;
-            iId.text = "#" + p.Id; iDest.text = p.Label.Destination; iWeight.text = p.Label.Weight + " kg"; iMethod.text = p.Label.Method; iScale.text = p.Label.Scale + " kg";
+            iId.text = "#" + p.Id;
+            UiKit.SetNumText(iDest, p.Label.Destination, false); UiKit.SetNumText(iWeight, p.Label.Weight + " kg", false);
+            UiKit.SetNumText(iMethod, p.Label.Method, false); UiKit.SetNumText(iScale, p.Label.Scale + " kg", false);
             inspect.gameObject.SetActive(true);
             Sync();
         }
 
         private void BuildDemolish()
         {
-            demolish = Card("Demolish", new Vector2(360f, 190f), "해체");
+            demolish = Card("Demolish", new Vector2(CardW, CardPad + 22f + 12f + 20f + 6f + 18f + 16f + CardBtnH + 16f), "해체");
             var card = demolish.Find("Card");
-            dText = UiKit.Label("Text", card, "", 13, UiKit.Fg, TextAnchor.UpperLeft); dText.rectTransform.offsetMin = new Vector2(18f, 0f); dText.rectTransform.offsetMax = new Vector2(-18f, -46f);
-            dRefund = UiKit.Label("Refund", card, "", 13, UiKit.Muted, TextAnchor.UpperLeft); dRefund.rectTransform.offsetMin = new Vector2(18f, 0f); dRefund.rectTransform.offsetMax = new Vector2(-18f, -74f);
-            var cancel = UiKit.Button("Cancel", card, "취소", new Vector2(100f, 36f), () => { pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); });
-            cancel.GetComponent<RectTransform>().anchoredPosition = new Vector2(-60f, -62f);
-            var ok = UiKit.Button("Confirm", card, "해체", new Vector2(100f, 36f), () => { if (pendingDemolish.HasValue) { var r = GameBootstrap.Instance.Session.Build.BeginDemolish(pendingDemolish.Value.x, pendingDemolish.Value.y); if (r != BuildResult.Ok) hud.Toast(HudController.DemolishMessage(r)); } pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, new Color(0.79f, 0.28f, 0.18f, 1f));
-            ok.GetComponent<RectTransform>().anchoredPosition = new Vector2(60f, -62f);
+            dText = UiKit.Label("Text", card, "", 13, UiKit.Fg, TextAnchor.UpperLeft); UiKit.Top(dText.rectTransform, CardPad + 22f + 12f, 20f, CardPad, CardPad);
+            dRefund = UiKit.Label("Refund", card, "", 12, UiKit.Muted, TextAnchor.UpperLeft); UiKit.Top(dRefund.rectTransform, CardPad + 22f + 12f + 26f, 18f, CardPad, CardPad);
+            var buttons = ButtonRow(card);
+            UiKit.Btn("Cancel", buttons, "취소", () => { pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, minWidth: 64f);
+            UiKit.Btn("Confirm", buttons, "해체", () => { if (pendingDemolish.HasValue) { var r = GameBootstrap.Instance.Session.Build.BeginDemolish(pendingDemolish.Value.x, pendingDemolish.Value.y); if (r != BuildResult.Ok) hud.Toast(HudController.DemolishMessage(r)); } pendingDemolish = null; demolish.gameObject.SetActive(false); Sync(); }, style: BtnStyle.Danger, minWidth: 72f);
         }
 
         private void BuildSummary()
         {
-            summary = Card("DaySummary", new Vector2(360f, 298f), "1일차 마감");
+            // 시안 .sum: 행 사이 1px 선, 패딩 9 0, 라벨 muted 13, 값 Sora Bold 16. "다음 날"은 primary, 최소 150 · 높이 40 · 15.
+            const float rowH = 36f, top = CardPad + 22f + 6f;
+            summary = Card("DaySummary", new Vector2(CardW, top + 5f * rowH + 16f + 40f + 18f), "1일차 마감");
             var card = summary.Find("Card");
             sTitle = card.Find("Title").GetComponent<Text>();
-            sTitle.fontSize = 20;
-            Text Row(string n, string lbl, float y, Color c)
+            int index = 0;
+            Text Row(string n, string lbl, Color c)
             {
-                var l = UiKit.Label(n + "L", card, lbl, 14, UiKit.Muted, TextAnchor.MiddleLeft); l.rectTransform.anchorMin = new Vector2(0f, 1f); l.rectTransform.anchorMax = new Vector2(1f, 1f); l.rectTransform.pivot = new Vector2(0.5f, 1f); l.rectTransform.anchoredPosition = new Vector2(0f, y); l.rectTransform.sizeDelta = new Vector2(-48f, 28f);
-                var v = UiKit.Label(n, card, "", 16, c, TextAnchor.MiddleRight, FontStyle.Bold); v.rectTransform.anchorMin = new Vector2(0f, 1f); v.rectTransform.anchorMax = new Vector2(1f, 1f); v.rectTransform.pivot = new Vector2(0.5f, 1f); v.rectTransform.anchoredPosition = new Vector2(0f, y); v.rectTransform.sizeDelta = new Vector2(-48f, 28f);
+                float y = top + index * rowH;
+                if (index > 0) { var line = UiKit.Divider(n + "Line", card); UiKit.Top(line.rectTransform, y, 1f, CardPad, CardPad); }
+                index++;
+                var l = UiKit.Label(n + "L", card, lbl, 13, UiKit.Muted, TextAnchor.MiddleLeft); UiKit.Top(l.rectTransform, y, rowH, CardPad, CardPad);
+                var v = UiKit.Label(n, card, "", 16, c, TextAnchor.MiddleRight, Fonts.NumBold); UiKit.Top(v.rectTransform, y, rowH, CardPad, CardPad);
                 return v;
             }
-            sDelivered = Row("Delivered", "배송", -54f, UiKit.Good);
-            sLost = Row("Lost", "소실", -84f, UiKit.Bad);
-            sInspected = Row("Inspected", "검사", -114f, UiKit.Fg);
-            sMoney = Row("Money", "잔액 변화", -144f, UiKit.Accent);
-            sExp = Row("Exp", "획득 EXP", -174f, UiKit.ExpColor);
-            var next = UiKit.Button("NextDay", card, "다음 날", new Vector2(150f, 40f), NextDay, UiKit.Accent, UiKit.AccentFg, 16, new Vector2(0.5f, 0f));
-            next.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 36f);
+            sDelivered = Row("Delivered", "배송", UiKit.Good);
+            sLost = Row("Lost", "소실", UiKit.Bad);
+            sInspected = Row("Inspected", "검사", UiKit.Fg);
+            sExp = Row("Exp", "획득 EXP", UiKit.ExpColor);
+            sMoney = Row("Money", "잔액 변화", UiKit.Accent);
+            var next = UiKit.Btn("NextDay", card, "다음 날", NextDay, style: BtnStyle.Primary, height: 40f, fontSize: 15, fixedSize: new Vector2(150f, 40f));
+            UiKit.Place((RectTransform)next.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(150f, 40f));
         }
 
         /// <summary>하루 요약을 채워 띄운다(DayEnded, 또는 퇴근 상태로 불러온 세션).</summary>
@@ -319,12 +356,12 @@ namespace ParcelFactory.Game
             demolish.gameObject.SetActive(false); pendingDemolish = null;
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             sTitle.text = d.Day + "일차 마감";
-            sDelivered.text = d.Delivered + "건";
-            sLost.text = d.Lost + "건";
-            sInspected.text = d.Inspected + "건";
-            sMoney.text = d.StartMoney + " → " + d.EndMoney + " (" + HudController.Signed(d.EndMoney - d.StartMoney) + ")";
+            UiKit.SetNumText(sDelivered, d.Delivered + "건", true);
+            UiKit.SetNumText(sLost, d.Lost + "건", true);
+            UiKit.SetNumText(sInspected, d.Inspected + "건", true);
+            UiKit.SetNumText(sMoney, d.StartMoney + " → " + d.EndMoney + " (" + HudController.Signed(d.EndMoney - d.StartMoney) + ")", true);
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
-            sExp.text = d.Exp.ToString();
+            UiKit.SetNumText(sExp, d.Exp.ToString(), true);
             summary.gameObject.SetActive(true);
             input.ClearPad();
             Sync();

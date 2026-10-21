@@ -100,7 +100,7 @@ namespace ParcelFactory.Game.Tests
                 yield return Capture(boot, "unity-touch.png", Width, Height);
                 boot.Hud.ForceTouchMode(false);
 
-                // (c2) 설치 프롬프트: 빈손이 아닌 레일 도구로 빈 칸 (3,3)을 바라본다 → "레일 설치 · ₩10   [E]".
+                // (c2) 설치 프롬프트: 빈손이 아닌 레일 도구로 빈 칸 (3,3)을 바라본다 → "레일 설치 · ₩10" + 키캡 E.
                 s.Worker.Worker.Carrying = null;
                 s.Worker.Worker.X = 3.0f; s.Worker.Worker.Y = 4.0f; s.Worker.Worker.Facing = Direction.South;
                 boot.Input.SelectSlot(0);
@@ -193,6 +193,51 @@ namespace ParcelFactory.Game.Tests
         }
 
         /// <summary>
+        /// 시작 화면(스펙 12.1): 저장 파일(3일차 · ₩1,240)이 있는 상태로 부팅 메뉴를 띄워 docs/design/unity-title.png로 남긴다.
+        /// 뒤에는 데모 라인(입고 → 레일 → 검사대 → 레일 → 팔레트)이 깔린 공장이 그대로 보인다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Title()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            string save = Path.Combine(Path.GetTempPath(), "pf-title-save.json");
+            SaveFile.PathOverride = save;
+            var saved = new GameSession();
+            saved.Clock.Set(3, 10 * 60);
+            saved.Economy.Earn(1240 - saved.Economy.Money);
+            Assert.IsTrue(SaveFile.TrySave(saved, out var err), err);
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                var s = boot.Session;
+                Place(s, 1, 2, CellType.Conveyor, Direction.East);
+                Place(s, 2, 2, CellType.Conveyor, Direction.East);
+                Place(s, 3, 2, CellType.Table, Direction.East);
+                Place(s, 4, 2, CellType.Conveyor, Direction.East);
+                s.Sim.TrySpawn(2, 2, PackageKind.Normal, out _);
+                boot.StartScreen.Show(false);
+                Assert.IsTrue(boot.StartScreen.ButtonFor(StartScreen.Item.Continue).gameObject.activeSelf, "이어하기 hidden");
+                yield return new WaitForSeconds(0.5f);
+                yield return Capture(boot, "unity-title.png", Width, Height);
+                boot.StartScreen.Hide();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+                SaveFile.PathOverride = null;
+                if (File.Exists(save)) File.Delete(save);
+            }
+            yield return null;
+        }
+
+        /// <summary>
         /// 브릿지 교차(스펙 11.12): 데모 라인(입고 → 레일 → 검사대 → 레일 → 파랑 팔레트) 옆, 부지 확장 1(9×9)에서
         /// 브릿지 (3,4) 북쪽. 동쪽 줄 (2,4)→(3,4)→(4,4)→빨강 팔레트(5,4)는 아랫길, 북쪽 줄 (3,3)→(3,4)→(3,5)→(3,6)은 윗길.
         /// 두 차선 모두에 택배가 올라 있고 뒤에 한 개씩 더 기다린다. 작업자는 (2,6)에서 동쪽을 본다. 일시정지로 고정한다.
@@ -277,27 +322,36 @@ namespace ParcelFactory.Game.Tests
             if (File.Exists(path)) File.Delete(path);
 
             var cam = boot.World.MainCamera;
-            var canvas = boot.Hud.Root.GetComponent<Canvas>();
+            // HUD와 시작 화면 캔버스(둘 다 부트스트랩 아래 루트 캔버스)를 같은 카메라로 그린다. 정렬은 sortingOrder를 따른다.
+            var canvases = new System.Collections.Generic.List<Canvas>();
+            foreach (var c in boot.GetComponentsInChildren<Canvas>(true)) if (c.isRootCanvas) canvases.Add(c);
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
             rt.Create();
-            var prevMode = canvas.renderMode;
-            // 배치 모드 화면(640x480) 기준 배율 대신 RenderTexture 높이 기준(게임 기준 해상도 1280x800의 800)으로 HUD를 키워 글자를 선명하게 한다.
-            var scaler = canvas.GetComponent<CanvasScaler>();
-            var prevScaleMode = scaler != null ? scaler.uiScaleMode : CanvasScaler.ScaleMode.ConstantPixelSize;
-            float prevScaleFactor = scaler != null ? scaler.scaleFactor : 1f;
-            if (scaler != null)
-            {
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                scaler.scaleFactor = h / 800f;
-            }
+            var prevModes = new RenderMode[canvases.Count];
+            var prevScaleModes = new CanvasScaler.ScaleMode[canvases.Count];
+            var prevScaleFactors = new float[canvases.Count];
             cam.targetTexture = rt;
             Reframe(boot.World);
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = cam;
-            canvas.planeDistance = cam.nearClipPlane + 0.2f;
+            for (int i = 0; i < canvases.Count; i++)
+            {
+                var canvas = canvases[i];
+                prevModes[i] = canvas.renderMode;
+                // 배치 모드 화면(640x480) 기준 배율 대신 RenderTexture 높이 기준(게임 기준 해상도 1280x800의 800)으로 HUD를 키워 글자를 선명하게 한다.
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                prevScaleModes[i] = scaler != null ? scaler.uiScaleMode : CanvasScaler.ScaleMode.ConstantPixelSize;
+                prevScaleFactors[i] = scaler != null ? scaler.scaleFactor : 1f;
+                if (scaler != null)
+                {
+                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                    scaler.scaleFactor = h / 800f;
+                }
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = cam;
+                canvas.planeDistance = cam.nearClipPlane + 0.2f;
+            }
             yield return null;
             // 배율이 바뀌어도 Text는 예전 픽셀 크기로 만든 글리프를 그대로 늘려 쓰므로 다시 만들게 한다.
-            Redraw(canvas);
+            foreach (var canvas in canvases) Redraw(canvas);
             yield return null;
             yield return null;
             FixPrompt(boot, cam);
@@ -315,14 +369,19 @@ namespace ParcelFactory.Game.Tests
             Object.Destroy(tex);
 
             cam.targetTexture = null;
-            canvas.renderMode = prevMode;
-            canvas.worldCamera = null;
-            if (scaler != null)
+            for (int i = 0; i < canvases.Count; i++)
             {
-                scaler.scaleFactor = prevScaleFactor;
-                scaler.uiScaleMode = prevScaleMode;
+                var canvas = canvases[i];
+                canvas.renderMode = prevModes[i];
+                canvas.worldCamera = null;
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler != null)
+                {
+                    scaler.scaleFactor = prevScaleFactors[i];
+                    scaler.uiScaleMode = prevScaleModes[i];
+                }
+                Redraw(canvas);
             }
-            Redraw(canvas);
             Reframe(boot.World);
             rt.Release();
             Object.Destroy(rt);

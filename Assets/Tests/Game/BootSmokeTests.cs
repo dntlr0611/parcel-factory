@@ -558,11 +558,15 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(promptText.gameObject.activeInHierarchy, "prompt must stay visible when unaffordable");
                 StringAssert.Contains("레일 설치 · ₩10 (잔액 부족)", promptText.text);
                 Assert.AreEqual(UiKit.Bad, promptText.color);
+                Assert.IsFalse(boot.Hud.Root.Find("Prompt/Key").gameObject.activeSelf, "keycap E must hide when the action is unavailable");
                 Assert.AreEqual(UiKit.Bad, moneyText.color, "balance should flash red after a decrease");
                 s.Economy.Adjust(keep - 5);
                 yield return null;
                 Assert.AreEqual(UiKit.Good, moneyText.color, "balance should flash green after an increase");
-                StringAssert.Contains("레일 설치 · ₩10   [E]", promptText.text);
+                // 스펙 12.3: "[E]" 글자 대신 프롬프트 알약 안의 키캡 E(Prompt/Key)
+                Assert.AreEqual("레일 설치 · ₩10", promptText.text);
+                Assert.IsTrue(boot.Hud.Root.Find("Prompt/Key").gameObject.activeSelf, "keycap E hidden");
+                Assert.AreEqual("E", boot.Hud.Root.Find("Prompt/Key/Text").GetComponent<UnityEngine.UI.Text>().text);
                 Assert.AreEqual(UiKit.Fg, promptText.color);
 
                 // 설치하면 그 칸에 빨간 −10 팝업.
@@ -607,7 +611,7 @@ namespace ParcelFactory.Game.Tests
                 // 0.9초 뒤 모두 사라진다.
                 yield return new WaitForSecondsRealtime(HudController.PopupSeconds + 0.2f);
                 Assert.IsNull(GameObject.Find("MoneyPopup"), "popups should expire");
-                Assert.AreEqual(UiKit.Accent, moneyText.color, "flash should end");
+                Assert.AreEqual(UiKit.Fg, moneyText.color, "flash should end"); // 시안 .money .val: 금액은 fg, ₩만 앰버
                 LogAssert.NoUnexpectedReceived();
             }
             finally
@@ -1226,7 +1230,7 @@ namespace ParcelFactory.Game.Tests
                 var tick = boot.Hud.Root.Find("Stamina/Bar/" + HudController.StaminaTickName) as RectTransform;
                 Assert.IsNotNull(tick, "stamina 80% tick missing");
                 Assert.AreEqual(ParcelFactory.Core.WorkerService.RegenCap, tick.anchorMin.x, 1e-4f);
-                Assert.AreEqual(1f, tick.rect.width, 1e-3f);
+                Assert.AreEqual(2f, tick.rect.width, 1e-3f); // 시안 .stamina .tick: 폭 2px
                 Assert.Greater(tick.GetSiblingIndex(), boot.Hud.Root.Find("Stamina/Bar/Fill").GetSiblingIndex(), "tick must draw over the fill");
 
                 // 상점: 12번째 행(브릿지)이 패널 안에 보인다

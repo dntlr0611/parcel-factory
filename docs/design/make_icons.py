@@ -1,0 +1,29 @@
+import os
+W='#fff'
+I = {
+ # 도구 (시안 ICONS, viewBox 16)
+ 'tool-conveyor': ('0 0 16 16', f'<path d="M2 8h9M8 4l4 4-4 4" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+ 'tool-fast': ('0 0 16 16', f'<path d="M1 8h6M6 4l4 4-4 4M8 4l4 4-4 4" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+ 'tool-table': ('0 0 16 16', f'<rect x="2" y="3" width="12" height="9" rx="1.5" fill="none" stroke="{W}" stroke-width="1.8"/><path d="M5 6.5h6M5 9h4" stroke="{W}" stroke-width="1.6" stroke-linecap="round"/>'),
+ 'tool-pallet': ('0 0 16 16', f'<rect x="3" y="7" width="10" height="5" rx="1" fill="none" stroke="{W}" stroke-width="1.6"/><path d="M2 13.5h12" stroke="{W}" stroke-width="1.6" stroke-linecap="round"/><rect x="5" y="3" width="6" height="4" rx="0.8" fill="{W}"/>'),
+ 'tool-splitter': ('0 0 16 16', f'<path d="M2 8h5l4-4M7 8l4 4" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+ 'tool-bridge': ('0 0 16 16', f'<path d="M1.5 5.5h9M8 3l3 2.5L8 8" fill="none" stroke="{W}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8v6M12 8v6M2 14.5h12" fill="none" stroke="{W}" stroke-width="1.5" stroke-linecap="round"/>'),
+ 'tool-scanner': ('0 0 16 16', f'<path d="M3 12V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7" fill="none" stroke="{W}" stroke-width="1.8"/><path d="M5 8h6" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round"/>'),
+ # 상단 버튼 (시안, viewBox 24)
+ 'ui-pause': ('0 0 24 24', f'<rect x="6" y="5" width="4" height="14" rx="1" fill="{W}"/><rect x="14" y="5" width="4" height="14" rx="1" fill="{W}"/>'),
+ 'ui-play': ('0 0 24 24', f'<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="{W}"/>'),
+ 'ui-shop': ('0 0 24 24', f'<path d="M3 4h2l2.4 11h11.2L21 8H7" fill="none" stroke="{W}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="9" cy="19" r="1.5" fill="{W}"/><circle cx="17" cy="19" r="1.5" fill="{W}"/>'),
+ 'ui-status': ('0 0 24 24', f'<circle cx="12" cy="8" r="3.6" fill="none" stroke="{W}" stroke-width="2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round"/>'),
+ 'ui-help': ('0 0 24 24', f'<circle cx="12" cy="12" r="9" fill="none" stroke="{W}" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="{W}"/>'),
+ # 시작 화면 · 파일 (같은 선 굵기로 새로 그림)
+ 'ui-save': ('0 0 24 24', f'<path d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4z" fill="none" stroke="{W}" stroke-width="2" stroke-linejoin="round"/><path d="M8 4v5h7V4M8 20v-6h8v6" fill="none" stroke="{W}" stroke-width="2" stroke-linejoin="round"/>'),
+ 'ui-load': ('0 0 24 24', f'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" fill="none" stroke="{W}" stroke-width="2" stroke-linejoin="round"/>'),
+ 'ui-new': ('0 0 24 24', f'<path d="M12 5v14M5 12h14" fill="none" stroke="{W}" stroke-width="2.4" stroke-linecap="round"/>'),
+ 'ui-exit': ('0 0 24 24', f'<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round"/><path d="M14 8l4 4-4 4M18 12H9" fill="none" stroke="{W}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+ 'ui-close': ('0 0 24 24', f'<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="{W}" stroke-width="2.2" stroke-linecap="round"/>'),
+ 'ui-check': ('0 0 24 24', f'<path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="{W}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+ 'ui-parcel': ('0 0 24 24', f'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" fill="none" stroke="{W}" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9M8 5.3l8 4.5" fill="none" stroke="{W}" stroke-width="1.8" stroke-linejoin="round"/>'),
+}
+for k,(vb,body) in I.items():
+    open(f'svg/{k}.html','w').write(f'<html><body style="margin:0;background:transparent"><svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="64" height="64" style="display:block">{body}</svg></body></html>')
+print(' '.join(I))

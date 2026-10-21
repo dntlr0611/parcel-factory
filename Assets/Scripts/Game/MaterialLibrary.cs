@@ -9,11 +9,21 @@ namespace ParcelFactory.Game
     {
         private static readonly Dictionary<string, Material> cache = new Dictionary<string, Material>();
 
+        /// <summary>
+        /// Resources/Materials의 템플릿(에디터 MaterialTemplates.Build로 생성)을 복제한다.
+        /// 빌드는 에셋이 참조하는 셰이더 변형만 남기므로 Shader.Find만으로는 Unlit·투명·발광 변형이 빠진다. 템플릿이 없으면 Shader.Find로 대신한다.
+        /// </summary>
+        private static Material FromTemplate(string name, string shader)
+        {
+            var t = Resources.Load<Material>("Materials/" + name);
+            return t != null ? new Material(t) : new Material(Shader.Find(shader));
+        }
+
         public static Material Lit(Color c, float smoothness = 0.1f)
         {
             string key = $"lit:{c}:{smoothness}";
             if (cache.TryGetValue(key, out var m)) return m;
-            m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            m = FromTemplate("PF_Lit", "Universal Render Pipeline/Lit");
             m.SetColor("_BaseColor", c);
             m.SetFloat("_Smoothness", smoothness);
             m.SetFloat("_Metallic", 0f);
@@ -24,8 +34,10 @@ namespace ParcelFactory.Game
         {
             string key = $"emi:{c}:{strength}";
             if (cache.TryGetValue(key, out var m)) return m;
-            m = Lit(c, 0.3f);
-            m = new Material(m);
+            m = FromTemplate("PF_Emissive", "Universal Render Pipeline/Lit");
+            m.SetColor("_BaseColor", c);
+            m.SetFloat("_Smoothness", 0.3f);
+            m.SetFloat("_Metallic", 0f);
             m.EnableKeyword("_EMISSION");
             m.SetColor("_EmissionColor", c * strength);
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
@@ -36,7 +48,7 @@ namespace ParcelFactory.Game
         {
             string key = $"tr:{c}";
             if (cache.TryGetValue(key, out var m)) return m;
-            m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            m = FromTemplate("PF_Transparent", "Universal Render Pipeline/Unlit");
             m.SetColor("_BaseColor", c);
             m.SetFloat("_Surface", 1f);
             m.SetFloat("_Blend", 0f);

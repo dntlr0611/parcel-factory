@@ -6,25 +6,30 @@ using UnityEngine.UI;
 namespace ParcelFactory.Game
 {
     /// <summary>
-    /// 미니 상태바(스펙 11.8): 설치된 부품마다 작은 반투명 검은 알약(11px)을 HUD 캔버스에 띄운다.
+    /// 미니 상태바(스펙 11.8, 12.3): 설치된 부품마다 작은 반투명 알약(Noto Bold 11, 1px 선)을 HUD 캔버스에 띄운다.
     /// 위치는 매 프레임 PackageViews.TopHeight(칸) + 0.45, 카메라 반대쪽(+z)으로 0.35를 화면에 투영한다(금액 팝업과 같은 방식).
     /// 부품 집합은 CellChanged 때 다시 모으고, 문구는 매 프레임 계산하되 바뀌었을 때만 대입한다.
-    /// 작업자가 바라보는 부품은 밝은 알약 + 강조색 글자에 " · R 설정"이 붙는다.
+    /// 작업자가 바라보는 부품은 진한 알약 + 앰버 선·글자·빛에 " · R 설정"이 붙는다.
     /// </summary>
     public sealed class StatusBars : MonoBehaviour
     {
         public const int FontSize = 11;
         /// <summary>칸 윗면 위로 Lift, 카메라 반대쪽(+z, 북)으로 AwayFromCamera만큼 옮겨 띄운다. 화면에서는 칸의 먼 가장자리 위에 놓여 분배기 허브의 화살표를 가리지 않는다.</summary>
-        public const float Lift = 0.45f, AwayFromCamera = 0.35f, Height = 18f, PadX = 12f;
+        public const float Lift = 0.45f, AwayFromCamera = 0.35f, Height = 18f, PadX = 16f;
         public const string FocusSuffix = " · R 설정";
         private const string DimOpen = "<color=#8E959C>", DimClose = "</color>";
-        private static readonly Color PillBg = new Color(0f, 0f, 0f, 0.6f);
-        private static readonly Color PillFocusBg = new Color(0.2f, 0.22f, 0.25f, 0.96f);
+        // 시안 .sbar: rgba(10,13,15,.62) + 흰색 .1 선, 글자 #e9ece6. 바라보는 대상(.sbar.on)은 .94 + 앰버 선·글자 + 앰버 빛.
+        // 색 공간 보정(UiKit.DarkAlpha)은 QualitySettings를 읽으므로 MonoBehaviour 생성 중(정적 필드 초기화)에는 부를 수 없다 → 속성으로 둔다.
+        private static Color PillBg => new Color(10f / 255f, 13f / 255f, 15f / 255f, UiKit.DarkAlpha(0.62f));
+        private static Color PillFocusBg => new Color(10f / 255f, 13f / 255f, 15f / 255f, UiKit.DarkAlpha(0.94f));
+        private static Color PillLine => UiKit.White(0.1f);
+        private static readonly Color PillFg = new Color(0xe9 / 255f, 0xec / 255f, 0xe6 / 255f);
 
         private sealed class Bar
         {
             public RectTransform Rect;
-            public Image Bg;
+            public Image Bg, Border;
+            public GameObject Glow;
             public Text Label;
             public int X, Y;
             public bool Focused;
@@ -90,8 +95,10 @@ namespace ParcelFactory.Game
                 {
                     b.Focused = focus;
                     b.Label.text = text;
-                    b.Label.color = focus ? UiKit.Accent : UiKit.Fg;
+                    b.Label.color = focus ? UiKit.Accent : PillFg;
                     b.Bg.color = focus ? PillFocusBg : PillBg;
+                    b.Border.color = focus ? UiKit.Accent : PillLine;
+                    if (b.Glow.activeSelf != focus) b.Glow.SetActive(focus);
                     b.Rect.sizeDelta = new Vector2(b.Label.preferredWidth + PadX, Height);
                     if (focus) b.Rect.SetAsLastSibling(); // 겹치면 바라보는 것이 위
                 }
@@ -120,12 +127,15 @@ namespace ParcelFactory.Game
 
         private Bar Make()
         {
-            var bg = UiKit.PanelBox("StatusBar", layer, Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(40f, Height), PillBg);
-            bg.raycastTarget = false;
-            var label = UiKit.Label("Text", bg.transform, "", FontSize, UiKit.Fg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            const int r = (int)(Height / 2f);
+            var bg = UiKit.Box("StatusBar", layer, Vector2.zero, Vector2.zero, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(40f, Height), PillBg, r);
+            var glow = UiKit.AddGlow(bg.rectTransform, r, 0, 12, new Color(UiKit.Accent.r, UiKit.Accent.g, UiKit.Accent.b, 0.35f));
+            glow.gameObject.SetActive(false);
+            var border = UiKit.AddBorder(bg.rectTransform, r, PillLine);
+            var label = UiKit.Label("Text", bg.transform, "", FontSize, PillFg, TextAnchor.MiddleCenter, Fonts.Bold);
             label.horizontalOverflow = HorizontalWrapMode.Overflow;
             label.supportRichText = true;
-            return new Bar { Rect = bg.rectTransform, Bg = bg, Label = label };
+            return new Bar { Rect = bg.rectTransform, Bg = bg, Border = border, Glow = glow.gameObject, Label = label };
         }
 
         /// <summary>
