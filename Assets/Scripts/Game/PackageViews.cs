@@ -103,20 +103,20 @@ namespace ParcelFactory.Game
             return go;
         }
 
-        /// <summary>항공 마크가 상자 윗면 폭에서 차지하는 비율. 스펙 15.3으로 윗면 모서리로 옮기면서 14.2의 55%에서 줄였다.</summary>
-        public const float AirMarkFraction = 0.45f;
-        /// <summary>운송장 쿼드 크기(윗면 폭 대비 가로·세로). 가운데에 놓이고, 모서리의 항공 마크가 운송장 귀퉁이에 살짝 걸치면 마크가 위에 보인다.</summary>
+        /// <summary>항공 마크가 상자 윗면 폭에서 차지하는 비율(사용자 요청 2026-10-22: 윗면 전체에 보이게). 가장자리 3%만 골판지가 보인다.</summary>
+        public const float AirMarkFraction = 0.94f;
+        /// <summary>운송장 쿼드 크기(윗면 폭 대비 가로·세로). 가운데, 항공 마크 위에 붙는다.</summary>
         public const float WaybillWidthFraction = 0.5f, WaybillDepthFraction = 0.32f;
 
         /// <summary>
-        /// 상자 윗면 모서리(로컬 −x, +z)의 항공 마크(Resources/UI/Icons/mark-air: 파란 둥근 사각 + 흰 비행기 + 흰 테두리, 스펙 14.2·15.3).
-        /// 가운데 운송장보다 살짝 위, 검사 도장·체크(두께 0.02)보다 아래. 꺼진 채로 만든다.
+        /// 상자 윗면 전체를 덮는 항공 마크(Resources/UI/Icons/mark-air: 파란 둥근 사각 + 흰 비행기 + 흰 테두리, 스펙 14.2·15.3).
+        /// 운송장은 그 위 가운데에 붙는다(마크 +0.006, 운송장 +0.012). 꺼진 채로 만든다.
         /// </summary>
         private static GameObject AirMark(Transform box, Bounds b)
         {
             float w = Mathf.Min(b.size.x, b.size.z);
-            float side = w * AirMarkFraction, inset = w * 0.03f;
-            var pos = new Vector3(b.min.x + inset + side / 2f, b.max.y + 0.012f, b.max.z - inset - side / 2f); // 운송장(+0.006) 위, z-파이팅 방지
+            float side = w * AirMarkFraction;
+            var pos = new Vector3(b.center.x, b.max.y + 0.006f, b.center.z); // 운송장(+0.012) 아래, z-파이팅 방지
             return TopQuad(box, "AirMark", pos, new Vector2(side, side), MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-air")));
         }
 
@@ -124,7 +124,7 @@ namespace ParcelFactory.Game
         private static GameObject WaybillQuad(Transform box, Bounds b)
         {
             float w = Mathf.Min(b.size.x, b.size.z);
-            var pos = new Vector3(b.center.x, b.max.y + 0.006f, b.center.z);
+            var pos = new Vector3(b.center.x, b.max.y + 0.012f, b.center.z);
             return TopQuad(box, "Waybill", pos, new Vector2(w * WaybillWidthFraction, w * WaybillDepthFraction), MaterialLibrary.Waybill(false));
         }
 

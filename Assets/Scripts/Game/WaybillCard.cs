@@ -59,12 +59,12 @@ namespace ParcelFactory.Game
             Root = UiKit.ModalBackdrop("Waybill", hudRoot).rectTransform;
             Card = UiKit.Card("Card", Root, new Vector2(CardW, CardH), "운송장 붙이기");
 
-            // 왼쪽: 위에서 본 상자 + 테이프 + 항공 마크(모서리)
+            // 왼쪽: 위에서 본 상자 + 테이프 + 항공 마크(윗면 전체, 3D 상자와 같다)
             var box = UiKit.Box("BoxTop", Card, Center, Center, Center, BoxCenter, new Vector2(BoxW, BoxH), Cardboard, 18).rectTransform;
             UiKit.AddShadow(box, 18, UiKit.Elevation.Low);
             UiKit.Box("Tape", box, new Vector2(0.5f, 0f), new Vector2(0.5f, 1f), Center, Vector2.zero, new Vector2(44f, 0f), Tape, 0);
             UiKit.Box("Flap", box, new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), Center, Vector2.zero, new Vector2(0f, 2f), new Color(0f, 0f, 0f, 0.12f), 0);
-            airMark = UiKit.Box("AirMark", box, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -12f), new Vector2(44f, 44f), Color.white, 0);
+            airMark = UiKit.Box("AirMark", box, Center, Center, Center, Vector2.zero, Vector2.one * (Mathf.Min(BoxW, BoxH) - 16f), Color.white, 0);
             airMark.sprite = UiKit.Icon("mark-air"); airMark.type = Image.Type.Simple; airMark.preserveAspect = true;
 
             // 상자 중앙 점선 부착 영역(카드 직속: 운송장과 같은 좌표계)
@@ -75,8 +75,10 @@ namespace ParcelFactory.Game
                 DashEdge("Top", new Vector2(0f, 1f), new Vector2(1f, 1f), 0f), DashEdge("Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f), 0f),
                 DashEdge("Left", new Vector2(0f, 0f), new Vector2(0f, 1f), 90f), DashEdge("Right", new Vector2(1f, 0f), new Vector2(1f, 1f), 90f),
             };
-            var zl = UiKit.Label("Label", Zone, "여기에 붙이기", 12, new Color(1f, 1f, 1f, 0.8f), TextAnchor.MiddleCenter, Fonts.Bold);
+            var zl = UiKit.Label("Label", Zone, "여기에 붙이기", 13, Color.white, TextAnchor.MiddleCenter, Fonts.Bold);
             zl.raycastTarget = false;
+            var zo = zl.gameObject.AddComponent<Outline>(); // 상자 윗면 전체의 항공 마크(파랑·흰 비행기) 위에서도 읽히게
+            zo.effectColor = new Color(0.05f, 0.08f, 0.12f, 0.85f); zo.effectDistance = new Vector2(1.5f, -1.5f);
 
             // 오른쪽: 운송장 한 장(끌 수 있다)
             Paper = UiKit.Box("Paper", Card, Center, Center, Center, PaperHome, new Vector2(PaperW, PaperH), PaperWhite, 6).rectTransform;

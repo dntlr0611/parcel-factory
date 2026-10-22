@@ -53,7 +53,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual(Grid3D.Tile(11, 7).z, outSlab.transform.position.z, 1e-3f);
                 Assert.AreEqual(Grid3D.Tile(11, 9).z, retSlab.transform.position.z, 1e-3f);
                 Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-outlet/delivery"), "green air truck missing");
-                Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-return/truck"), "yellow air truck missing");
+                Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-return/delivery"), "yellow air truck missing (box truck, same model as the others)");
                 Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-outlet/AirSign/Board/Icon"), "air sign missing");
                 Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-return/AirSign/Board/Icon"), "air sign missing");
                 var outC = outSlab.GetComponent<Renderer>().sharedMaterial.GetColor("_BaseColor");

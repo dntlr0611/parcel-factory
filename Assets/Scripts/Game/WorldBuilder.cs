@@ -288,7 +288,7 @@ namespace ParcelFactory.Game
             // 트럭 도크(스펙 10.1)는 동쪽 벽 출입구 바로 안쪽 칸 (11,2)·(11,4). 좌표는 FactoryGrid에서만 읽는다.
             Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, InletSlab, "van", -8.5f, -90f, truck: false, InletVan);
             Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true, Hex(0x3D7BE0));
-            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "truck", 8.6f, 90f, truck: true, Hex(0xD95A4A));
+            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "delivery", 8.6f, 90f, truck: true, Hex(0xD95A4A), "Dock_truck"); // 이름은 예전 그대로(테스트·참조 호환), 차량은 탑차로 통일
         }
 
         /// <summary>항공 트럭 색(스펙 14.1): 항공 출고 초록, 항공 반품 노랑.</summary>
@@ -318,7 +318,7 @@ namespace ParcelFactory.Game
             if (airOut)
                 AirSign(Dock(airDocks, FactoryGrid.AirOutletX, FactoryGrid.AirOutletY, AirOutletColor, "delivery", 8.6f, 90f, truck: true, AirOutletColor, "Dock_air-outlet"), AirOutletColor);
             if (airRet)
-                AirSign(Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "truck", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return"), AirReturnColor);
+                AirSign(Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "delivery", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return"), AirReturnColor);
         }
 
         /// <summary>입고 트럭 색(초록). 부지 확장 입고구도 (0,2)와 같다.</summary>

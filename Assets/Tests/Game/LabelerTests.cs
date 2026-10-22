@@ -140,9 +140,10 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreSame(MaterialLibrary.Waybill(true), wb.GetComponent<Renderer>().sharedMaterial, "rejected parcel should carry a red-band return waybill");
                 var mark = box.transform.Find("AirMark");
                 Assert.IsTrue(mark.gameObject.activeSelf);
-                Assert.Less(mark.localPosition.x, wb.localPosition.x - 0.05f, "air mark should sit at a top corner");
-                Assert.Greater(mark.localPosition.z, wb.localPosition.z + 0.05f, "air mark should sit at a top corner");
-                Assert.Greater(mark.localPosition.y, wb.localPosition.y + 0.004f, "air mark above the waybill (no z-fighting)");
+                Assert.AreEqual(wb.localPosition.x, mark.localPosition.x, 0.001f, "air mark is centred on the box top");
+                Assert.AreEqual(wb.localPosition.z, mark.localPosition.z, 0.001f, "air mark is centred on the box top");
+                Assert.Greater(mark.localScale.x, wb.localScale.x * 1.5f, "air mark covers the whole top, larger than the waybill");
+                Assert.Greater(wb.localPosition.y, mark.localPosition.y + 0.004f, "waybill sits above the air mark (no z-fighting)");
 
                 // 하루 요약은 운송장 카드보다 위에 뜬다.
                 var q = new PackageFactory(new System.Random(13), 0.0).Create(boot.Session.Sim.NextId++, 0, 0, Direction.East);
