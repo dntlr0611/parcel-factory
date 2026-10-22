@@ -46,9 +46,9 @@ namespace ParcelFactory.Core
         /// <summary>마지막 Rest 이후 Move가 실제로 움직였는가(스펙 11.11 점심 휴식 판정). Rest가 소비한다.</summary>
         private bool movedSinceRest;
 
-        private readonly FactoryGrid grid;
-        private readonly ConveyorSim sim;
-        private readonly BuildService build;
+        private FactoryGrid grid;
+        private ConveyorSim sim;
+        private BuildService build;
 
         public Worker Worker { get; } = new Worker { X = StartX, Y = StartY, Facing = Direction.South };
         /// <summary>강화 상태(스펙 11.5). 최대 체력·속도·회복 배율을 여기서 읽는다.</summary>
@@ -83,6 +83,17 @@ namespace ParcelFactory.Core
             Progression = progression ?? new Progression();
         }
 
+        /// <summary>작업자를 다른 공장의 격자·라인·설치에 묶는다(스펙 19.3). 대기 중인 검사·운송장은 푼다. 위치는 호출하는 쪽이 정한다.</summary>
+        public void Rebind(FactoryGrid grid, ConveyorSim sim, BuildService build)
+        {
+            this.grid = grid ?? throw new ArgumentNullException(nameof(grid));
+            this.sim = sim ?? throw new ArgumentNullException(nameof(sim));
+            this.build = build ?? throw new ArgumentNullException(nameof(build));
+            CancelInspection();
+            CancelLabel();
+            IsRunning = false;
+        }
+
         private static int Round(float v) => (int)Math.Floor(v + 0.5f);
 
         public (int x, int y) Tile() => (Round(Worker.X), Round(Worker.Y));
@@ -108,17 +119,20 @@ namespace ParcelFactory.Core
 
         /// <summary>충돌원(반지름 R)이 격자 안에 있고, 그 사각 외곽이 걸치는 칸이 모두 걸을 수 있으면 true.
         /// 칸 경계에 정확히 닿기만 한 것은 걸친 것으로 보지 않는다(Overlaps와 같은 규칙).</summary>
-        public bool CanStand(float px, float py)
+        public bool CanStand(float px, float py) => CanStandOn(grid, px, py);
+
+        /// <summary>CanStand와 같은 규칙을 다른 격자(옮겨 갈 공장)에 적용한다.</summary>
+        public static bool CanStandOn(FactoryGrid grid, float px, float py)
         {
             float lo = -0.5f + Radius;
             float hiX = FactoryGrid.Width - 0.5f - Radius, hiY = FactoryGrid.Height - 0.5f - Radius;
             if (!(px >= lo && px <= hiX && py >= lo && py <= hiY)) return false; // NaN도 여기서 거부
             int x0 = (int)Math.Floor(px - Radius - 0.5f) + 1, x1 = (int)Math.Ceiling(px + Radius + 0.5f) - 1;
             int y0 = (int)Math.Floor(py - Radius - 0.5f) + 1, y1 = (int)Math.Ceiling(py + Radius + 0.5f) - 1;
-            return WalkableAt(x0, y0) && WalkableAt(x1, y0) && WalkableAt(x0, y1) && WalkableAt(x1, y1);
+            return WalkableAt(grid, x0, y0) && WalkableAt(grid, x1, y0) && WalkableAt(grid, x0, y1) && WalkableAt(grid, x1, y1);
         }
 
-        private bool WalkableAt(int x, int y) => grid.InBounds(x, y) && IsWalkable(grid.Get(x, y).Type);
+        private static bool WalkableAt(FactoryGrid grid, int x, int y) => grid.InBounds(x, y) && IsWalkable(grid.Get(x, y).Type);
 
         /// <summary>입력 벡터 방향으로 Speed×dt만큼 걷는다(정규화). x축, y축을 따로 시도해 막힌 축만 취소한다(벽 따라 미끄러짐).
         /// 영벡터가 아니면 지배 축으로 Facing을 바꾼다. 실제로 움직였으면 true이고 대기 중인 검사를 취소한다.</summary>

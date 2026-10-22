@@ -675,12 +675,21 @@ namespace ParcelFactory.Game.Tests
                 }
                 s.Sim.Trucks.Restore(CellType.ReturnDock, 12, 0f);
                 s.Sim.Trucks.Restore(CellType.AirOutlet, 27, 0f);
-                s.Sim.Trucks.Restore(CellType.AirReturnDock, 3, 0f);
+                // 택배차 구매(스펙 20): 항공 반품 도크는 2대(알약 "3/30 · 2대"), 반품 도크도 2대.
+                Assert.AreEqual(TruckPurchaseResult.Ok, s.Factory.TryBuyTruck(CellType.AirReturnDock));
+                Assert.AreEqual(TruckPurchaseResult.Ok, s.Factory.TryBuyTruck(CellType.ReturnDock));
+                s.Sim.Trucks.Restore(CellType.AirReturnDock, 3, new[] { new Vehicle { Status = VehicleStatus.AtDock }, new Vehicle { Status = VehicleStatus.Garage } });
                 s.Worker.Worker.X = 9.0f; s.Worker.Worker.Y = 5.0f; s.Worker.Worker.Facing = Direction.North;
                 s.Clock.Set(2, 700f);
                 yield return new WaitForSeconds(HudController.PopupSeconds + 0.2f); // 설치비 팝업이 사라질 때까지
                 Assert.AreEqual("27/30", boot.Trucks.TextOf(CellType.AirOutlet));
                 s.Sim.Trucks.Restore(CellType.Outlet, 0, TruckFleet.TruckReturnMinutes); // 방금 30개째를 싣고 출발
+                // 반품 도크(2대): 방금 30개째를 싣고 출발했고 차고의 트럭이 교대해 들어오는 중(알약 "교대 0:02").
+                s.Sim.Trucks.Restore(CellType.ReturnDock, 0, new[]
+                {
+                    new Vehicle { Status = VehicleStatus.Driving, Minutes = TruckFleet.TruckReturnMinutes },
+                    new Vehicle { Status = VehicleStatus.Swapping, Minutes = TruckFleet.TruckSwapMinutes },
+                });
                 yield return null;
                 // 트럭 연출은 게임 일시정지 중에는 멈추므로(스펙 17.4) 잠깐 풀었다가 중간에서 다시 멈춘다. 대기 시간이 1분 안팎 줄어든다.
                 s.Paused = false;
@@ -690,12 +699,211 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(boot.Trucks.IsDriving(CellType.Outlet), "outlet truck should be mid-departure");
                 Debug.Log($"[Screenshot] trucks outlet '{boot.Trucks.TextOf(CellType.Outlet)}' progress {boot.Trucks.Progress(CellType.Outlet):F2}, return '{boot.Trucks.TextOf(CellType.ReturnDock)}', air '{boot.Trucks.TextOf(CellType.AirOutlet)}' / '{boot.Trucks.TextOf(CellType.AirReturnDock)}'");
                 StringAssert.StartsWith("다음 차 0:", boot.Trucks.TextOf(CellType.Outlet));
+                Assert.AreEqual("교대 0:02", boot.Trucks.TextOf(CellType.ReturnDock));
+                Assert.IsTrue(boot.Trucks.IsDriving(CellType.ReturnDock), "the return truck drives off while the spare swaps in");
+                Assert.AreEqual("3/30 · 2대", boot.Trucks.TextOf(CellType.AirReturnDock));
                 yield return Capture(boot, "unity-trucks.png", Width, Height, cam =>
                 {
                     var target = Grid3D.TileF(10.4f, 5.4f);
                     cam.transform.position = target + new Vector3(0f, 14.5f, -10.5f).normalized * 17f;
                     cam.transform.LookAt(target);
                 });
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>
+        /// 여러 공장(스펙 19): 2공장 · 공항 물류센터 화면. 1공장(부지 확장 2·자동 검사기)이 있고 2공장을 사서 옮겨 왔다. 회청색 바닥, 처음부터 있는
+        /// 항공 도크·트럭, 위쪽 가운데 공장 탭(2공장 앰버), 오른쪽 위 1공장 요약 칩(`1공장 · 대기 2 · 소실 0`). 작업자는 항공 출고 앞에서
+        /// 승인·운송장 붙인 항공 택배를 들고 있다(프롬프트 `항공 출고 +35`).
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Factories()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(8000);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                s.Unlocks.Grant(UnlockId.Scanner);
+                var f = new PackageFactory(new System.Random(33), 0.0);
+                Package Make(bool air, bool? reject, bool waybill)
+                {
+                    var p = f.Create(0, 0, 0, Direction.East);
+                    p.Air = air;
+                    if (air) p.Label.Method = PackageFactory.AirMethod;
+                    if (reject.HasValue) p.Inspect(reject.Value);
+                    p.Waybill = waybill;
+                    return p;
+                }
+                // 1공장: 검사대 두 곳에 검사를 기다리는 택배(대기 2).
+                var hq = s.Factory;
+                foreach (var y in new[] { 5, 6 })
+                {
+                    Place(s, 3, y, CellType.Table, Direction.East);
+                    var p = Make(false, null, false); p.Id = hq.Sim.NextId++;
+                    hq.Sim.PlaceCarried(p, 3, y);
+                }
+                hq.Sim.Tick(1f);
+                Assert.AreEqual(2, hq.WaitingCount);
+                Assert.AreEqual(FactoryPurchaseResult.Ok, s.Company.TryBuyFactory(FactoryKind.Airport));
+                Assert.AreEqual(FactorySwitchResult.Ok, boot.Input.SwitchFactory(1));
+                yield return null;
+                var a = s.Factory;
+                Assert.AreEqual(FactoryKind.Airport, a.Kind);
+
+                // 2공장 라인: 입고 → 레일 → 검사대 → 레일 → 부착대 → 파랑 팔레트(5,2). 항공 택배가 60%.
+                Place(s, 1, 2, CellType.Conveyor, Direction.East);
+                Place(s, 2, 2, CellType.Table, Direction.East);
+                Place(s, 3, 2, CellType.Conveyor, Direction.East);
+                Place(s, 4, 2, CellType.Labeler, Direction.East);
+                Place(s, 1, 4, CellType.Conveyor, Direction.East);
+                Package Put(int x, int y, Package p) { p.Id = a.Sim.NextId++; a.Sim.PlaceCarried(p, x, y); p.Progress = 0.5f; return p; }
+                Put(1, 2, Make(true, null, false));
+                Put(2, 2, Make(true, null, false)).Progress = 1f; // 검사 대기
+                Put(3, 2, Make(true, false, false));
+                for (int i = 0; i < 3; i++)
+                {
+                    var pp = Make(i != 1, false, true); pp.Id = a.Sim.NextId++;
+                    Assert.IsTrue(a.Sim.PutOnPallet(pp, FactoryGrid.StartBluePalletX, FactoryGrid.StartBluePalletY));
+                }
+                for (int i = 0; i < 4; i++) { var d = Make(true, false, true); d.Id = a.Sim.NextId++; a.Sim.DeliverCarried(d, CellType.AirOutlet); }
+                var carried = Make(true, false, true); carried.Id = a.Sim.NextId++;
+                s.Worker.Worker.Carrying = carried;
+                s.Worker.Worker.X = 10.0f; s.Worker.Worker.Y = 7.0f; s.Worker.Worker.Facing = Direction.East;
+                s.Clock.Set(2, 640f);
+                yield return null;
+                yield return new WaitForSeconds(HudController.PopupSeconds + 0.3f); // 설치비 팝업과 옮기기 페이드가 끝날 때까지
+                var prompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
+                Debug.Log($"[Screenshot] factories prompt '{prompt.text}', tabs {boot.Factories.TabCount}, chip '{boot.Factories.ChipTextOf(0)}', air pill '{boot.Trucks.TextOf(CellType.AirOutlet)}'");
+                Assert.AreEqual("항공 출고 +35 · 4/30", prompt.text, "airport reward on the prompt (spec 19.2)");
+                Assert.AreEqual(2, boot.Factories.TabCount);
+                Assert.AreEqual("1공장 · 대기 2 · 소실 0", boot.Factories.ChipTextOf(0));
+                Assert.AreEqual(0f, boot.Factories.FadeAlpha);
+                yield return Capture(boot, "unity-factories.png", Width, Height);
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>
+        /// 상점(스펙 19.4, 20): 1공장 해금 목록 아래 `택배차 · 1공장`(출고 2대 → 3대째 ₩900, 항공 도크 포함 네 줄)과 맨 아래 회사 단위 `새 공장`
+        /// (2공장 ₩3,000 살 수 있음, 3공장은 흐리게 + `2공장 부지 확장 2 · 자동 검사기 필요`).
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_ShopFactory()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(4600);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                s.Unlocks.Grant(UnlockId.Scanner);
+                s.Unlocks.Grant(UnlockId.Splitter);
+                Assert.AreEqual(TruckPurchaseResult.Ok, s.Factory.TryBuyTruck(CellType.Outlet));
+                s.Clock.Set(3, 15 * 60 + 20);
+                boot.Input.RequestShop();
+                Assert.IsTrue(boot.Panels.ShopIsOnlyOpen);
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                var air = boot.Hud.Root.Find("Shop/Viewport/Content/Factories/List/Row_Airport/Buy").GetComponent<Button>();
+                Assert.IsTrue(air.interactable, "the airport can be bought");
+                Assert.AreEqual("2공장 부지 확장 2 · 자동 검사기 필요", boot.Hud.Root.Find("Shop/Viewport/Content/Factories/List/Row_Precision/Sub").GetComponent<Text>().text);
+                Assert.AreEqual("출고 트럭 3대째 · 지금 2대", boot.Hud.Root.Find("Shop/Viewport/Content/Trucks/List/Row_Outlet/Name").GetComponent<Text>().text);
+                yield return Capture(boot, "unity-shop-factory.png", Width, Height);
+                boot.Panels.CloseAll();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>게임이 2400×1080에서 쓰는 HUD 배율(CanvasScaler ScaleWithScreenSize, 기준 1280×800, 가로세로 0.5): 캔버스 높이 약 679.</summary>
+        private static float InGameUiScale(int w, int h) => Mathf.Pow(2f, Mathf.Lerp(Mathf.Log(w / 1280f, 2f), Mathf.Log(h / 800f, 2f), 0.5f));
+
+        /// <summary>
+        /// 넓은 화면(2400×1080, 게임과 같은 HUD 배율)의 상점(리뷰 수정): 캔버스가 낮아 서랍이 화면 높이 − 78로 줄고, 해금 · 택배차 · 새 공장이
+        /// 스크롤 영역 안에 있다. 맨 아래(새 공장 묶음)까지 스크롤하고 2공장 행을 키보드로 고른 상태(앰버 테두리)를 찍는다. 오른쪽 얇은 스크롤바가 보인다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_ShopWide()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(4600);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                s.Unlocks.Grant(UnlockId.Scanner);
+                Assert.AreEqual(TruckPurchaseResult.Ok, s.Factory.TryBuyTruck(CellType.Outlet));
+                s.Clock.Set(3, 15 * 60 + 20);
+                boot.Input.RequestShop();
+                Assert.IsTrue(boot.Panels.ShopIsOnlyOpen);
+                yield return null;
+                var airport = (RectTransform)boot.Hud.Root.Find("Shop/Viewport/Content/Factories/List/Row_Airport");
+                var last = (RectTransform)boot.Hud.Root.Find("Shop/Viewport/Content/Factories/List/Row_Precision");
+                var viewport = (RectTransform)boot.Hud.Root.Find("Shop/Viewport");
+                bool reachable = false, scrolls = false;
+                yield return Capture(boot, "unity-shop-wide.png", 2400, 1080, uiScale: InGameUiScale(2400, 1080), afterLayout: () =>
+                {
+                    Canvas.ForceUpdateCanvases();
+                    scrolls = boot.Panels.ShopScrolls;
+                    // 2공장 행까지 키보드로 내려간다(보이게 스크롤된다). 그 아래 3공장 행도 보이도록 맨 아래까지.
+                    while (boot.Panels.ShopSelectedRowTransform != airport) boot.Panels.MoveShopSelection(1);
+                    boot.Panels.ShopScrollPosition = 0f;
+                    Canvas.ForceUpdateCanvases();
+                    var c = new Vector3[4]; var v = new Vector3[4];
+                    last.GetWorldCorners(c); viewport.GetWorldCorners(v);
+                    reachable = c[0].y >= v[0].y - 0.5f && c[1].y <= v[1].y + 0.5f;
+                    Debug.Log($"[Screenshot] shop wide: canvas {boot.Hud.Root.rect.height:F0}, drawer {((RectTransform)boot.Hud.Root.Find("Shop")).rect.height:F0}, scrolls {scrolls}, bottom reachable {reachable}");
+                });
+                Assert.IsTrue(scrolls, "at 2400x1080 the drawer must be clamped and scroll");
+                Assert.IsTrue(reachable, "the bottom group is reachable by scrolling");
+                boot.Panels.CloseAll();
             }
             finally
             {
@@ -715,7 +923,7 @@ namespace ParcelFactory.Game.Tests
         /// 메인 카메라를 w x h RenderTexture에 직접 렌더한다. HUD 캔버스는 잠시 ScreenSpaceCamera로 바꿔 같은 카메라로 그리고,
         /// 카메라 프레이밍(WorldBuilder.FrameLot)은 RenderTexture 비율로 다시 잡는다. 끝나면 모두 되돌린다.
         /// </summary>
-        private static IEnumerator Capture(GameBootstrap boot, string file, int w, int h, System.Action<Camera> cameraOverride = null)
+        private static IEnumerator Capture(GameBootstrap boot, string file, int w, int h, System.Action<Camera> cameraOverride = null, float? uiScale = null, System.Action afterLayout = null)
         {
             string path = Path.Combine(OutDir, file);
             if (File.Exists(path)) File.Delete(path);
@@ -743,7 +951,7 @@ namespace ParcelFactory.Game.Tests
                 if (scaler != null)
                 {
                     scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                    scaler.scaleFactor = h / 800f;
+                    scaler.scaleFactor = uiScale ?? h / 800f;
                 }
                 canvas.renderMode = RenderMode.ScreenSpaceCamera;
                 canvas.worldCamera = cam;
@@ -753,6 +961,8 @@ namespace ParcelFactory.Game.Tests
             // 배율이 바뀌어도 Text는 예전 픽셀 크기로 만든 글리프를 그대로 늘려 쓰므로 다시 만들게 한다.
             foreach (var canvas in canvases) Redraw(canvas);
             yield return null;
+            yield return null;
+            afterLayout?.Invoke(); // 배율이 바뀐 뒤의 UI 상태(예: 상점 스크롤)를 맞춘다
             yield return null;
             FixPrompt(boot, cam);
             if (boot.StatusBars != null) boot.StatusBars.Refresh(); // 카메라 기준으로 다시 투영

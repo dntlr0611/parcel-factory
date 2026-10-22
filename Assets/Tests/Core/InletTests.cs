@@ -156,14 +156,14 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V8_RoundTripsEveryInletTimer()
         {
-            Assert.AreEqual(9, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
             var s = new GameSession(new Economy(1000));
             s.Unlocks.Grant(UnlockId.Plot1);
             s.Tick(1.5f);
             s.Unlocks.Grant(UnlockId.Plot2);
             s.Tick(0.25f);
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(9, st.Version);
+            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
             Assert.AreEqual(3, st.InletTimers.Count);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             foreach (var (x, y) in FactoryGrid.InletTiles)

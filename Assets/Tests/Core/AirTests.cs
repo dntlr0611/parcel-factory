@@ -322,7 +322,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V7_RoundTripsAirOnLinePalletAndHands()
         {
-            Assert.AreEqual(9, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
             var s = new GameSession(new Economy(1000));
             s.Unlocks.Grant(UnlockId.Plot2);
             s.Build.TryPlace(1, 2, CellType.Conveyor, Direction.East);
@@ -340,7 +340,7 @@ namespace ParcelFactory.Core.Tests
             s.Worker.Worker.Carrying = carried;
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(9, st.Version);
+            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.IsTrue(r.Sim.PackageAt(1, 2).Air);
             Assert.IsTrue(r.Grid.Get(5, 2).Pallet[0].Air);

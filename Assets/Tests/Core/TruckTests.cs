@@ -201,7 +201,7 @@ namespace ParcelFactory.Core.Tests
             s.Tick(3f);
             for (int i = 0; i < 12; i++) s.Sim.DeliverCarried(Good(), CellType.ReturnDock);
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(9, st.Version);
+            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
             Assert.AreEqual(2, st.Trucks.Count, "air trucks are saved only after Plot2");
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.AreEqual(17f, r.Sim.Trucks.AwayMinutes(CellType.Outlet), 1e-3f);

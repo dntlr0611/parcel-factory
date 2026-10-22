@@ -43,6 +43,7 @@ namespace ParcelFactory.Game
         private readonly Stack<Bar> pool = new Stack<Bar>();
         private RectTransform layer;
         private GameSession bound;
+        private BuildService boundBuild;
         private bool dirty = true;
 
         /// <summary>지금 보이는 상태바 수(= 설치된 부품 수).</summary>
@@ -64,12 +65,15 @@ namespace ParcelFactory.Game
 
         private void OnDestroy() => Bind(null);
 
+        /// <summary>세션의 지금 공장에 묶는다. 세션이나 공장(설치 서비스)이 바뀌면 다시 모은다(스펙 19.3).</summary>
         private void Bind(GameSession s)
         {
-            if (bound == s) return;
-            if (bound != null) bound.Build.CellChanged -= OnCellChanged;
+            var build = s?.Build;
+            if (bound == s && boundBuild == build) return;
+            if (boundBuild != null) boundBuild.CellChanged -= OnCellChanged;
             bound = s;
-            if (bound != null) bound.Build.CellChanged += OnCellChanged;
+            boundBuild = build;
+            if (boundBuild != null) boundBuild.CellChanged += OnCellChanged;
             dirty = true;
         }
 

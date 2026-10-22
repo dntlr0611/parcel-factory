@@ -21,6 +21,8 @@ namespace ParcelFactory.Game
         public InputController Input { get; private set; }
         public HudController Hud { get; private set; }
         public StatusBars StatusBars { get; private set; }
+        /// <summary>공장 탭·다른 공장 요약 칩·경보·옮길 때 페이드(스펙 19.3).</summary>
+        public FactoryBar Factories { get; private set; }
         /// <summary>동쪽 트럭 적재 알약과 출발·도착 연출(스펙 18).</summary>
         public TruckViews Trucks { get; private set; }
         public Panels Panels { get; private set; }
@@ -31,6 +33,9 @@ namespace ParcelFactory.Game
         public AudioDirector Audio { get; private set; }
 
         public event Action<GameSession> SessionReplaced;
+        /// <summary>지금 공장이 바뀌었다(스펙 19.3). 월드·칸 뷰는 이미 새 공장에 묶인 뒤다. 세션 교체(SessionReplaced) 때는 발생하지 않는다.</summary>
+        public event Action<GameSession> FactorySwitched;
+        private Company watchedCompany;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate() => Ensure();
@@ -68,13 +73,35 @@ namespace ParcelFactory.Game
             Ghost = ghostGo.AddComponent<PlacementGhost>();
             Hud = gameObject.AddComponent<HudController>();
             StatusBars = gameObject.AddComponent<StatusBars>();
+            Factories = gameObject.AddComponent<FactoryBar>();
             Trucks = gameObject.AddComponent<TruckViews>();
             Panels = gameObject.AddComponent<Panels>();
             StartScreen = gameObject.AddComponent<StartScreen>();
             Audio = gameObject.AddComponent<AudioDirector>();
+            WatchCompany(Session);
             // B2~B6는 Awake 안에서 컴포넌트를 추가하고 Session에 직접 묶는다. 이 Invoke는 Awake 밖에서 구독한 쪽(테스트 등)에는 닿지 않는다.
             SessionReplaced?.Invoke(Session);
         }
+
+        /// <summary>세션의 회사가 공장을 옮기면 월드를 그 공장에 다시 묶는다.</summary>
+        private void WatchCompany(GameSession s)
+        {
+            if (watchedCompany != null) { watchedCompany.FactorySwitched -= OnFactorySwitched; watchedCompany.FactoryAdded -= WorldBuilder.Prewarm; }
+            watchedCompany = s?.Company;
+            if (watchedCompany == null) return;
+            watchedCompany.FactorySwitched += OnFactorySwitched;
+            watchedCompany.FactoryAdded += WorldBuilder.Prewarm; // 새로 산 공장의 바닥 텍스처를 미리 굽는다
+            foreach (var f in watchedCompany.Factories) WorldBuilder.Prewarm(f); // 불러온(또는 새) 회사의 공장 전부
+        }
+
+        private void OnFactorySwitched(int index)
+        {
+            if (World != null) World.Bind(Session);
+            if (Cells != null) Cells.Bind(Session);
+            FactorySwitched?.Invoke(Session);
+        }
+
+        private void OnDestroy() => WatchCompany(null);
 
         // 슬라이더 드래그 중의 소리 값은 메모리에만 있다. 앱이 내려가거나 끝날 때 디스크에 쓴다.
         private void OnApplicationPause(bool paused) { if (paused && Settings != null) Settings.Flush(); }
@@ -85,6 +112,7 @@ namespace ParcelFactory.Game
         public void ReplaceSession(GameSession s)
         {
             Session = s;
+            WatchCompany(s);
             if (World != null) World.Bind(s);
             if (Cells != null) Cells.Bind(s);
             Input?.ClearTool();

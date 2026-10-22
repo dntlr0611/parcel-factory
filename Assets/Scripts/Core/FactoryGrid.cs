@@ -73,12 +73,19 @@ namespace ParcelFactory.Core
             // 부지 확장 1(9×9) 이상이면 (0,7), 2(12×12)면 (0,10)에 입고구(스펙 16.2). 잠긴 칸이던 자리라 충돌이 없다.
             if (size >= 9) SetInlet(cells[InletX, Plot1InletY]);
             if (size == Width) SetInlet(cells[InletX, Plot2InletY]);
-            if (size == Width)
-            {
-                cells[AirOutletX, AirOutletY].Type = CellType.AirOutlet;
-                cells[AirReturnDockX, AirReturnDockY].Type = CellType.AirReturnDock;
-            }
+            if (size == Width) AddAirDocks();
         }
+
+        /// <summary>항공 도크 두 칸을 만든다(부지 확장 2, 또는 공항 물류센터는 처음부터 — 스펙 19.2). 잠긴 칸이던 자리라 충돌이 없다. 여러 번 불러도 같다.</summary>
+        public void AddAirDocks()
+        {
+            cells[AirOutletX, AirOutletY].Type = CellType.AirOutlet;
+            cells[AirReturnDockX, AirReturnDockY].Type = CellType.AirReturnDock;
+        }
+
+        /// <summary>항공 도크 두 칸이 있는가(부지 확장 2 뒤, 또는 공항 물류센터는 처음부터).</summary>
+        public bool HasAirDocks =>
+            cells[AirOutletX, AirOutletY].Type == CellType.AirOutlet && cells[AirReturnDockX, AirReturnDockY].Type == CellType.AirReturnDock;
 
         public static bool IsPlaceable(CellType type) =>
             type == CellType.Conveyor || type == CellType.FastConveyor || type == CellType.Splitter ||

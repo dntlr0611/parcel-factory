@@ -10,7 +10,15 @@ namespace ParcelFactory.Game
     [DefaultExecutionOrder(10)]
     public sealed class Panels : MonoBehaviour
     {
-        private RectTransform shop, status, inspect, demolish, summary, shopList, statusList;
+        private RectTransform shop, status, inspect, demolish, summary, shopList, statusList, shopTrucks, shopFactories, summaryCard, summaryFactories, shopViewport, shopContent;
+        private ScrollRect shopScroll;
+        private Scrollbar shopScrollbar;
+        /// <summary>상점 내용 전체 높이(머리 제외)와 서랍 전체 높이(제한 전).</summary>
+        private float shopContentH, shopFullH;
+        /// <summary>키보드·게임패드로 고른 상점 행(보이는 행 중 번호). 없으면 −1.</summary>
+        public int ShopSelectedRow { get; private set; } = -1;
+        private Text shopTitle, trucksTitle;
+        private float summaryBaseH;
         /// <summary>검사 카드 배송 방법 줄의 비행기 아이콘(항공 택배일 때만, 스펙 14.2).</summary>
         private Image iMethodAir;
         /// <summary>검사 카드의 운송장 상태(스펙 15.3).</summary>
@@ -67,6 +75,7 @@ namespace ParcelFactory.Game
             WatchEconomy(boot.Session);
             WatchSession(boot.Session);
             boot.SessionReplaced += s => { WatchEconomy(s); WatchSession(s); CloseAll(); };
+            boot.FactorySwitched += _ => { if (shop.gameObject.activeSelf) RefreshShop(); }; // 상점은 지금 공장의 해금·택배차를 보인다(스펙 19.4)
         }
 
         /// <summary>DayEnded를 받을 세션을 바꾼다. 이미 퇴근 상태로 불러온 세션이면 요약을 바로 띄우고, 아니면 요약을 닫는다.</summary>
@@ -113,6 +122,7 @@ namespace ParcelFactory.Game
             if (inspect.gameObject.activeSelf && session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
             if (WaybillOpen && session.Worker.PendingLabel == null) Waybill.Close(); // 다른 경로로 대기가 풀렸다(완료는 스스로 닫는다)
             if (SummaryOpen && session.Clock.IsOpen) summary.gameObject.SetActive(false); // 다른 경로로 다음 날이 시작됐다
+            if (shop.gameObject.activeSelf) UpdateShopInput();
             Sync();
         }
 
@@ -145,9 +155,29 @@ namespace ParcelFactory.Game
             return dim;
         }
 
-        /// <summary>상점 서랍 높이: 머리 14 + 30 + 6, 항목 12개 × 42(버튼 30 + 위아래 6), 아래 10.</summary>
-        public const float ShopHeight = 14f + 30f + 6f + 12f * ShopRowH + 10f;
-        private const float ShopRowH = 42f, DrawerTop = 62f;
+        /// <summary>상점 행 높이(구매 버튼 28 + 위아래 2), 묶음 제목 줄, 새 공장 행(이름 + 조건/특징 두 줄). 서랍 위치 top 62.
+        /// 해금 12행 + 택배차(도크마다 1행: 출고·반품, 항공 도크가 있으면 4행) + 새 공장 2행이 화면 높이(1280×800 기준) 안에 들어가게 촘촘하게 둔다.</summary>
+        public const float ShopRowH = 32f, ShopBtnH = 28f, ShopGroupH = 24f, ShopFactoryRowH = 40f, ShopHeaderH = 46f;
+        private const float DrawerTop = 62f;
+        /// <summary>상점 서랍의 제한 전 높이(택배차 행 truckRows개). 실제 높이는 화면 안으로 제한된다(ApplyShopHeight).</summary>
+        public static float ShopHeight(int truckRows) =>
+            ShopHeaderH + UnlockCatalog.All.Count * ShopRowH + ShopGroupH + truckRows * ShopRowH + ShopGroupH + (Company.MaxFactories - 1) * ShopFactoryRowH + 8f;
+
+        /// <summary>새 공장 행에 보일 조건 문구(스펙 19.2): "1공장 부지 확장 2 · 자동 검사기 필요".</summary>
+        public static string FactoryRequirementText(FactoryKind kind) => FactoryProfile.Of(FactoryProfile.Previous(kind)).ShortName + " 부지 확장 2 · 자동 검사기 필요";
+
+        /// <summary>새 공장 행의 특징 문구.</summary>
+        public static string FactoryFeatureText(FactoryKind kind) =>
+            kind == FactoryKind.Airport ? "항공 도크 처음부터 · 항공 60% · 항공 출고 +" + FactoryProfile.AirportAirDelivered
+            : "취급주의 50% 처음부터 · 취급주의 출고 +" + FactoryProfile.PrecisionFragileDelivered;
+
+        /// <summary>택배차 행 이름(스펙 20): "출고 트럭 2대째 · 지금 1대", 최대면 "출고 트럭 3대 · 최대".</summary>
+        public static string TruckRowText(TruckFleet t, CellType dock)
+        {
+            int n = t.Count(dock);
+            var name = HudController.TruckName(dock) + " 트럭 ";
+            return n >= TruckFleet.MaxTrucksPerDock ? name + n + "대 · 최대" : name + (n + 1) + "대째 · 지금 " + n + "대";
+        }
 
         /// <summary>시안 .drawer 머리: 제목(Noto Bold 14) + 오른쪽 값 + 닫기 버튼(높이 30, 12).</summary>
         private Text DrawerHeader(RectTransform panel, string title, string valueName, Color valueColor, Font valueFont, int valueSize)
@@ -161,35 +191,132 @@ namespace ParcelFactory.Game
             return v;
         }
 
+        /// <summary>상점 행 하나: 이름(왼쪽) + 구매 버튼(오른쪽, Sora 12). 첫 행이 아니면 위에 1px 선.</summary>
+        private Button ShopRow(RectTransform list, string label, float height, bool first, System.Action onBuy, out Text name)
+        {
+            var row = UiKit.Rect("Row", list, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, height));
+            UiKit.Size(row, -1f, height);
+            if (!first) UiKit.Divider("Line", row);
+            name = UiKit.Label("Name", row, label, 13, UiKit.Fg, TextAnchor.MiddleLeft);
+            name.supportRichText = true;
+            name.rectTransform.offsetMin = new Vector2(0f, 0f); name.rectTransform.offsetMax = new Vector2(-84f, 0f);
+            var b = UiKit.Btn("Buy", row, "", onBuy, font: Fonts.Num, fontSize: 12, height: ShopBtnH, fixedSize: new Vector2(76f, ShopBtnH));
+            UiKit.Place((RectTransform)b.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(76f, ShopBtnH));
+            // 키보드·게임패드 선택 표시(설정 카드 행과 같은 앰버 테두리). 구매 버튼만 둘러싼다.
+            var ring = UiKit.AddBorder((RectTransform)b.transform, UiKit.RButton, UiKit.Accent, 1.5f, 2f, "Selected");
+            ring.gameObject.SetActive(false);
+            return b;
+        }
+
+        /// <summary>상점 묶음: 제목 줄(Noto Bold 11, muted) + 행 목록. name은 묶음 오브젝트 이름.</summary>
+        private RectTransform ShopGroup(string name, string title, out Text titleText)
+        {
+            var group = UiKit.Rect(name, shopContent, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 100f));
+            titleText = UiKit.Label("Title", group, title, 11, UiKit.Muted, TextAnchor.LowerLeft, Fonts.Bold);
+            UiKit.Top(titleText.rectTransform, 0f, ShopGroupH - 4f, 0f, 0f);
+            var list = UiKit.Rect("List", group, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -ShopGroupH), new Vector2(0f, 100f));
+            var col = UiKit.Column(list, 0f, new RectOffset(0, 0, 0, 0));
+            col.childControlHeight = true;
+            return list;
+        }
+
         private void BuildShop()
         {
-            // 시안 .drawer: 오른쪽 16, top 62, 폭 330, 패딩 14, 행 사이 1px 선, 구매 버튼(.buy) 최소 76 · 높이 30 · Sora 12.
-            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -DrawerTop), new Vector2(330f, ShopHeight), UiKit.Panel2).rectTransform;
+            // 시안 .drawer: 오른쪽 16, top 62, 폭 330, 패딩 14, 행 사이 1px 선, 구매 버튼(.buy) 최소 76 · Sora 12.
+            // 묶음: 지금 공장의 해금(List) → 지금 공장의 택배차(Trucks, 스펙 20) → 회사 단위 새 공장(Factories, 스펙 19.4, 맨 아래).
+            shop = UiKit.PanelBox("Shop", hud.Root, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -DrawerTop), new Vector2(330f, ShopHeight(2)), UiKit.Panel2).rectTransform;
             shopMoney = DrawerHeader(shop, "해금 상점", "Money", UiKit.Accent, Fonts.Bold, 12);
-            shopList = UiKit.Rect("List", shop, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(-28f, 12f * ShopRowH));
+            shopTitle = shop.Find("Title").GetComponent<Text>();
+            // 머리 아래는 스크롤 영역(스펙 12 서랍 안, 패딩 14): Viewport(RectMask2D + ScrollRect) → Content(해금 목록 · 택배차 · 새 공장).
+            // 서랍 높이는 화면(캔버스) 높이 − top 62 − 아래 16으로 제한하고(ApplyShopHeight), 넘치면 휠·끌기·키보드 선택으로 스크롤한다.
+            shopViewport = UiKit.Rect("Viewport", shop, Vector2.zero, Vector2.one, new Vector2(0.5f, 1f), Vector2.zero, Vector2.zero);
+            shopViewport.offsetMin = new Vector2(14f, 8f); shopViewport.offsetMax = new Vector2(-14f, -ShopHeaderH);
+            var hit = shopViewport.gameObject.AddComponent<Image>(); hit.color = new Color(0f, 0f, 0f, 0f); // 행 사이 빈 곳에서도 휠을 받는다
+            shopViewport.gameObject.AddComponent<RectMask2D>();
+            shopContent = UiKit.Rect("Content", shopViewport, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 100f));
+            shopScroll = shopViewport.gameObject.AddComponent<ScrollRect>();
+            shopScroll.viewport = shopViewport; shopScroll.content = shopContent;
+            shopScroll.horizontal = false; shopScroll.vertical = true;
+            shopScroll.movementType = ScrollRect.MovementType.Clamped; shopScroll.inertia = false; shopScroll.scrollSensitivity = ShopRowH;
+            // 얇은 둥근 스크롤바(§12: 반경 = 폭의 절반, 흰색 .06 트랙 + 흰색 .35 손잡이). 서랍 오른쪽 패딩 안.
+            var bar = UiKit.Box("Scrollbar", shop, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), Vector2.zero, Vector2.zero, UiKit.White(0.06f), 2);
+            var brt = bar.rectTransform;
+            brt.offsetMin = new Vector2(-9f, 10f); brt.offsetMax = new Vector2(-5f, -(ShopHeaderH + 2f));
+            var handle = UiKit.Box("Handle", brt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, UiKit.White(0.35f), 2);
+            handle.rectTransform.offsetMin = Vector2.zero; handle.rectTransform.offsetMax = Vector2.zero;
+            shopScrollbar = bar.gameObject.AddComponent<Scrollbar>();
+            shopScrollbar.handleRect = handle.rectTransform; shopScrollbar.targetGraphic = handle;
+            shopScrollbar.direction = Scrollbar.Direction.BottomToTop;
+            shopScrollbar.transition = Selectable.Transition.None; shopScrollbar.navigation = new Navigation { mode = Navigation.Mode.None };
+            shopScroll.verticalScrollbar = shopScrollbar;
+            shopScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+            shopList = UiKit.Rect("List", shopContent, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, UnlockCatalog.All.Count * ShopRowH));
             var col = UiKit.Column(shopList, 0f, new RectOffset(0, 0, 0, 0));
             col.childControlHeight = true;
             bool first = true;
             foreach (var def in UnlockCatalog.All)
             {
-                var row = UiKit.Rect("Row", shopList, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, ShopRowH));
-                UiKit.Size(row, -1f, ShopRowH);
-                if (!first) UiKit.Divider("Line", row);
-                first = false;
-                var name = UiKit.Label("Name", row, def.Name, 13, UiKit.Fg, TextAnchor.MiddleLeft);
-                name.rectTransform.offsetMin = new Vector2(0f, 0f); name.rectTransform.offsetMax = new Vector2(-92f, 0f);
                 var id = def.Id;
-                var b = UiKit.Btn("Buy", row, def.Price.ToString(), () => { var r = GameBootstrap.Instance.Session.Unlocks.TryPurchase(id); hud.Toast(r == UnlockResult.Ok ? def.Name + " 해금" : r == UnlockResult.NotEnoughMoney ? "잔액이 부족합니다" : r == UnlockResult.RequirementMissing ? "먼저 해금해야 하는 항목이 있습니다" : "이미 보유 중입니다", r == UnlockResult.Ok ? HudController.ToastKind.Good : HudController.ToastKind.Info); RefreshShop(); },
-                    font: Fonts.Num, fontSize: 12, height: 30f, fixedSize: new Vector2(76f, 30f));
-                UiKit.Place((RectTransform)b.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(76f, 30f));
+                ShopRow(shopList, def.Name, ShopRowH, first, () => { var r = GameBootstrap.Instance.Session.Unlocks.TryPurchase(id); hud.Toast(r == UnlockResult.Ok ? def.Name + " 해금" : r == UnlockResult.NotEnoughMoney ? "잔액이 부족합니다" : r == UnlockResult.RequirementMissing ? "먼저 해금해야 하는 항목이 있습니다" : "이미 보유 중입니다", r == UnlockResult.Ok ? HudController.ToastKind.Good : HudController.ToastKind.Info); RefreshShop(); }, out _);
+                first = false;
+            }
+
+            shopTrucks = ShopGroup("Trucks", "택배차", out trucksTitle);
+            first = true;
+            foreach (var dock in TruckFleet.Docks)
+            {
+                var d = dock;
+                ShopRow(shopTrucks, "", ShopRowH, first, () => BuyTruck(d), out _);
+                shopTrucks.GetChild(shopTrucks.childCount - 1).name = "Row_" + dock;
+                first = false;
+            }
+
+            shopFactories = ShopGroup("Factories", "새 공장 · 회사", out _);
+            first = true;
+            foreach (var p in FactoryProfile.All)
+            {
+                if (p.Kind == FactoryKind.Headquarters) continue;
+                var kind = p.Kind;
+                ShopRow(shopFactories, p.FullName, ShopFactoryRowH, first, () => BuyFactory(kind), out var name);
+                var row = (RectTransform)shopFactories.GetChild(shopFactories.childCount - 1);
+                row.name = "Row_" + kind;
+                name.alignment = TextAnchor.UpperLeft;
+                name.rectTransform.offsetMax = new Vector2(-84f, -4f);
+                var sub = UiKit.Label("Sub", row, "", 11, UiKit.Muted, TextAnchor.LowerLeft);
+                sub.horizontalOverflow = HorizontalWrapMode.Overflow;
+                sub.rectTransform.offsetMin = new Vector2(0f, 4f); sub.rectTransform.offsetMax = new Vector2(-84f, 0f);
+                first = false;
             }
             shop.gameObject.SetActive(false);
+        }
+
+        private void BuyTruck(CellType dock)
+        {
+            var f = GameBootstrap.Instance.Session.Factory;
+            int? price = f.Trucks.NextTruckPrice(dock);
+            var r = f.TryBuyTruck(dock);
+            hud.Toast(r == TruckPurchaseResult.Ok ? HudController.TruckName(dock) + " 트럭 " + f.Trucks.Count(dock) + "대 · ₩" + price
+                : r == TruckPurchaseResult.NotEnoughMoney ? "잔액이 부족합니다" : r == TruckPurchaseResult.MaxTrucks ? "도크마다 최대 3대입니다" : "이 공장에는 그 도크가 없습니다",
+                r == TruckPurchaseResult.Ok ? HudController.ToastKind.Good : HudController.ToastKind.Info);
+            RefreshShop();
+        }
+
+        private void BuyFactory(FactoryKind kind)
+        {
+            var r = GameBootstrap.Instance.Session.Company.TryBuyFactory(kind);
+            var p = FactoryProfile.Of(kind);
+            hud.Toast(r == FactoryPurchaseResult.Ok ? p.FullName + " 구입 · Tab으로 이동" : r == FactoryPurchaseResult.NotEnoughMoney ? "잔액이 부족합니다"
+                : r == FactoryPurchaseResult.RequirementMissing ? FactoryRequirementText(kind) : "이미 보유 중입니다",
+                r == FactoryPurchaseResult.Ok ? HudController.ToastKind.Good : HudController.ToastKind.Info);
+            RefreshShop();
         }
 
         private void RefreshShop()
         {
             var s = GameBootstrap.Instance.Session;
+            var f = s.Factory;
             shopMoney.text = "₩ " + s.Economy.Money;
+            shopTitle.text = "해금 상점 · " + f.Profile.ShortName;
             int i = 0;
             foreach (var def in UnlockCatalog.All)
             {
@@ -200,6 +327,161 @@ namespace ParcelFactory.Game
                 b.interactable = !owned && !blocked && afford;
                 UiKit.SetButtonStyle(b, !owned && !blocked && afford ? BtnStyle.Primary : BtnStyle.Normal);
             }
+
+            // 택배차(스펙 20): 지금 공장의 도크마다. 항공 도크 항목은 항공 도크가 있을 때만.
+            trucksTitle.text = "택배차 · " + f.Profile.ShortName;
+            int truckRows = 0;
+            bool firstShown = true;
+            foreach (var dock in TruckFleet.Docks)
+            {
+                var row = shopTrucks.Find("Row_" + dock);
+                bool has = f.HasTruckDock(dock);
+                row.gameObject.SetActive(has);
+                if (!has) continue;
+                truckRows++;
+                var line = row.Find("Line");
+                if (line != null) line.gameObject.SetActive(!firstShown);
+                firstShown = false;
+                row.Find("Name").GetComponent<Text>().text = TruckRowText(f.Trucks, dock);
+                var b = row.Find("Buy").GetComponent<Button>();
+                var price = f.Trucks.NextTruckPrice(dock);
+                bool can = f.CanBuyTruck(dock) == TruckPurchaseResult.Ok;
+                UiKit.SetButtonText(b, price.HasValue ? price.Value.ToString() : "최대", num: true);
+                b.interactable = can;
+                UiKit.SetButtonStyle(b, can ? BtnStyle.Primary : BtnStyle.Normal);
+            }
+
+            // 새 공장(스펙 19.2·19.4): 회사 단위. 조건이 안 되면 흐리게 + 조건 문구.
+            foreach (var p in FactoryProfile.All)
+            {
+                if (p.Kind == FactoryKind.Headquarters) continue;
+                var row = shopFactories.Find("Row_" + p.Kind);
+                var r = s.Company.CanBuyFactory(p.Kind);
+                bool owned = r == FactoryPurchaseResult.AlreadyOwned, locked = r == FactoryPurchaseResult.RequirementMissing;
+                var name = row.Find("Name").GetComponent<Text>();
+                name.color = locked ? UiKit.Muted : UiKit.Fg;
+                var sub = row.Find("Sub").GetComponent<Text>();
+                sub.text = owned ? "보유 · " + FactoryFeatureText(p.Kind) : locked ? FactoryRequirementText(p.Kind) : FactoryFeatureText(p.Kind);
+                sub.color = locked ? UiKit.Bad : UiKit.Muted;
+                var b = row.Find("Buy").GetComponent<Button>();
+                UiKit.SetButtonText(b, owned ? "보유" : locked ? "잠김" : p.Price.ToString(), num: true);
+                b.interactable = r == FactoryPurchaseResult.Ok;
+                UiKit.SetButtonStyle(b, r == FactoryPurchaseResult.Ok ? BtnStyle.Primary : BtnStyle.Normal);
+            }
+
+            // 세로 배치(Content 안): 해금 목록 → 택배차 → 새 공장. 서랍 높이는 보이는 행 수에 맞추되 화면 안으로 제한한다.
+            float y = UnlockCatalog.All.Count * ShopRowH;
+            float trucksH = ShopGroupH + truckRows * ShopRowH;
+            ((RectTransform)shopTrucks.parent).anchoredPosition = new Vector2(0f, -y);
+            ((RectTransform)shopTrucks.parent).sizeDelta = new Vector2(0f, trucksH);
+            shopTrucks.sizeDelta = new Vector2(0f, truckRows * ShopRowH);
+            y += trucksH;
+            float factoriesH = ShopGroupH + (Company.MaxFactories - 1) * ShopFactoryRowH;
+            ((RectTransform)shopFactories.parent).anchoredPosition = new Vector2(0f, -y);
+            ((RectTransform)shopFactories.parent).sizeDelta = new Vector2(0f, factoriesH);
+            shopFactories.sizeDelta = new Vector2(0f, (Company.MaxFactories - 1) * ShopFactoryRowH);
+            shopContentH = y + factoriesH;
+            shopContent.sizeDelta = new Vector2(0f, shopContentH);
+            shopFullH = ShopHeight(truckRows);
+            ApplyShopHeight();
+            ShowShopSelection();
+        }
+
+        /// <summary>서랍 높이 = min(내용 전체, 캔버스 높이 − top 62 − 아래 16). 캔버스 크기가 바뀌면(창 크기·스크린샷 배율) 다시 맞춘다.</summary>
+        private void ApplyShopHeight()
+        {
+            float max = Mathf.Max(ShopHeaderH + ShopRowH * 3f, hud.Root.rect.height - DrawerTop - ShopBottomMargin);
+            float h = Mathf.Min(shopFullH, max);
+            if (Mathf.Abs(shop.sizeDelta.y - h) > 0.25f) shop.sizeDelta = new Vector2(330f, h);
+        }
+
+        /// <summary>서랍 아래 여백.</summary>
+        public const float ShopBottomMargin = 16f;
+
+        /// <summary>상점 서랍이 내용보다 짧아 스크롤되는가(테스트용).</summary>
+        public bool ShopScrolls => shopContentH > shopViewport.rect.height + 0.5f;
+
+        /// <summary>상점 스크롤 위치(1 = 맨 위, 0 = 맨 아래).</summary>
+        public float ShopScrollPosition
+        {
+            get => shopScroll.verticalNormalizedPosition;
+            set { Canvas.ForceUpdateCanvases(); shopScroll.verticalNormalizedPosition = Mathf.Clamp01(value); }
+        }
+
+        /// <summary>지금 보이는 상점 행(해금 → 택배차 → 새 공장 순서).</summary>
+        private System.Collections.Generic.List<RectTransform> VisibleShopRows()
+        {
+            var rows = new System.Collections.Generic.List<RectTransform>();
+            foreach (var list in new[] { shopList, shopTrucks, shopFactories })
+                for (int i = 0; i < list.childCount; i++)
+                    if (list.GetChild(i).gameObject.activeSelf) rows.Add((RectTransform)list.GetChild(i));
+            return rows;
+        }
+
+        /// <summary>키보드 ↑/↓(W/S)·게임패드 십자키: 고른 행을 옮기고 그 행이 보이게 스크롤한다. 처음 누르면 맨 위(↓) 또는 맨 아래(↑) 행.</summary>
+        public void MoveShopSelection(int delta)
+        {
+            var rows = VisibleShopRows();
+            if (rows.Count == 0) return;
+            ShopSelectedRow = ShopSelectedRow < 0 ? (delta > 0 ? 0 : rows.Count - 1) : Mathf.Clamp(ShopSelectedRow + delta, 0, rows.Count - 1);
+            ShowShopSelection();
+            ScrollShopRowIntoView(rows[ShopSelectedRow]);
+        }
+
+        /// <summary>Enter·Space·게임패드 A: 고른 행을 산다(살 수 있을 때만).</summary>
+        public void BuySelectedShopRow()
+        {
+            var rows = VisibleShopRows();
+            if (ShopSelectedRow < 0 || ShopSelectedRow >= rows.Count) return;
+            var b = rows[ShopSelectedRow].Find("Buy").GetComponent<Button>();
+            if (b.interactable) b.onClick.Invoke();
+        }
+
+        /// <summary>지금 고른 행(없으면 null). 테스트용.</summary>
+        public RectTransform ShopSelectedRowTransform
+        {
+            get { var rows = VisibleShopRows(); return ShopSelectedRow >= 0 && ShopSelectedRow < rows.Count ? rows[ShopSelectedRow] : null; }
+        }
+
+        private void ShowShopSelection()
+        {
+            var rows = VisibleShopRows();
+            if (ShopSelectedRow >= rows.Count) ShopSelectedRow = rows.Count - 1;
+            foreach (var list in new[] { shopList, shopTrucks, shopFactories })
+                for (int i = 0; i < list.childCount; i++)
+                {
+                    var ring = list.GetChild(i).Find("Buy/Selected");
+                    if (ring != null) ring.gameObject.SetActive(ShopSelectedRow >= 0 && ShopSelectedRow < rows.Count && list.GetChild(i) == rows[ShopSelectedRow]);
+                }
+        }
+
+        /// <summary>행이 Viewport 안에 다 보이도록 Content를 옮긴다(이미 보이면 그대로).</summary>
+        private void ScrollShopRowIntoView(RectTransform row)
+        {
+            Canvas.ForceUpdateCanvases();
+            var corners = new Vector3[4];
+            row.GetWorldCorners(corners);
+            float top = shopContent.InverseTransformPoint(corners[1]).y, bottom = shopContent.InverseTransformPoint(corners[0]).y; // Content 위쪽 기준(음수)
+            float view = shopViewport.rect.height, offset = shopContent.anchoredPosition.y;
+            if (top > -offset) offset = -top;
+            else if (bottom < -offset - view) offset = -bottom - view;
+            offset = Mathf.Clamp(offset, 0f, Mathf.Max(0f, shopContentH - view));
+            shopContent.anchoredPosition = new Vector2(0f, offset);
+        }
+
+        /// <summary>상점이 열려 있는 동안: 서랍 높이를 화면에 맞추고 키보드·게임패드 선택을 받는다.</summary>
+        private void UpdateShopInput()
+        {
+            ApplyShopHeight();
+            if (!ShopIsOnlyOpen) return;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            var pad = UnityEngine.InputSystem.Gamepad.current;
+            bool up = (kb != null && (kb.upArrowKey.wasPressedThisFrame || kb.wKey.wasPressedThisFrame)) || (pad != null && pad.dpad.up.wasPressedThisFrame);
+            bool down = (kb != null && (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame)) || (pad != null && pad.dpad.down.wasPressedThisFrame);
+            bool buy = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame)) || (pad != null && pad.buttonSouth.wasPressedThisFrame);
+            if (up) MoveShopSelection(-1);
+            else if (down) MoveShopSelection(1);
+            else if (buy) BuySelectedShopRow();
         }
 
         /// <summary>B 키·상점 버튼. 상태창이 열려 있으면 닫고 상점을 연다.</summary>
@@ -209,7 +491,7 @@ namespace ParcelFactory.Game
             bool open = !shop.gameObject.activeSelf;
             status.gameObject.SetActive(false);
             shop.gameObject.SetActive(open);
-            if (open) RefreshShop();
+            if (open) { ShopSelectedRow = -1; RefreshShop(); shopContent.anchoredPosition = Vector2.zero; }
             Sync();
         }
 
@@ -421,6 +703,18 @@ namespace ParcelFactory.Game
             sExp = Row("Exp", "획득 EXP", UiKit.ExpColor);
             sMoney = Row("Money", "잔액 변화", UiKit.Accent);
             sTrucks = Row("Trucks", "출발한 트럭", UiKit.Fg); // 스펙 18
+            // 공장별 한 줄(스펙 19.1): 공장이 둘 이상일 때만 보인다. 줄은 ShowSummary가 채운다.
+            summaryCard = (RectTransform)card;
+            summaryBaseH = summaryCard.sizeDelta.y;
+            summaryFactories = UiKit.Rect("Factories", card, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(top + 6f * rowH)), new Vector2(-2f * CardPad, 0f));
+            for (int i = 0; i < Company.MaxFactories; i++)
+            {
+                float y = i * SummaryFactoryRowH;
+                var line = UiKit.Divider("Line" + i, summaryFactories); UiKit.Top(line.rectTransform, y, 1f, 0f, 0f);
+                var l = UiKit.Label("Factory" + (i + 1) + "L", summaryFactories, "", 12, UiKit.Muted, TextAnchor.MiddleLeft); UiKit.Top(l.rectTransform, y, SummaryFactoryRowH, 0f, 0f);
+                var v = UiKit.Label("Factory" + (i + 1), summaryFactories, "", 13, UiKit.Fg, TextAnchor.MiddleRight, Fonts.Num); UiKit.Top(v.rectTransform, y, SummaryFactoryRowH, 0f, 0f);
+                v.supportRichText = true;
+            }
             var next = UiKit.Btn("NextDay", card, "다음 날", NextDay, style: BtnStyle.Primary, height: 40f, fontSize: 15, fixedSize: new Vector2(150f, 40f));
             UiKit.Place((RectTransform)next.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(150f, 40f));
         }
@@ -440,11 +734,38 @@ namespace ParcelFactory.Game
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
             UiKit.SetNumText(sExp, d.Exp.ToString(), true);
             UiKit.SetNumText(sTrucks, d.TrucksDeparted + "대", true);
+            // 공장별 줄(스펙 19.1): "2공장 공항 물류센터 · 배송 12 · 소실 1 · +340". 공장이 하나면 숨긴다.
+            int lines = d.Factories.Count > 1 ? d.Factories.Count : 0;
+            for (int i = 0; i < Company.MaxFactories; i++)
+            {
+                bool on = i < lines;
+                summaryFactories.Find("Line" + i).gameObject.SetActive(on);
+                var l = summaryFactories.Find("Factory" + (i + 1) + "L").GetComponent<Text>();
+                var v = summaryFactories.Find("Factory" + (i + 1)).GetComponent<Text>();
+                l.gameObject.SetActive(on); v.gameObject.SetActive(on);
+                if (!on) continue;
+                var f = d.Factories[i];
+                l.text = FactorySummaryLabel(f);
+                v.text = FactorySummaryValue(f);
+                v.font = Fonts.Body; // 한글이 섞여 Noto
+            }
+            summaryCard.sizeDelta = new Vector2(summaryCard.sizeDelta.x, summaryBaseH + lines * SummaryFactoryRowH);
             summary.gameObject.SetActive(true);
             summary.SetAsLastSibling(); // 운송장 카드 등 나중에 만든 모달보다 위에
             input.ClearPad();
             Sync();
         }
+
+        /// <summary>하루 요약 공장별 줄 높이.</summary>
+        // 공장별 줄의 금액은 "배송 수입"이다(카드 위쪽 "잔액 변화"와 헷갈리지 않게).
+        public const float SummaryFactoryRowH = 30f;
+
+        /// <summary>공장별 줄 왼쪽: "2공장 공항 물류센터".</summary>
+        public static string FactorySummaryLabel(FactoryDaySummary f) => f.Number + "공장 " + f.Name;
+
+        /// <summary>공장별 줄 오른쪽: "배송 12 · 소실 1 · 배송 수입 +340"(그날 배송 판정 금액 합. 잔액 변화와 다르다: 설치·해금 지출은 빠져 있다).</summary>
+        public static string FactorySummaryValue(FactoryDaySummary f) =>
+            "배송 " + f.Delivered + " · 소실 " + f.Lost + " · 배송 수입 " + HudController.Signed(f.Earned);
 
         /// <summary>"다음 날": 다음 날 09:00으로 넘기고(체력 회복) 요약을 닫는다.</summary>
         private void NextDay()

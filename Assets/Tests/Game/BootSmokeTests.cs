@@ -1239,7 +1239,7 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 Canvas.ForceUpdateCanvases();
                 var shop = boot.Hud.Root.Find("Shop") as RectTransform;
-                var list = shop.Find("List");
+                var list = shop.Find("Viewport/Content/List"); // 상점 내용은 스크롤 영역 안(리뷰 수정: 서랍 높이 제한 + ScrollRect)
                 Assert.AreEqual(ParcelFactory.Core.UnlockCatalog.All.Count, list.childCount);
                 Transform bridgeRow = null;
                 foreach (Transform row in list) if (row.Find("Name").GetComponent<UnityEngine.UI.Text>().text == "브릿지") bridgeRow = row;

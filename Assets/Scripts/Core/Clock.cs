@@ -68,5 +68,9 @@ namespace ParcelFactory.Core
         public int Exp;
         /// <summary>그날 출발한 트럭 수(30개 적재 + 퇴근 출발, 스펙 18).</summary>
         public int TrucksDeparted;
+        /// <summary>18:00 퇴근 순간 모든 공장에서 한꺼번에 출발한 트럭 수(토스트 "트럭 n대 출발"). 퇴근 상태로 다시 만든 요약에서는 0.</summary>
+        public int ClosingDepartures;
+        /// <summary>공장별 한 줄(스펙 19.1, 번호 순서). 위의 배송·소실·검사·트럭 수는 이 줄들의 합이다.</summary>
+        public System.Collections.Generic.List<FactoryDaySummary> Factories = new System.Collections.Generic.List<FactoryDaySummary>();
     }
 }

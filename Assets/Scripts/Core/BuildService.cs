@@ -105,7 +105,8 @@ namespace ParcelFactory.Core
             return ReconfigureResult.Ok;
         }
 
-        /// <summary>분배기·자동 검사기의 모드를 바꾼다(스펙 14.5, 무료). 격자 전체(부지 확장 2)가 열리기 전에는 RequiresPlot2.
+        /// <summary>분배기·자동 검사기의 모드를 바꾼다(스펙 14.5, 무료). 항공 도크가 없는 공장(부지 확장 2 전; 공항 물류센터는 처음부터 있다, 19.2)에서는
+        /// RequiresPlot2(이름은 예전 그대로: "항공 도크가 생긴 뒤").
         /// 검사기를 항공 모드로 처음 바꾸면 항공 출구를 기본 규칙(오른쪽, 안 되면 왼쪽)으로 정한다. 그 칸 위 택배의 진행 방향도 다시 정한다.</summary>
         public ReconfigureResult SetMode(int x, int y, RouteMode mode)
         {
@@ -113,7 +114,7 @@ namespace ParcelFactory.Core
             var c = grid.Get(x, y);
             if (c.Type != CellType.Splitter && c.Type != CellType.Scanner) return ReconfigureResult.NotConfigurable;
             if (c.Demolishing) return ReconfigureResult.Invalid;
-            if (grid.UnlockedSize < FactoryGrid.Width) return ReconfigureResult.RequiresPlot2;
+            if (!grid.HasAirDocks) return ReconfigureResult.RequiresPlot2;
             if (c.Mode == mode) return ReconfigureResult.Ok;
             c.Mode = mode;
             if (mode == RouteMode.Air && c.Type == CellType.Scanner && !c.AirDirection.HasValue)

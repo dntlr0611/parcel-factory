@@ -410,7 +410,7 @@ namespace ParcelFactory.Core.Tests
             s.Sim.NextId = 3;
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(9, st.Version);
+            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
             var json = SaveSerializer.ToJson(st);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(json));
 
@@ -456,7 +456,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V3_IsRejected()
         {
-            Assert.AreEqual(9, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
             Assert.AreEqual(6, SaveSerializer.MinReadableVersion);
             var st = SaveSerializer.Capture(new GameSession());
             st.Version = 3;

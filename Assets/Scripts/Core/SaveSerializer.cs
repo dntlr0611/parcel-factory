@@ -14,31 +14,25 @@ namespace ParcelFactory.Core
     {
         /// <summary>v7: 택배 Air(스펙 14.4). v6 저장도 읽는다(Air = false, 항공 도크는 부지 확장 2 복원 때 다시 생긴다).
         /// v8: 입고구마다의 타이머(스펙 16.2). v7 이하도 읽는다(부지 확장 입고구 자리의 설치물은 환불 철거).
-        /// v9: 취급주의 Fragile·Broken·FragileSticker·FragileFromDay(스펙 17), 트럭 적재·대기(스펙 18). v8 이하는 모두 없는 상태로 읽는다.</summary>
-        public const int CurrentVersion = 9;
+        /// v9: 취급주의 Fragile·Broken·FragileSticker·FragileFromDay(스펙 17), 트럭 적재·대기(스펙 18). v8 이하는 모두 없는 상태로 읽는다.
+        /// v10: 여러 공장(스펙 19.5) — 1공장은 최상위 필드 그대로, 2·3공장은 OtherFactories, 지금 공장 번호 CurrentFactory.
+        /// 트럭은 도크마다 차량 목록(스펙 20). v9 이하는 1공장 하나짜리 회사, 도크마다 1대로 읽는다.</summary>
+        public const int CurrentVersion = 10;
         /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
         public const int MinReadableVersion = 6;
 
         public static GameState Capture(GameSession s)
         {
+            var c = s.Company;
             var st = new GameState
             {
                 Version = CurrentVersion,
                 Money = s.Economy.Money,
-                UnlockedSize = s.Grid.UnlockedSize,
-                SpawnTimer = s.Spawner.Timer,
-                NextPackageId = s.Sim.NextId,
-                DeliveredCount = s.Sim.DeliveredCount,
-                LostCount = s.Sim.LostCount,
                 Paused = s.Paused,
                 Speed = s.Speed,
                 Day = s.Clock.Day,
                 MinuteOfDay = s.Clock.MinuteOfDay,
                 DayStartMoney = s.DayStartMoney,
-                DayStartDelivered = s.DayStartDelivered,
-                DayStartLost = s.DayStartLost,
-                DayStartInspected = s.DayStartInspected,
-                InspectedCount = s.Sim.InspectedCount,
                 Stamina = s.Worker.Worker.Stamina,
                 Exp = s.Progression.Exp,
                 TotalExp = s.Progression.TotalEarned,
@@ -46,25 +40,56 @@ namespace ParcelFactory.Core
                 StaminaLevel = s.Progression.Level(Stat.Stamina),
                 SpeedLevel = s.Progression.Level(Stat.Speed),
                 RegenLevel = s.Progression.Level(Stat.Regen),
-                FragileFromDay = s.FragileFromDay,
-                TrucksDepartedToday = s.Sim.Trucks.DepartedToday,
-                Trucks = new List<TruckState>(),
+                CurrentFactory = c.CurrentIndex,
+                OtherFactories = new List<FactoryState>(),
             };
-            foreach (var d in TruckFleet.Docks)
-                if (!Cell.IsAirDock(d) || s.Unlocks.IsPurchased(UnlockId.Plot2)) // 항공 트럭은 부지 확장 2 이후에만 있다
-                    st.Trucks.Add(new TruckState { Dock = d.ToString(), Loaded = s.Sim.Trucks.Loaded(d), AwayMinutes = s.Sim.Trucks.AwayMinutes(d) });
+            CaptureFactory(c.Factories[0], st);
+            for (int i = 1; i < c.Factories.Count; i++)
+            {
+                var fs = new FactoryState();
+                CaptureFactory(c.Factories[i], fs);
+                st.OtherFactories.Add(fs);
+            }
+            var w = s.Worker.Worker;
+            st.Worker = new WorkerState { X = w.X, Y = w.Y, Facing = w.Facing.ToString(), Carrying = w.Carrying == null ? null : ToState(w.Carrying) };
+            return st;
+        }
 
-            foreach (var id in s.Unlocks.Purchased)
+        private static void CaptureFactory(FactorySite f, FactoryState st)
+        {
+            st.Kind = f.Kind.ToString();
+            st.UnlockedSize = f.Grid.UnlockedSize;
+            st.SpawnTimer = f.Spawner.Timer;
+            st.NextPackageId = f.Sim.NextId;
+            st.DeliveredCount = f.Sim.DeliveredCount;
+            st.LostCount = f.Sim.LostCount;
+            st.InspectedCount = f.Sim.InspectedCount;
+            st.DayStartDelivered = f.DayStartDelivered;
+            st.DayStartLost = f.DayStartLost;
+            st.DayStartInspected = f.DayStartInspected;
+            st.EarnedToday = f.EarnedToday;
+            st.FragileFromDay = f.FragileFromDay;
+            st.TrucksDepartedToday = f.Trucks.DepartedToday;
+            st.Trucks = new List<TruckState>();
+            foreach (var d in TruckFleet.Docks)
+                if (!Cell.IsAirDock(d) || f.HasAirDocks) // 항공 트럭은 항공 도크가 있을 때만(부지 확장 2 이후, 공항은 처음부터)
+                {
+                    var vs = new List<VehicleState>();
+                    foreach (var v in f.Trucks.VehiclesOf(d)) vs.Add(new VehicleState { Status = v.Status.ToString(), Minutes = v.Minutes });
+                    st.Trucks.Add(new TruckState { Dock = d.ToString(), Loaded = f.Trucks.Loaded(d), AwayMinutes = f.Trucks.AwayMinutes(d), Vehicles = vs });
+                }
+
+            foreach (var id in f.Unlocks.Purchased)
                 st.Purchased.Add(id.ToString());
             st.InletTimers = new List<InletTimerState>();
-            foreach (var (x, y, timer) in s.Spawner.Timers())
+            foreach (var (x, y, timer) in f.Spawner.Timers())
                 st.InletTimers.Add(new InletTimerState { X = x, Y = y, Timer = timer });
 
             for (int x = 0; x < FactoryGrid.Width; x++)
             {
                 for (int y = 0; y < FactoryGrid.Height; y++)
                 {
-                    var c = s.Grid.Get(x, y);
+                    var c = f.Grid.Get(x, y);
                     if (!c.IsBuilding) continue;
                     List<PackageState> pile = null;
                     if (c.Type == CellType.Pallet)
@@ -88,11 +113,8 @@ namespace ParcelFactory.Core
                 }
             }
 
-            foreach (var p in s.Sim.Packages)
+            foreach (var p in f.Sim.Packages)
                 st.Packages.Add(ToState(p));
-            var w = s.Worker.Worker;
-            st.Worker = new WorkerState { X = w.X, Y = w.Y, Facing = w.Facing.ToString(), Carrying = w.Carrying == null ? null : ToState(w.Carrying) };
-            return st;
         }
 
         public static GameSession Restore(GameState st)
@@ -120,31 +142,90 @@ namespace ParcelFactory.Core
             if (float.IsNaN(st.Speed) || float.IsInfinity(st.Speed) || st.Speed <= 0f)
                 throw new SaveVersionException($"invalid speed {st.Speed}");
             var s = new GameSession(new Economy(st.Money));
+            var company = s.Company;
 
+            // 공장 목록(스펙 19.5): 1공장은 최상위, 나머지는 번호 순서. v9 이하는 1공장 하나뿐이다.
+            var states = new List<FactoryState> { st };
+            if (st.OtherFactories != null)
+            {
+                if (st.Version < 10 && st.OtherFactories.Count > 0) throw new SaveVersionException($"v{st.Version} save has more than one factory");
+                states.AddRange(st.OtherFactories);
+            }
+            if (states.Count > Company.MaxFactories) throw new SaveVersionException($"{states.Count} factories > {Company.MaxFactories}");
+            for (int i = 0; i < states.Count; i++)
+            {
+                if (states[i] == null) throw new SaveVersionException("null factory");
+                var kind = states[i].Kind == null && i == 0 ? FactoryKind.Headquarters : ParseDefined<FactoryKind>(states[i].Kind);
+                if ((int)kind != i) throw new SaveVersionException($"factory {i + 1} is {kind}"); // 종류 중복·순서 어긋남 금지
+                if (i > 0) company.AddFactory(kind);
+            }
+            if (st.CurrentFactory < 0 || st.CurrentFactory >= states.Count)
+                throw new SaveVersionException($"current factory {st.CurrentFactory} not in 0..{states.Count - 1}");
+
+            // 시계를 먼저: 공장의 취급주의 확률이 그날 기준으로 정해진다.
+            s.Clock.Set(st.Day, st.MinuteOfDay); // 범위 밖이면 ArgumentOutOfRangeException → corrupt save
+
+            // 작업자가 들고 있는 택배는 지금 공장의 것이다(손에 들고는 공장을 옮길 수 없다, 스펙 19.3).
+            Package carried = null;
+            if (st.Worker == null) throw new SaveVersionException("missing worker");
+            if (st.Worker.Carrying != null)
+            {
+                carried = FromState(st.Worker.Carrying);
+                carried.Lane = Lane.Upper; // 손에 든 택배에는 차선이 없다
+            }
+            for (int i = 0; i < states.Count; i++)
+                RestoreFactory(states[i], company.Factories[i], s.Economy, st.Version, st.Day, i == st.CurrentFactory ? carried : null);
+
+            company.RestoreCurrent(st.CurrentFactory);
+            if (!s.Worker.CanStand(st.Worker.X, st.Worker.Y))
+                throw new SaveVersionException($"worker on invalid position ({st.Worker.X},{st.Worker.Y})");
+            s.Worker.Worker.X = st.Worker.X;
+            s.Worker.Worker.Y = st.Worker.Y;
+            s.Worker.Worker.Facing = ParseDefined<Direction>(st.Worker.Facing);
+            s.Worker.Worker.Carrying = carried;
+
+            s.Paused = st.Paused;
+            s.Speed = st.Speed;
+
+            // 레벨 범위 밖·음수 EXP는 ArgumentOutOfRangeException → corrupt save. 최대 체력이 레벨에 달렸으므로 체력보다 먼저.
+            s.Progression.Restore(st.Exp, st.StaminaLevel, st.SpeedLevel, st.RegenLevel, st.TotalExp);
+            if (st.DayStartExp < 0 || st.DayStartExp > st.TotalExp)
+                throw new SaveVersionException($"invalid DayStartExp {st.DayStartExp}");
+            if (!(st.Stamina >= 0f && st.Stamina <= s.Worker.EffectiveMaxStamina))
+                throw new SaveVersionException($"invalid stamina {st.Stamina}");
+            s.Worker.Worker.Stamina = st.Stamina;
+            s.DayStartMoney = st.DayStartMoney;
+            s.DayStartExp = st.DayStartExp;
+            return s;
+        }
+
+        /// <summary>공장 한 곳을 되살린다. economy는 회사 돈(예전 칸 환불), version은 파일 버전(v9 이하의 예전 칸 규칙에 쓴다), carried는 이 공장에서 작업자가 든 택배(id 검사용).</summary>
+        private static void RestoreFactory(FactoryState st, FactorySite f, Economy economy, int version, int day, Package carried)
+        {
             // Grant가 선행 항목을 스스로 적용하므로 정렬은 결정적 순서를 위한 것이다.
             var ids = new List<UnlockId>();
             foreach (var name in st.Purchased)
                 ids.Add(ParseDefined<UnlockId>(name));
             ids.Sort();
             foreach (var id in ids)
-                s.Unlocks.Grant(id);
+                f.Unlocks.Grant(id);
 
-            // 새 세션은 시작 팔레트를 갖고 있다. 저장된 건물 목록이 전부이므로(철거된 시작 팔레트 포함) 먼저 비운다.
+            // 새 공장은 시작 팔레트를 갖고 있다. 저장된 건물 목록이 전부이므로(철거된 시작 팔레트 포함) 먼저 비운다.
             for (int x = 0; x < FactoryGrid.Width; x++)
                 for (int y = 0; y < FactoryGrid.Height; y++)
-                    if (s.Grid.Get(x, y).IsBuilding) s.Grid.Clear(x, y);
+                    if (f.Grid.Get(x, y).IsBuilding) f.Grid.Clear(x, y);
 
-            int maxId = -1;
+            int maxId = carried?.Id ?? -1;
             // 예전 저장에서 빈 칸이던 자리가 지금은 해금으로 고정 칸이 된 경우(스펙 14.1, 16.2):
             // v6의 항공 도크 (11,7)·(11,9), v7 이하의 부지 확장 입고구 (0,7)·(0,10). 지금은 Grant가 그 칸을 만들었으므로
             // 거기 지어 둔 설치물은 설치비 전액 환불로 철거하고, 그 위(팔레트 더미·브릿지 아랫길 포함)의 택배는 소실로 센다.
             int droppedParcels = 0, refund = 0;
             bool AirDockTile(int x, int y)
             {
-                if (!s.Grid.InBounds(x, y)) return false;
-                var t = s.Grid.Get(x, y).Type;
-                if (st.Version < 7 && Cell.IsAirDock(t)) return true;
-                return st.Version < 8 && t == CellType.Inlet && (x, y) != (FactoryGrid.InletX, FactoryGrid.InletY);
+                if (!f.Grid.InBounds(x, y)) return false;
+                var t = f.Grid.Get(x, y).Type;
+                if (version < 7 && Cell.IsAirDock(t)) return true;
+                return version < 8 && t == CellType.Inlet && (x, y) != (FactoryGrid.InletX, FactoryGrid.InletY);
             }
             foreach (var c in st.Cells)
             {
@@ -158,8 +239,8 @@ namespace ParcelFactory.Core
                 var dir = ParseDefined<Direction>(c.Direction);
                 if (float.IsNaN(c.DemolishRemaining) || c.DemolishRemaining < 0f || c.DemolishRemaining > BuildService.DemolishSeconds)
                     throw new SaveVersionException($"invalid DemolishRemaining {c.DemolishRemaining} at ({c.X},{c.Y})");
-                s.Grid.Place(c.X, c.Y, type, dir);
-                var cell = s.Grid.Get(c.X, c.Y);
+                f.Grid.Place(c.X, c.Y, type, dir);
+                var cell = f.Grid.Get(c.X, c.Y);
                 cell.Demolishing = c.Demolishing;
                 cell.DemolishRemaining = c.DemolishRemaining;
                 if (type == CellType.Pallet)
@@ -205,72 +286,46 @@ namespace ParcelFactory.Core
             foreach (var p in st.Packages)
             {
                 if (AirDockTile(p.X, p.Y)) { droppedParcels++; continue; }
-                if (!s.Grid.InBounds(p.X, p.Y))
+                if (!f.Grid.InBounds(p.X, p.Y))
                     throw new SaveVersionException($"package {p.Id} out of bounds ({p.X},{p.Y})");
-                var target = s.Grid.Get(p.X, p.Y);
+                var target = f.Grid.Get(p.X, p.Y);
                 var pk = FromState(p);
                 if (!target.IsTrack || target.OccupantOf(pk.Lane) >= 0)
                     throw new SaveVersionException($"package {p.Id} on invalid cell ({p.X},{p.Y})");
                 if (pk.Lane == Lane.Lower && target.Type != CellType.Bridge)
                     throw new SaveVersionException($"package {p.Id} on lower lane off a bridge ({p.X},{p.Y})");
-                s.Sim.Restore(pk); // 차선에 맞춰 OccupantId 또는 LowerOccupantId를 세운다
+                f.Sim.Restore(pk); // 차선에 맞춰 OccupantId 또는 LowerOccupantId를 세운다
                 if (p.Id > maxId) maxId = p.Id;
-            }
-
-            if (st.Worker == null) throw new SaveVersionException("missing worker");
-            if (!s.Worker.CanStand(st.Worker.X, st.Worker.Y))
-                throw new SaveVersionException($"worker on invalid position ({st.Worker.X},{st.Worker.Y})");
-            s.Worker.Worker.X = st.Worker.X;
-            s.Worker.Worker.Y = st.Worker.Y;
-            s.Worker.Worker.Facing = ParseDefined<Direction>(st.Worker.Facing);
-            if (st.Worker.Carrying != null)
-            {
-                var carried = FromState(st.Worker.Carrying);
-                carried.Lane = Lane.Upper; // 손에 든 택배에는 차선이 없다
-                if (carried.Id > maxId) maxId = carried.Id;
-                s.Worker.Worker.Carrying = carried;
             }
             if (st.NextPackageId <= maxId)
                 throw new SaveVersionException($"NextPackageId {st.NextPackageId} <= package id {maxId}");
             if (st.NextPackageId < 1) throw new SaveVersionException($"NextPackageId {st.NextPackageId} < 1");
 
-            s.Sim.NextId = st.NextPackageId;
-            s.Sim.DeliveredCount = st.DeliveredCount;
-            s.Sim.LostCount = st.LostCount + droppedParcels;
-            if (refund > 0) s.Economy.Earn(refund);
-            s.Spawner.Timer = st.SpawnTimer; // 음수·NaN이면 ArgumentOutOfRangeException → corrupt save
+            f.Sim.NextId = st.NextPackageId;
+            f.Sim.DeliveredCount = st.DeliveredCount;
+            f.Sim.LostCount = st.LostCount + droppedParcels;
+            if (refund > 0) economy.Earn(refund);
+            f.Spawner.Timer = st.SpawnTimer; // 음수·NaN이면 ArgumentOutOfRangeException → corrupt save
             if (st.InletTimers != null)
                 foreach (var it in st.InletTimers)
                 {
                     if (it == null) throw new SaveVersionException("null inlet timer");
-                    s.Spawner.SetTimer(it.X, it.Y, it.Timer); // 입고구가 아니거나 잘못된 값이면 예외 → corrupt save
+                    f.Spawner.SetTimer(it.X, it.Y, it.Timer); // 입고구가 아니거나 잘못된 값이면 예외 → corrupt save
                 }
-            s.Paused = st.Paused;
-            s.Speed = st.Speed;
-
-            s.Clock.Set(st.Day, st.MinuteOfDay); // 범위 밖이면 ArgumentOutOfRangeException → corrupt save
-            // 레벨 범위 밖·음수 EXP는 ArgumentOutOfRangeException → corrupt save. 최대 체력이 레벨에 달렸으므로 체력보다 먼저.
-            s.Progression.Restore(st.Exp, st.StaminaLevel, st.SpeedLevel, st.RegenLevel, st.TotalExp);
-            if (st.DayStartExp < 0 || st.DayStartExp > st.TotalExp)
-                throw new SaveVersionException($"invalid DayStartExp {st.DayStartExp}");
-            if (!(st.Stamina >= 0f && st.Stamina <= s.Worker.EffectiveMaxStamina))
-                throw new SaveVersionException($"invalid stamina {st.Stamina}");
-            s.Worker.Worker.Stamina = st.Stamina;
-            s.Sim.InspectedCount = st.InspectedCount;
-            s.DayStartMoney = st.DayStartMoney;
-            s.DayStartDelivered = st.DayStartDelivered;
-            s.DayStartLost = st.DayStartLost;
-            s.DayStartInspected = st.DayStartInspected;
-            s.DayStartExp = st.DayStartExp;
+            f.Sim.InspectedCount = st.InspectedCount;
+            f.DayStartDelivered = st.DayStartDelivered;
+            f.DayStartLost = st.DayStartLost;
+            f.DayStartInspected = st.DayStartInspected;
+            f.EarnedToday = st.EarnedToday;
 
             // 취급주의 시작일(스펙 17.1): 시계를 복원한 뒤에 넣어야 확률이 그날 기준으로 정해진다.
-            bool plot2 = s.Unlocks.IsPurchased(UnlockId.Plot2);
-            if (st.Version < 9) s.FragileFromDay = plot2 ? st.Day + 1 : 0; // 산 날을 모르므로 읽은 날의 다음 날부터
+            bool plot2 = f.Unlocks.IsPurchased(UnlockId.Plot2);
+            if (version < 9) f.FragileFromDay = plot2 ? day + 1 : 0; // 산 날을 모르므로 읽은 날의 다음 날부터
             else
             {
-                if (plot2 ? st.FragileFromDay < 1 || st.FragileFromDay > st.Day + 1 : st.FragileFromDay != 0)
+                if (plot2 ? st.FragileFromDay < 1 || st.FragileFromDay > day + 1 : st.FragileFromDay != 0)
                     throw new SaveVersionException($"invalid FragileFromDay {st.FragileFromDay}");
-                s.FragileFromDay = st.FragileFromDay;
+                f.FragileFromDay = st.FragileFromDay;
             }
             // 트럭(스펙 18). 없으면 모두 빈 트럭. 잘못된 도크·범위 밖 값은 예외 → corrupt save.
             if (st.Trucks != null)
@@ -281,13 +336,22 @@ namespace ParcelFactory.Core
                     if (t == null) throw new SaveVersionException("null truck");
                     var dock = ParseDefined<CellType>(t.Dock);
                     if (!seen.Add(dock)) throw new SaveVersionException($"duplicate truck {dock}");
-                    if (Cell.IsAirDock(dock) && !plot2) throw new SaveVersionException($"air truck {dock} without Plot2");
-                    s.Sim.Trucks.Restore(dock, t.Loaded, t.AwayMinutes);
+                    if (Cell.IsAirDock(dock) && !f.HasAirDocks) throw new SaveVersionException($"air truck {dock} without air docks");
+                    if (t.Vehicles == null) f.Trucks.Restore(dock, t.Loaded, t.AwayMinutes); // v9: 도크마다 1대
+                    else
+                    {
+                        var list = new List<Vehicle>();
+                        foreach (var v in t.Vehicles)
+                        {
+                            if (v == null) throw new SaveVersionException("null vehicle");
+                            list.Add(new Vehicle { Status = ParseDefined<VehicleStatus>(v.Status), Minutes = v.Minutes });
+                        }
+                        f.Trucks.Restore(dock, t.Loaded, list); // 대수·상태·남은 시간이 어긋나면 예외 → corrupt save
+                    }
                 }
             }
             if (st.TrucksDepartedToday < 0) throw new SaveVersionException($"invalid TrucksDepartedToday {st.TrucksDepartedToday}");
-            s.Sim.Trucks.DepartedToday = st.TrucksDepartedToday;
-            return s;
+            f.Trucks.DepartedToday = st.TrucksDepartedToday;
         }
 
         private static PackageState ToState(Package p) => new PackageState

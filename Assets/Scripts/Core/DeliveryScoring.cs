@@ -69,6 +69,18 @@ namespace ParcelFactory.Core
             }
         }
 
+        /// <summary>공장별 보상 보정(스펙 19.2)을 넣은 금액: 항공 택배의 정상 출고는 rewards.AirDelivered, 취급주의 정상 출고는
+        /// rewards.FragileDelivered(항공이면서 취급주의도 이 값). 나머지 결과와 rewards가 null이면 Delta(o) 그대로.</summary>
+        public static int Delta(DeliveryOutcome o, Package p, RewardProfile rewards)
+        {
+            if (rewards != null)
+            {
+                if (o == DeliveryOutcome.Delivered && p != null && p.Air) return rewards.AirDelivered;
+                if (o == DeliveryOutcome.DeliveredFragile) return rewards.FragileDelivered;
+            }
+            return Delta(o);
+        }
+
         public static bool IsSuccess(DeliveryOutcome o) =>
             o == DeliveryOutcome.Delivered || o == DeliveryOutcome.DeliveredFragile || o == DeliveryOutcome.ReturnedBad;
     }

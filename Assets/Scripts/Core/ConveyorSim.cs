@@ -19,6 +19,8 @@ namespace ParcelFactory.Core
         public TruckFleet Trucks { get; } = new TruckFleet();
         /// <summary>가장 최근 판정이 난 도크 종류. PackageDelivered 핸들러 안에서 그 판정의 도크다(금액 팝업 위치용).</summary>
         public CellType LastDeliveredDock { get; private set; } = CellType.Empty;
+        /// <summary>정상 출고 보상 보정(스펙 19.2). null이면 전역 판정표 그대로. 공장(FactorySite)이 프로필 값을 넣는다.</summary>
+        public RewardProfile Rewards { get; set; }
         public int NextId { get; set; } = 1;
         /// <summary>성공 판정(+15, +5) 횟수.</summary>
         public int DeliveredCount { get; set; }
@@ -465,7 +467,7 @@ namespace ParcelFactory.Core
         private int ApplyDelivery(Package p, CellType dockType)
         {
             var outcome = DeliveryScoring.Outcome(p, dockType);
-            int delta = DeliveryScoring.Delta(outcome);
+            int delta = DeliveryScoring.Delta(outcome, p, Rewards);
             LastDeliveredDock = dockType;
             economy.Adjust(delta);
             if (DeliveryScoring.IsSuccess(outcome)) DeliveredCount++;

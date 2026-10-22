@@ -27,8 +27,26 @@ namespace ParcelFactory.Game
         private static readonly Color LaneColor = Hex(0xE9C94A);
 
         private ModelCatalog cat;
-        private Transform root, lotRoot, wallsRoot, eastWall, airDocks, westWall, inletDocks;
+        private Transform root, lotRoot, wallsRoot, northWall, eastWall, airDocks, westWall, inletDocks;
         private GameSession bound;
+        /// <summary>지금 묶인 공장의 해금(공장을 옮기면 바뀐다, 스펙 19.3). 구독 해제는 이 객체에 한다.</summary>
+        private UnlockService boundUnlocks;
+        private Renderer floor;
+        /// <summary>지금 공장 종류의 바닥·부지·벽 색(스펙 19.2).</summary>
+        private Color floorTone = Hex(0x8F8C86), slabTone = Hex(0xCFCAC1), wallColor = WallColor;
+        /// <summary>지금 그리고 있는 공장 종류.</summary>
+        public FactoryKind Kind { get; private set; }
+
+        /// <summary>공장 종류별 바닥(건물 내부)·해금 부지·벽 색(스펙 19.2): 1공장 그대로, 2공장 회청색, 3공장 밝은 크림색.</summary>
+        public static (Color floor, Color slab, Color wall) PaletteOf(FactoryKind kind)
+        {
+            switch (kind)
+            {
+                case FactoryKind.Airport: return (Hex(0x6F8196), Hex(0xA9BBCF), Hex(0xB9C6D6));
+                case FactoryKind.Precision: return (Hex(0xB3A584), Hex(0xF4EAD0), Hex(0xEDE2C4));
+                default: return (Hex(0x8F8C86), Hex(0xCFCAC1), WallColor);
+            }
+        }
         private int framedSize = -1, framedW, framedH;
         /// <summary>동쪽 트럭(스펙 18 교대 연출용): 도크 종류 → 차량, 지붕 항공 마크(항공 트럭만). 동쪽을 다시 만들면 바뀐다.</summary>
         private readonly Dictionary<CellType, (Transform car, Transform sign)> trucks = new Dictionary<CellType, (Transform, Transform)>();
@@ -52,11 +70,26 @@ namespace ParcelFactory.Game
             Bind(session);
         }
 
+        /// <summary>공장 종류의 바닥(건물 내부)·부지 콘크리트 텍스처를 미리 만든다(공장 구매·불러오기 때). 옮기는 순간 텍스처를 굽느라 멈추지 않게 한다.
+        /// MaterialLibrary가 색·크기별로 캐시한다.</summary>
+        public static void Prewarm(FactorySite site)
+        {
+            var (floorC, slabC, _) = PaletteOf(site.Kind);
+            MaterialLibrary.Concrete(Mathf.RoundToInt(HalfBuilding * 2f), floorC);
+            MaterialLibrary.Concrete(site.Grid.UnlockedSize, slabC);
+        }
+
+        /// <summary>세션의 지금 공장에 묶는다(세션 교체·공장 옮기기). 공장 종류의 색으로 바닥·벽을 다시 칠하고 부지·동서 벽을 다시 만든다.</summary>
         public void Bind(GameSession session)
         {
-            if (bound != null) bound.Unlocks.Unlocked -= OnUnlocked;
+            if (boundUnlocks != null) boundUnlocks.Unlocked -= OnUnlocked;
             bound = session;
-            bound.Unlocks.Unlocked += OnUnlocked;
+            boundUnlocks = session.Unlocks;
+            boundUnlocks.Unlocked += OnUnlocked;
+            Kind = session.Factory.Kind;
+            (floorTone, slabTone, wallColor) = PaletteOf(Kind);
+            if (floor != null) floor.sharedMaterial = MaterialLibrary.Concrete(Mathf.RoundToInt(HalfBuilding * 2f), floorTone);
+            RebuildNorthWall();
             RebuildLot(session);
             RebuildEastSide(session);
             RebuildWestSide(session);
@@ -64,6 +97,7 @@ namespace ParcelFactory.Game
 
         private void OnUnlocked(UnlockId id)
         {
+            if (bound == null) return;
             RebuildLot(bound);
             if (id == UnlockId.Plot2) RebuildEastSide(bound); // 항공 도크는 부지 확장 2에서만 생긴다(세션 교체는 Bind가 다시 만든다)
             if (id == UnlockId.Plot1 || id == UnlockId.Plot2) RebuildWestSide(bound); // 부지마다 입고구 하나(스펙 16.2)
@@ -182,13 +216,13 @@ namespace ParcelFactory.Game
         {
             FlatQuad("Ground", root, new Vector3(0f, -0.03f, 0f), 90f, 90f, 0f, MaterialLibrary.Asphalt());
             int inner = Mathf.RoundToInt(HalfBuilding * 2f);
-            FlatQuad("Floor", root, new Vector3(0f, -0.02f, 0f), inner, inner, 0f, MaterialLibrary.Concrete(inner, Hex(0x8F8C86)));
+            floor = FlatQuad("Floor", root, new Vector3(0f, -0.02f, 0f), inner, inner, 0f, MaterialLibrary.Concrete(inner, floorTone)).GetComponent<Renderer>();
         }
 
         // ---------------- 벽 ----------------
 
-        /// <summary>두께 0.3 벽 + 어두운 굽도리 + 윗면 캡. (x0,z0)→(x1,z1) 직선.</summary>
-        private static void WallRun(Transform parent, float x0, float z0, float x1, float z1)
+        /// <summary>두께 0.3 벽 + 어두운 굽도리 + 윗면 캡. (x0,z0)→(x1,z1) 직선. 벽 색은 지금 공장 종류의 색.</summary>
+        private void WallRun(Transform parent, float x0, float z0, float x1, float z1)
         {
             float len = Mathf.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
             if (len < 0.01f) return;
@@ -196,19 +230,19 @@ namespace ParcelFactory.Game
             g.SetParent(parent, false);
             g.localPosition = new Vector3((x0 + x1) / 2f, 0f, (z0 + z1) / 2f);
             g.localRotation = Quaternion.Euler(0f, Mathf.Atan2(x1 - x0, z1 - z0) * Mathf.Rad2Deg, 0f);
-            Box("Wall", g, new Vector3(0f, WallHeight / 2f, 0f), new Vector3(0.3f, WallHeight, len), MaterialLibrary.Lit(WallColor, 0.1f));
+            Box("Wall", g, new Vector3(0f, WallHeight / 2f, 0f), new Vector3(0.3f, WallHeight, len), MaterialLibrary.Lit(wallColor, 0.1f));
             Box("Plinth", g, new Vector3(0f, 0.11f, 0f), new Vector3(0.34f, 0.22f, len), MaterialLibrary.Lit(WallDark, 0.15f));
             Box("Cap", g, new Vector3(0f, WallHeight + 0.04f, 0f), new Vector3(0.36f, 0.08f, len), MaterialLibrary.Lit(WallDark, 0.15f));
         }
 
         /// <summary>x = 상수인 동·서 벽. rows의 각 z에 폭 2 출입구(상인방 + 양쪽 기둥 + 노란 띠).</summary>
-        private static void SideWall(Transform parent, float x, IEnumerable<float> rows)
+        private void SideWall(Transform parent, float x, IEnumerable<float> rows)
         {
             var gaps = new List<(float a, float b)>();
             foreach (var r in rows) gaps.Add((r - DoorWidth / 2f, r + DoorWidth / 2f));
             gaps.Sort((p, q) => p.a.CompareTo(q.a));
             float z = -HalfBuilding;
-            var wallMat = MaterialLibrary.Lit(WallColor, 0.1f);
+            var wallMat = MaterialLibrary.Lit(wallColor, 0.1f);
             var darkMat = MaterialLibrary.Lit(WallDark, 0.15f);
             var laneMat = MaterialLibrary.Lit(LaneColor, 0.3f);
             foreach (var (a0, b) in gaps)
@@ -232,11 +266,21 @@ namespace ParcelFactory.Game
         {
             var walls = wallsRoot = Group("Walls");
             const float h = HalfBuilding;
-            WallRun(walls, -h, h, h, h); // 북쪽 전체. 남쪽(카메라 쪽)은 트임.
+            // 북쪽 벽(RebuildNorthWall)은 공장 종류의 색으로 Bind에서 만든다. 남쪽(카메라 쪽)은 트임.
             // 서쪽 벽은 입고구 수(스펙 16.2), 동쪽 벽은 항공 도크(스펙 14.1) 유무에 따라 출입구가 달라 RebuildWestSide·RebuildEastSide에서 만든다.
             var darkMat = MaterialLibrary.Lit(WallDark, 0.15f);
             foreach (var (x, z) in new[] { (h, h), (-h, h), (h, -h), (-h, -h) })
                 Box("CornerPillar", walls, new Vector3(x, (WallHeight + 0.3f) / 2f, z), new Vector3(0.5f, WallHeight + 0.3f, 0.5f), darkMat);
+        }
+
+        /// <summary>북쪽 벽 전체(공장 종류의 색). 남쪽(카메라 쪽)은 트임.</summary>
+        private void RebuildNorthWall()
+        {
+            if (wallsRoot == null) return;
+            if (northWall != null) Destroy(northWall.gameObject);
+            northWall = new GameObject("North").transform;
+            northWall.SetParent(wallsRoot, false);
+            WallRun(northWall, -HalfBuilding, HalfBuilding, HalfBuilding, HalfBuilding);
         }
 
         // ---------------- 북쪽 벽 앞 설비·재고 ----------------
@@ -502,7 +546,7 @@ namespace ParcelFactory.Game
             var center = Grid3D.TileF((n - 1) / 2f, (n - 1) / 2f);
             float cx = center.x, cz = center.z;
 
-            Box("Slab", lotRoot, new Vector3(cx, -0.04f, cz), new Vector3(n, 0.08f, n), MaterialLibrary.Concrete(n, Hex(0xCFCAC1)), castShadow: false);
+            Box("Slab", lotRoot, new Vector3(cx, -0.04f, cz), new Vector3(n, 0.08f, n), MaterialLibrary.Concrete(n, slabTone), castShadow: false);
 
             // 둘레 위험 테이프
             var tape = MaterialLibrary.Hazard(n * 1.5f);
@@ -515,7 +559,14 @@ namespace ParcelFactory.Game
             foreach (var (x, z) in new[] { (xa, za), (xb, za), (xa, zb), (xb, zb) })
                 Spawn("cone", new Vector3(x, 0.01f, z), Quaternion.identity, 1.0f, lotRoot);
 
-            FrameLot(n);
+            FrameLot(FrameSizeFor(session));
+        }
+
+        /// <summary>카메라가 잡을 부지 크기. 항공 도크가 부지 확장 전부터 있는 공항(스펙 19.2)은 항공 도크 줄까지 보이게 9칸 이상으로 잡는다.</summary>
+        public static int FrameSizeFor(GameSession session)
+        {
+            int n = session.Grid.UnlockedSize;
+            return session.Factory.HasAirDocks && n < 9 ? 9 : n;
         }
 
         // ---------------- 카메라 프레이밍 ----------------
@@ -549,7 +600,7 @@ namespace ParcelFactory.Game
 
         private void OnDestroy()
         {
-            if (bound != null) bound.Unlocks.Unlocked -= OnUnlocked;
+            if (boundUnlocks != null) boundUnlocks.Unlocked -= OnUnlocked;
         }
     }
 }

@@ -32,8 +32,10 @@ namespace ParcelFactory.Game
         public event Action<InteractResult> Interacted;
         public event Action<BuildResult> DemolishRequested;
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleStatus, ToggleHelp, Escape, ToolChanged;
+        /// <summary>공장 옮기기를 시도했다(스펙 19.3: Tab·LB/RB·탭 클릭). Ok가 아니면 HUD가 이유를 알린다(Carrying → "손을 비우고 이동하세요").</summary>
+        public event Action<FactorySwitchResult> FactorySwitchRequested;
 
-        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction;
+        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction, factoryNext, factoryPrev;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
@@ -79,7 +81,10 @@ namespace ParcelFactory.Game
             help = Button("Help", "<Keyboard>/o", null);
             escape = Button("Escape", "<Keyboard>/escape", "<Gamepad>/buttonEast"); // 게임패드 B로도 카드·패널을 닫는다
             runAction = Button("Run", "<Keyboard>/space", "<Gamepad>/leftTrigger");
-            runAction.AddBinding("<Gamepad>/leftShoulder");
+            // 공장 옮기기(스펙 19.3): Tab = 다음 공장, 게임패드 RB = 다음 · LB = 이전. LB는 예전에 달리기(스펙 11.4)에도 묶여 있었으나
+            // 공장 옮기기에 주고 달리기는 LT만 쓴다.
+            factoryNext = Button("FactoryNext", "<Keyboard>/tab", "<Gamepad>/rightShoulder");
+            factoryPrev = Button("FactoryPrev", "<Gamepad>/leftShoulder", null);
             for (int i = 0; i < slots.Length; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
         }
 
@@ -123,12 +128,13 @@ namespace ParcelFactory.Game
         {
             yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
             yield return pause; yield return speed; yield return shop; yield return status; yield return help; yield return escape; yield return runAction;
+            yield return factoryNext; yield return factoryPrev;
             foreach (var s in slots) yield return s;
         }
 
         private GameSession S => GameBootstrap.Instance != null ? GameBootstrap.Instance.Session : null;
 
-        /// <summary>달리기 입력(스페이스·LT/LB 유지 또는 화면 버튼)을 누르고 있는가. 실제로 달리는지는 코어가 체력으로 판단한다(Worker.IsRunning).</summary>
+        /// <summary>달리기 입력(스페이스·LT 유지 또는 화면 버튼)을 누르고 있는가. 실제로 달리는지는 코어가 체력으로 판단한다(Worker.IsRunning).</summary>
         public bool RunRequested => (runAction != null && runAction.IsPressed()) || runHeld;
 
         private void Update()
@@ -145,6 +151,8 @@ namespace ParcelFactory.Game
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
+            if (factoryNext.WasPressedThisFrame() && CycleFactory(1) == FactorySwitchResult.Ok) return;
+            if (factoryPrev.WasPressedThisFrame() && CycleFactory(-1) == FactorySwitchResult.Ok) return;
 
             var v = move.ReadValue<Vector2>();
             foreach (var d in padHeld) v += new Vector2(d.Dx(), d.Dy());
@@ -212,6 +220,47 @@ namespace ParcelFactory.Game
         }
 
         public const string EmptyHandMessage = "빈손";
+
+        /// <summary>공장 index(0부터)로 옮긴다(스펙 19.3). 카드·패널·시작 화면이 열려 있으면 하지 않는다(null). 손에 택배가 있으면 Carrying.
+        /// 들고 있는 설치 도구는 그대로 두고 설정 모드만 끝낸다.</summary>
+        public FactorySwitchResult? SwitchFactory(int index)
+        {
+            if (S == null || UiBlocksInput) return null;
+            var panels = GameBootstrap.Instance.Panels;
+            if (panels != null && panels.AnyOpen) return null;
+            if (index == S.Company.CurrentIndex) return FactorySwitchResult.AlreadyHere;
+            CancelConfig();
+            var r = S.Company.TrySwitch(index);
+            if (r == FactorySwitchResult.Ok)
+            {
+                StopMoving();
+                RecheckTool();
+                ToolChanged?.Invoke(); // 핫바는 새 공장의 해금을 보여 준다
+            }
+            FactorySwitchRequested?.Invoke(r);
+            return r;
+        }
+
+        /// <summary>공장을 옮긴 뒤 손에 든 도구를 새 공장의 해금에 맞춘다: 그 종류를 갖지 않으면 빈손, 종류는 있지만 그 방향이 없으면
+        /// PreferredDirection, 항공 도크가 없는 공장이면 도구 모드를 검사로.</summary>
+        private void RecheckTool()
+        {
+            if (!SelectedTool.HasValue) return;
+            var type = SelectedTool.Value.Type;
+            var dirs = OwnedDirections(type);
+            if (dirs.Count == 0) { ClearTool(); return; }
+            if (!dirs.Contains(SelectedTool.Value.Direction)) SelectedTool = new Tool(type, PreferredDirection(type));
+            if (ToolMode == RouteMode.Air && !S.Grid.HasAirDocks) ToolMode = RouteMode.Inspect;
+        }
+
+        /// <summary>다음(+1)·이전(−1) 공장으로. 공장이 하나면 아무것도 하지 않는다.</summary>
+        public FactorySwitchResult? CycleFactory(int step)
+        {
+            if (S == null) return null;
+            int n = S.Company.Factories.Count;
+            if (n < 2) return null;
+            return SwitchFactory(((S.Company.CurrentIndex + step) % n + n) % n);
+        }
 
         public void RequestShop() => ToggleShop?.Invoke();
         public void RequestStatus() => ToggleStatus?.Invoke();
@@ -312,7 +361,8 @@ namespace ParcelFactory.Game
         /// <summary>모드(검사/항공, 스펙 14.5)가 있는 설치 부품: R → 3으로 바꾼다.</summary>
         public static bool HasMode(CellType t) => t == CellType.Splitter || t == CellType.Scanner;
 
-        public const string ModeLockedMessage = "부지 확장 2 이후 사용 가능";
+        /// <summary>항공 모드는 그 공장에 항공 도크가 있을 때만(스펙 14.5 수정: 공항은 처음부터, 다른 공장은 부지 확장 2 뒤).</summary>
+        public const string ModeLockedMessage = "항공 도크가 생긴 뒤 사용 가능";
 
         /// <summary>R → 3: 바라보는 분배기·검사기(또는 손에 든 그 도구)의 모드를 검사 ↔ 항공으로 바꾸고 설정 모드를 끝낸다.
         /// 부지 확장 2 전이면 토스트만.</summary>
@@ -322,7 +372,7 @@ namespace ParcelFactory.Game
             string name = ConfigType == CellType.Splitter ? "분배기" : "검사기";
             if (configTarget == ConfigTarget.Tool)
             {
-                if (S.Grid.UnlockedSize < FactoryGrid.Width) Feedback(ModeLockedMessage);
+                if (!S.Grid.HasAirDocks) Feedback(ModeLockedMessage);
                 else
                 {
                     ToolMode = ToolMode == RouteMode.Air ? RouteMode.Inspect : RouteMode.Air;

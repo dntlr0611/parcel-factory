@@ -109,18 +109,31 @@ namespace ParcelFactory.Game
         private readonly Dictionary<(int, int), GameObject> objs = new Dictionary<(int, int), GameObject>();
         private readonly Dictionary<(int, int), Transform> demoBars = new Dictionary<(int, int), Transform>();
         private GameSession bound;
+        /// <summary>지금 묶인 공장의 설치·해금(공장을 옮기면 바뀐다, 스펙 19.3). 구독 해제는 이 객체들에 한다.</summary>
+        private BuildService boundBuild;
+        private UnlockService boundUnlocks;
         private ModelCatalog cat;
         private Transform root;
 
+        /// <summary>세션의 지금 공장에 묶고 모든 칸을 다시 그린다(세션 교체·공장 옮기기).</summary>
         public void Bind(GameSession s)
         {
             cat = GameBootstrap.Instance.Catalog;
             if (root == null) { root = new GameObject("Cells").transform; root.SetParent(GameBootstrap.Instance.WorldRoot, false); }
-            if (bound != null) { bound.Build.CellChanged -= OnCellChanged; bound.Unlocks.Unlocked -= OnUnlocked; }
+            if (boundBuild != null) boundBuild.CellChanged -= OnCellChanged;
+            if (boundUnlocks != null) boundUnlocks.Unlocked -= OnUnlocked;
             bound = s;
-            bound.Build.CellChanged += OnCellChanged;
-            bound.Unlocks.Unlocked += OnUnlocked;
+            boundBuild = s.Build;
+            boundUnlocks = s.Unlocks;
+            boundBuild.CellChanged += OnCellChanged;
+            boundUnlocks.Unlocked += OnUnlocked;
             RebuildAll();
+        }
+
+        private void OnDestroy()
+        {
+            if (boundBuild != null) boundBuild.CellChanged -= OnCellChanged;
+            if (boundUnlocks != null) boundUnlocks.Unlocked -= OnUnlocked;
         }
 
         private void OnUnlocked(UnlockId _) => RebuildAll();

@@ -2,11 +2,15 @@ using System.Collections.Generic;
 
 namespace ParcelFactory.Core
 {
-    public sealed class GameState
+    /// <summary>
+    /// 공장 한 곳의 저장 상태(v10, 스펙 19.5): 격자·택배·팔레트·입고구 타이머·해금·항공/취급주의 상태·트럭·집계.
+    /// 1공장은 GameState의 최상위 필드 그대로(GameState가 이 클래스를 잇는다)라서 v6~v9 저장은 바꾸지 않고 1공장 하나짜리 회사로 읽힌다.
+    /// 2·3공장은 GameState.OtherFactories에 들어간다.
+    /// </summary>
+    public class FactoryState
     {
-        /// <summary>기본값 0. Capture가 명시적으로 채우므로 필드가 없는 JSON은 버전 불일치로 거부된다.</summary>
-        public int Version;
-        public int Money;
+        /// <summary>공장 종류 이름(Headquarters/Airport/Precision, v10). 없으면(null) 최상위는 Headquarters.</summary>
+        public string Kind;
         public int UnlockedSize;
         public List<string> Purchased = new List<string>();
         public List<CellState> Cells = new List<CellState>();
@@ -18,25 +22,37 @@ namespace ParcelFactory.Core
         public int NextPackageId;
         /// <summary>취급주의 택배 시작일(v9, 스펙 17.1). 부지 확장 2가 없으면 0. v8 이하에는 없다(부지 확장 2가 있으면 읽은 날 + 1).</summary>
         public int FragileFromDay;
-        /// <summary>트럭 네 대의 적재 수·대기(v9, 스펙 18, TruckFleet.Docks 순서). 없으면(null, v8 이하) 모두 빈 트럭.</summary>
+        /// <summary>트럭 적재 수·대기(v9, 스펙 18, TruckFleet.Docks 순서). 없으면(null, v8 이하) 모두 빈 트럭.</summary>
         public List<TruckState> Trucks;
         /// <summary>그날 출발한 트럭 수(v9). 하루 요약용.</summary>
         public int TrucksDepartedToday;
         public int DeliveredCount;
         public int LostCount;
+        /// <summary>누적 검사 수(v5).</summary>
+        public int InspectedCount;
+        /// <summary>그날 시작 누적 카운터(v5). 하루 요약은 이 값 대비 증가분.</summary>
+        public int DayStartDelivered;
+        public int DayStartLost;
+        public int DayStartInspected;
+        /// <summary>그날 이 공장의 배송 판정 금액 합(v10, 하루 요약의 공장별 잔액 기여). v9 이하에는 없다(0).</summary>
+        public int EarnedToday;
+    }
+
+    /// <summary>저장 파일(v10): 회사(돈·EXP·능력치·시계·작업자·현재 공장 번호) + 1공장(상속한 최상위 필드) + 나머지 공장(OtherFactories).</summary>
+    public sealed class GameState : FactoryState
+    {
+        /// <summary>기본값 0. Capture가 명시적으로 채우므로 필드가 없는 JSON은 버전 불일치로 거부된다.</summary>
+        public int Version;
+        public int Money;
         public bool Paused;
         public float Speed;
+        /// <summary>작업자(지금 공장 기준 좌표, 들고 있는 택배는 지금 공장의 것).</summary>
         public WorkerState Worker;
         /// <summary>근무 시계(v5, 스펙 11.1).</summary>
         public int Day;
         public float MinuteOfDay;
-        /// <summary>그날 시작 잔액·누적 카운터(v5). 하루 요약은 이 값 대비 증가분.</summary>
+        /// <summary>그날 시작 잔액(v5).</summary>
         public int DayStartMoney;
-        public int DayStartDelivered;
-        public int DayStartLost;
-        public int DayStartInspected;
-        /// <summary>누적 검사 수(v5).</summary>
-        public int InspectedCount;
         /// <summary>작업자 스태미나 0..최대 체력(v5; v6부터 최대는 100 + 20 × StaminaLevel).</summary>
         public float Stamina;
         /// <summary>쓸 수 있는 EXP(v6, 스펙 11.5).</summary>
@@ -49,6 +65,10 @@ namespace ParcelFactory.Core
         public int StaminaLevel;
         public int SpeedLevel;
         public int RegenLevel;
+        /// <summary>지금 공장 번호(0부터, v10). 0 = 1공장.</summary>
+        public int CurrentFactory;
+        /// <summary>2·3공장(v10, 번호 순서). 없으면(null, v9 이하) 1공장 하나.</summary>
+        public List<FactoryState> OtherFactories;
     }
 
     public sealed class TruckState
@@ -56,8 +76,18 @@ namespace ParcelFactory.Core
         /// <summary>도크 종류 이름(Outlet/ReturnDock/AirOutlet/AirReturnDock).</summary>
         public string Dock;
         public int Loaded;
-        /// <summary>빈 트럭이 들어올 때까지 남은 게임 분. 0이면 트럭이 도크에 있다.</summary>
+        /// <summary>도크에 트럭이 설 때까지 남은 게임 분. 0이면 트럭이 도크에 있다. v10에서는 Vehicles가 우선이고 이 값은 참고용이다.</summary>
         public float AwayMinutes;
+        /// <summary>차량별 상태(v10, 스펙 20). 대수 = 개수(1~3). 없으면(null, v9) 1대: AwayMinutes > 0이면 운행 중, 아니면 도크.</summary>
+        public List<VehicleState> Vehicles;
+    }
+
+    public sealed class VehicleState
+    {
+        /// <summary>AtDock/Garage/Driving/Swapping.</summary>
+        public string Status;
+        /// <summary>운행·교대 남은 게임 분(도크·차고면 0).</summary>
+        public float Minutes;
     }
 
     public sealed class InletTimerState

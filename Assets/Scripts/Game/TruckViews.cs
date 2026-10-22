@@ -8,7 +8,9 @@ namespace ParcelFactory.Game
     /// <summary>
     /// 동쪽 트럭 교대(스펙 18)의 화면 쪽: 트럭마다 위에 알약(`12/30`, 30에 가까울수록 앰버 / 떠나 있으면 `다음 차 0:12`)을 띄우고,
     /// 출발하면 트럭이 벽 밖(동쪽)으로 DriveSeconds 동안 빠져나가 사라지고, 빈 트럭이 오면 반대로 들어와 선다.
-    /// 상태는 매 프레임 Session.Sim.Trucks를 읽는다(이벤트 없이). 차량이 새로 만들어졌으면(세션 교체·동쪽 재생성) 애니메이션 없이 지금 상태로 맞춘다.
+    /// 상태는 매 프레임 Session.Sim.Trucks를 읽는다(이벤트 없이). 차량이 새로 만들어졌거나 공장을 옮겼으면(세션 교체·동쪽 재생성·스펙 19.3)
+    /// 애니메이션 없이 지금 상태로 맞춘다. 택배차가 여러 대면(스펙 20) 교대 연출: 떠나는 트럭이 벽 밖으로 다 나간 뒤 다음 트럭이 들어온다
+    /// (교대가 출발 연출보다 먼저 끝나도 되돌아 들어오지 않는다).
     /// 알약 위치는 StatusBars처럼 매 프레임 화면에 투영한다.
     /// </summary>
     public sealed class TruckViews : MonoBehaviour
@@ -28,6 +30,14 @@ namespace ParcelFactory.Game
             public float Roof;
             /// <summary>0 = 도크에 서 있음, 1 = 떠나 보이지 않음.</summary>
             public float T;
+            /// <summary>출발 연출 중: 끝까지(T = 1) 나간 뒤에야 들어오는 연출을 시작한다.</summary>
+            public bool Leaving;
+            public bool WasAway;
+            /// <summary>출발 이벤트를 받았다(다음 Refresh에서 출발 연출을 시작한다). 출발과 교대 끝이 두 프레임 사이에 함께 일어나도 연출을 놓치지 않는다.</summary>
+            public bool DepartedPending;
+            /// <summary>떠나는 트럭이 싣고 간 개수. 다 나갈 때까지 알약에 보인다(0이면 붙이지 않는다).</summary>
+            public int LeavingLoad;
+            public string LastBase, LastText;
             public RectTransform Pill;
             public Image Bg, Border;
             public Text Label;
@@ -37,6 +47,8 @@ namespace ParcelFactory.Game
         private RectTransform layer;
         /// <summary>마지막으로 그린 세션. 바뀌면(불러오기·새 게임) 애니메이션 없이 지금 상태로 맞춘다.</summary>
         private GameSession boundSession;
+        /// <summary>마지막으로 그린 공장의 트럭. 바뀌면(공장 옮기기) 애니메이션 없이 맞춘다.</summary>
+        private TruckFleet boundFleet;
 
         /// <summary>도크 트럭 알약 문구. 트럭이 없으면(항공 도크 확장 전) null.</summary>
         public string TextOf(CellType dock) => trucks.TryGetValue(dock, out var t) && t.Car != null && t.Pill.gameObject.activeSelf ? t.Label.text : null;
@@ -67,10 +79,16 @@ namespace ParcelFactory.Game
                 layer = UiKit.Rect("TruckPills", boot.Hud.Root, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
                 layer.SetAsFirstSibling(); // 프롬프트·패널 아래
             }
-            bool snap = boot.Session != boundSession;
-            boundSession = boot.Session;
-            if (boot.Session.Paused) dt = 0f; // 게임 일시정지 중에는 트럭도 멈춘다(스펙 17.4)
             var fleet = boot.Session.Sim.Trucks;
+            bool snap = boot.Session != boundSession || fleet != boundFleet;
+            boundSession = boot.Session;
+            if (fleet != boundFleet)
+            {
+                if (boundFleet != null) boundFleet.TruckDeparted -= OnTruckDeparted;
+                boundFleet = fleet;
+                boundFleet.TruckDeparted += OnTruckDeparted;
+            }
+            if (boot.Session.Paused) dt = 0f; // 게임 일시정지 중에는 트럭도 멈춘다(스펙 17.4)
             foreach (var dock in TruckFleet.Docks)
             {
                 var car = boot.World.TruckOf(dock);
@@ -93,17 +111,34 @@ namespace ParcelFactory.Game
                     t.SignHome = t.Sign != null ? t.Sign.position : Vector3.zero;
                     t.Roof = RoofHeight(car);
                     t.T = away ? 1f : 0f;
+                    t.WasAway = away;
+                    t.Leaving = false;
                 }
-                float target = away ? 1f : 0f;
-                if (snap) t.T = target;
-                else if (dt > 0f) t.T = Mathf.MoveTowards(t.T, target, dt / DriveSeconds);
+                if (snap) { t.T = away ? 1f : 0f; t.WasAway = away; t.Leaving = false; t.DepartedPending = false; }
+                if (t.DepartedPending || (away && !t.WasAway)) // 방금 출발했다(이벤트, 또는 저장 복원처럼 이벤트 없이 떠난 상태가 됨)
+                {
+                    t.Leaving = true;
+                    t.LeavingLoad = t.DepartedPending ? fleet.DepartedLoad(dock) : 0;
+                    t.LastBase = null;
+                    t.DepartedPending = false;
+                }
+                t.WasAway = away;
+                float target = t.Leaving || away ? 1f : 0f;
+                if (dt > 0f) t.T = Mathf.MoveTowards(t.T, target, dt / DriveSeconds);
+                if (t.T >= 1f) t.Leaving = false; // 다 나갔다: 이제 다음 트럭이 들어올 수 있다
                 Place(t);
 
                 var text = HudController.TruckLabel(fleet, dock); // 상태가 같으면 같은 문자열(캐시)
-                var color = away ? UiKit.Muted : Color.Lerp(PillFg, UiKit.Accent, Mathf.Clamp01(fleet.Loaded(dock) / (float)TruckFleet.TruckCapacity));
+                if (t.Leaving && t.LeavingLoad > 0)
+                {
+                    // 떠나는 트럭이 다 나갈 때까지 싣고 간 짐을 보인다: "다음 차 0:20 · 30/30", 다음 트럭이 이미 섰으면 "30/30 출발".
+                    if (!ReferenceEquals(t.LastBase, text)) { t.LastBase = text; t.LastText = away ? text + " · " + t.LeavingLoad + "/" + TruckFleet.TruckCapacity : t.LeavingLoad + "/" + TruckFleet.TruckCapacity + " 출발"; }
+                    text = t.LastText;
+                }
+                var color = away ? (fleet.IsSwapping(dock) ? UiKit.Info : UiKit.Muted) : Color.Lerp(PillFg, UiKit.Accent, Mathf.Clamp01(fleet.Loaded(dock) / (float)TruckFleet.TruckCapacity));
                 if (t.Label.text != text)
                 {
-                    UiKit.SetNumText(t.Label, text, true); // "다음 차"는 한글이라 Noto, "12/30"은 Sora
+                    UiKit.SetNumText(t.Label, text, true); // "다음 차"·"교대"·"2대"는 한글이라 Noto, "12/30"은 Sora
                     t.Pill.sizeDelta = new Vector2(Mathf.Ceil(t.Label.preferredWidth) + PillPadX, PillHeight);
                 }
                 t.Label.color = color;
@@ -112,6 +147,16 @@ namespace ParcelFactory.Game
                 var anchor = (t.T >= 1f ? t.CarHome : t.Car.position) + new Vector3(0f, t.Roof + RoofLift, 0f);
                 if (boot.Hud.TryWorldToCanvas(anchor, out var pos)) t.Pill.anchoredPosition = pos;
             }
+        }
+
+        private void OnTruckDeparted(CellType dock)
+        {
+            if (trucks.TryGetValue(dock, out var t)) t.DepartedPending = true;
+        }
+
+        private void OnDestroy()
+        {
+            if (boundFleet != null) boundFleet.TruckDeparted -= OnTruckDeparted;
         }
 
         /// <summary>출발은 천천히 출발해 빨라지고(ease-in), 도착은 빠르게 들어와 서서히 멈춘다(같은 곡선을 거꾸로).</summary>

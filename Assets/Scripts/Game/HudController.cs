@@ -29,6 +29,8 @@ namespace ParcelFactory.Game
         private readonly List<UiHover> slotHovers = new List<UiHover>();
         private float toastUntil;
         private GameSession boundSession;
+        /// <summary>라인 이벤트를 받는 공장(지금 공장).</summary>
+        private FactorySite boundSite;
         private Canvas rootCanvas;
         private CanvasGroup rootGroup;
         private Image promptBg;
@@ -92,7 +94,9 @@ namespace ParcelFactory.Game
             "분배기·검사기 <color=#f4f3ee>R → 3</color> 모드(검사/항공): 검사기 항공 모드는 흰 화살표 = 일반 · 파란 화살표 = 항공 택배, 분배기 항공 모드는 초록 = 정상 · 노랑 = 반품\n" +
             "부지 확장 2 다음 날부터: 주황 유리잔 = 취급주의 택배. 부착대에서 운송장과 취급주의 스티커를 둘 다 끌어 붙인 뒤 Enter(스티커 없음 −10, 정상 출고 +45).\n" +
             "취급주의는 고속 레일·들고 달리기·팔레트에서 위에 2개 이상 쌓이면 파손 → 불량이 되어 다시 검사(거부 → 반품)\n" +
-            "트럭은 30개를 실으면 떠나고 20분(약 20초) 뒤 빈 트럭이 옵니다. 그동안 그 도크는 받지 않습니다. 퇴근 때 모두 출발";
+            "트럭은 30개를 실으면 떠나고 20분(약 20초) 뒤 빈 트럭이 옵니다. 그동안 그 도크는 받지 않습니다. 퇴근 때 모두 출발\n" +
+            "상점에서 택배차를 더 사면(도크마다 최대 3대) 차고의 트럭이 2분 만에 교대합니다\n" +
+            "<color=#f4f3ee>Tab</color>·LB/RB 공장 이동(손을 비우고) · 새 공장은 바로 앞 공장(2공장은 1공장, 3공장은 2공장)에 부지 확장 2와 자동 검사기가 있어야 상점에서 삽니다";
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
@@ -164,8 +168,8 @@ namespace ParcelFactory.Game
             input.ToggleSpeed += () => { boot.Session.Speed = boot.Session.Speed >= 2f ? 1f : 2f; };
             input.ToggleHelp += () => SetHelp(!help.gameObject.activeSelf);
             input.Escape += () => { if (help.gameObject.activeSelf) SetHelp(false); };
-            boot.SessionReplaced += s => { s.Unlocks.Unlocked += _ => RefreshHotbar(); BindSession(s); RefreshHotbar(); };
-            boot.Session.Unlocks.Unlocked += _ => RefreshHotbar();
+            boot.SessionReplaced += s => { BindSession(s); RefreshHotbar(); };
+            boot.FactorySwitched += s => { BindSession(s); RefreshHotbar(); };
             BindSession(boot.Session);
             RefreshHotbar();
         }
@@ -182,43 +186,59 @@ namespace ParcelFactory.Game
         /// <summary>HUD가 보이는가.</summary>
         public bool Visible => rootGroup == null || rootGroup.alpha > 0f;
 
-        /// <summary>배송 토스트·금액 팝업을 받을 세션을 바꾼다. 이전 세션 구독은 끊고 남은 팝업은 숨긴다.</summary>
+        /// <summary>배송 토스트·금액 팝업을 받을 세션과 공장을 바꾼다(세션 교체·공장 옮기기, 스펙 19.3). 이전 구독은 끊고 남은 팝업은 숨긴다.
+        /// 회사 이벤트(하루 끝·EXP)는 세션에, 라인 이벤트(배송·파손·검사기 막힘·트럭·칸 변화·해금)는 지금 공장에 묶는다.</summary>
         private void BindSession(GameSession session)
         {
-            if (boundSession == session) return;
-            if (boundSession != null)
+            var site = session?.Factory;
+            if (boundSession == session && boundSite == site) return;
+            if (boundSession != session)
             {
-                boundSession.Sim.PackageDelivered -= OnPackageDelivered;
-                boundSession.Sim.ScannerBlocked -= OnScannerBlocked;
-                boundSession.Sim.PackageBroken -= OnPackageBroken;
-                boundSession.Sim.Trucks.TruckDeparted -= OnTruckDeparted;
-                boundSession.DayEnded -= OnDayEnded;
-                boundSession.Build.CellChanged -= OnCellChanged;
-                boundSession.Progression.ExpChanged -= OnExpChanged;
+                if (boundSession != null)
+                {
+                    boundSession.DayEnded -= OnDayEnded;
+                    boundSession.Progression.ExpChanged -= OnExpChanged;
+                }
+                boundSession = session;
+                expFlashUntil = 0f;
+                if (boundSession != null)
+                {
+                    boundSession.DayEnded += OnDayEnded;
+                    boundSession.Progression.ExpChanged += OnExpChanged;
+                    lastExp = boundSession.Progression.Exp;
+                    if (expText != null) { expText.text = ExpLabel(lastExp); expText.color = UiKit.ExpColor; }
+                }
             }
-            boundSession = session;
+            if (boundSite != null)
+            {
+                boundSite.Sim.PackageDelivered -= OnPackageDelivered;
+                boundSite.Sim.ScannerBlocked -= OnScannerBlocked;
+                boundSite.Sim.PackageBroken -= OnPackageBroken;
+                boundSite.Trucks.TruckDeparted -= OnTruckDeparted;
+                boundSite.Build.CellChanged -= OnCellChanged;
+                boundSite.Unlocks.Unlocked -= OnUnlocked;
+            }
+            boundSite = site;
             pendingRefunds.Clear();
             for (int i = 0; i < popups.Count; i++) popups[i].gameObject.SetActive(false);
-            expFlashUntil = 0f;
-            if (boundSession == null) return;
-            boundSession.Sim.PackageDelivered += OnPackageDelivered;
-            boundSession.Sim.ScannerBlocked += OnScannerBlocked;
-            boundSession.Sim.PackageBroken += OnPackageBroken;
-            boundSession.Sim.Trucks.TruckDeparted += OnTruckDeparted;
-            boundSession.DayEnded += OnDayEnded;
-            closingDepartures = 0;
-            boundSession.Build.CellChanged += OnCellChanged;
-            boundSession.Progression.ExpChanged += OnExpChanged;
-            lastExp = boundSession.Progression.Exp;
-            if (expText != null) { expText.text = ExpLabel(lastExp); expText.color = UiKit.ExpColor; }
-            // 불러온 저장에 해체 중인 칸이 있으면 완료 때 환불 팝업을 띄울 수 있게 미리 적어 둔다.
+            if (boundSite == null) return;
+            boundSite.Sim.PackageDelivered += OnPackageDelivered;
+            boundSite.Sim.ScannerBlocked += OnScannerBlocked;
+            boundSite.Sim.PackageBroken += OnPackageBroken;
+            boundSite.Trucks.TruckDeparted += OnTruckDeparted;
+            boundSite.Build.CellChanged += OnCellChanged;
+            boundSite.Unlocks.Unlocked += OnUnlocked;
+            // 불러온 저장·옮겨 간 공장에 해체 중인 칸이 있으면 완료 때 환불 팝업을 띄울 수 있게 미리 적어 둔다.
             for (int x = 0; x < FactoryGrid.Width; x++)
                 for (int y = 0; y < FactoryGrid.Height; y++)
                 {
-                    var c = boundSession.Grid.Get(x, y);
+                    var c = boundSite.Grid.Get(x, y);
                     if (c.Demolishing) pendingRefunds[(x, y)] = BuildService.RefundFor(c.Type);
                 }
+            RefreshHotbar();
         }
+
+        private void OnUnlocked(UnlockId _) => RefreshHotbar();
 
         private void OnDestroy() => BindSession(null);
 
@@ -238,10 +258,10 @@ namespace ParcelFactory.Game
 
         private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
         {
-            var msg = DeliveryMessage(outcome);
+            var msg = DeliveryMessage(outcome, delta);
             if (outcome != DeliveryOutcome.WrongCarrier) msg = PackageTags(p) + msg;
             Toast(msg, DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
-            var (dx, dy) = DockTile(boundSession.Sim.LastDeliveredDock);
+            var (dx, dy) = DockTile(boundSite.Sim.LastDeliveredDock);
             SpawnMoneyPopup(dx, dy, delta);
         }
 
@@ -267,23 +287,25 @@ namespace ParcelFactory.Game
             return t / 60 + ":" + (t % 60).ToString("00");
         }
 
-        /// <summary>도크마다 마지막으로 만든 트럭 문구. (적재 수, 떠남, 남은 분 올림)이 같으면 다시 만들지 않는다(매 프레임 할당 방지).</summary>
-        private static readonly Dictionary<CellType, (int loaded, bool away, int wait, string label, string awayLabel)> truckLabels =
-            new Dictionary<CellType, (int, bool, int, string, string)>();
+        /// <summary>도크마다 마지막으로 만든 트럭 문구. (적재 수, 떠남, 교대 중, 대수, 남은 분 올림)이 같으면 다시 만들지 않는다(매 프레임 할당 방지).</summary>
+        private static readonly Dictionary<CellType, (int loaded, bool away, bool swap, int count, int wait, string label, string awayLabel)> truckLabels =
+            new Dictionary<CellType, (int, bool, bool, int, int, string, string)>();
 
-        private static (int loaded, bool away, int wait, string label, string awayLabel) TruckTexts(TruckFleet t, CellType dock)
+        private static (int loaded, bool away, bool swap, int count, int wait, string label, string awayLabel) TruckTexts(TruckFleet t, CellType dock)
         {
-            bool away = t.IsAway(dock);
-            int loaded = t.Loaded(dock), wait = away ? Mathf.CeilToInt(t.AwayMinutes(dock)) : 0;
-            if (truckLabels.TryGetValue(dock, out var c) && c.loaded == loaded && c.away == away && c.wait == wait) return c;
-            var label = away ? "다음 차 " + WaitClock(wait) : loaded + "/" + TruckFleet.TruckCapacity;
-            return truckLabels[dock] = (loaded, away, wait, label, "트럭 대기 중 · " + label);
+            bool away = t.IsAway(dock), swap = away && t.IsSwapping(dock);
+            int loaded = t.Loaded(dock), count = t.Count(dock), wait = away ? Mathf.CeilToInt(t.AwayMinutes(dock)) : 0;
+            if (truckLabels.TryGetValue(dock, out var c) && c.loaded == loaded && c.away == away && c.swap == swap && c.count == count && c.wait == wait) return c;
+            var label = swap ? "교대 " + WaitClock(wait) : away ? "다음 차 " + WaitClock(wait)
+                : loaded + "/" + TruckFleet.TruckCapacity + (count > 1 ? " · " + count + "대" : "");
+            return truckLabels[dock] = (loaded, away, swap, count, wait, label, "트럭 대기 중 · " + label);
         }
 
-        /// <summary>트럭 알약·도크 프롬프트(스펙 18): 있으면 "12/30", 떠나 있으면 "다음 차 0:12".</summary>
+        /// <summary>트럭 알약·도크 프롬프트(스펙 18, 20): 있으면 "12/30"(2대 이상이면 "12/30 · 2대"), 교대 중이면 "교대 0:02",
+        /// 모두 운행 중이면 "다음 차 0:12".</summary>
         public static string TruckLabel(TruckFleet t, CellType dock) => TruckTexts(t, dock).label;
 
-        /// <summary>떠난 트럭 도크에 넣으려 할 때(스펙 18) 프롬프트·토스트: "트럭 대기 중 · 다음 차 0:12".</summary>
+        /// <summary>트럭이 없는 도크에 넣으려 할 때(스펙 18) 프롬프트·토스트: "트럭 대기 중 · 다음 차 0:12"(교대 중이면 "트럭 대기 중 · 교대 0:02").</summary>
         public static string TruckAwayLabel(TruckFleet t, CellType dock) => TruckTexts(t, dock).awayLabel;
 
         /// <summary>트럭 이름(출발 토스트): 출고 / 반품 / 항공 출고 / 항공 반품.</summary>
@@ -296,19 +318,16 @@ namespace ParcelFactory.Game
         /// <summary>18:00 한꺼번에 출발할 때 한 번만: "트럭 2대 출발".</summary>
         public static string ClosingDeparturesToast(int n) => "트럭 " + n + "대 출발";
 
-        /// <summary>퇴근(18:00) 출발 수. 트럭마다 토스트를 띄우지 않고 DayEnded에서 한 번에 알린다.</summary>
-        private int closingDepartures;
 
         private void OnTruckDeparted(CellType dock)
         {
-            if (!boundSession.Clock.IsOpen) { closingDepartures++; return; }
-            Toast(TruckDepartedToast(boundSession.Sim.Trucks, dock));
+            if (!boundSession.Clock.IsOpen) return; // 퇴근 출발은 트럭마다 알리지 않고 DayEnded에서 모든 공장 합계로 한 번에 알린다
+            Toast(TruckDepartedToast(boundSite.Trucks, dock));
         }
 
         private void OnDayEnded(DaySummary d)
         {
-            if (closingDepartures > 0) Toast(ClosingDeparturesToast(closingDepartures));
-            closingDepartures = 0;
+            if (d.ClosingDepartures > 0) Toast(ClosingDeparturesToast(d.ClosingDepartures)); // 모든 공장의 18:00 출발 합계
         }
 
         /// <summary>항공 택배 꼬리표(스펙 14.2).</summary>
@@ -333,7 +352,7 @@ namespace ParcelFactory.Game
         /// </summary>
         private void OnCellChanged(int x, int y)
         {
-            var c = boundSession.Grid.Get(x, y);
+            var c = boundSite.Grid.Get(x, y);
             if (c.Demolishing) { pendingRefunds[(x, y)] = BuildService.RefundFor(c.Type); return; }
             if (!pendingRefunds.TryGetValue((x, y), out var refund)) return;
             pendingRefunds.Remove((x, y));
@@ -342,6 +361,10 @@ namespace ParcelFactory.Game
 
         /// <summary>금액 표기: +30, −10(유니코드 마이너스).</summary>
         public static string Signed(int delta) => delta >= 0 ? "+" + delta : "−" + (-delta);
+
+        /// <summary>실제 금액(공장별 보상 보정, 스펙 19.2)을 넣은 배송 결과 문구: 정상 출고는 "정상 출고 +35"처럼 delta를 쓴다.</summary>
+        public static string DeliveryMessage(DeliveryOutcome o, int delta) =>
+            o == DeliveryOutcome.Delivered || o == DeliveryOutcome.DeliveredFragile ? "정상 출고 " + Signed(delta) : DeliveryMessage(o);
 
         /// <summary>배송 결과 문구: 이유와 잔액 변화. 벌점이면 왜 깎였는지 알려 준다.</summary>
         public static string DeliveryMessage(DeliveryOutcome o)
@@ -641,10 +664,19 @@ namespace ParcelFactory.Game
         /// <summary>시계 문구: "1일차 09:00".</summary>
         public static string ClockLabel(Clock c) => c.Day + "일차 " + c.TimeText;
 
+        /// <summary>시계(top 62)와 토스트(top 108)의 기본 자리.</summary>
+        public const float ClockTop = 62f, ToastTop = 108f;
+        private RectTransform clockBox;
+
+        /// <summary>시계·토스트를 아래로 내리는 양. 공장이 둘 이상이면 FactoryBar가 시계 위 공장 탭 줄 높이만큼 준다(스펙 19.3). 기본 0.</summary>
+        public float CenterShift { get; set; }
+        private float appliedShift = float.NaN;
+
         /// <summary>상단 중앙 시계(시안 .clock: 150×36, 반경 10, top 62). 배지는 시계 오른쪽 바깥 8px(반경 8, 높이 28).</summary>
         private void BuildClock()
         {
-            var box = UiKit.PanelBox("Clock", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -62f), new Vector2(150f, 36f), UiKit.Panel, UiKit.RButton);
+            var box = UiKit.PanelBox("Clock", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -ClockTop), new Vector2(150f, 36f), UiKit.Panel, UiKit.RButton);
+            clockBox = box.rectTransform;
             clockText = UiKit.Label("Text", box.transform, "1일차 09:00", 17, UiKit.Fg, TextAnchor.MiddleCenter, Fonts.Bold); // 한글이 섞여 Sora 대신 Noto Bold
             clockText.horizontalOverflow = HorizontalWrapMode.Overflow;
             badgeText = UiKit.Badge("Badge", box.transform, LunchBadgeText, UiKit.Warn, UiKit.AccentFg);
@@ -656,7 +688,7 @@ namespace ParcelFactory.Game
         /// <summary>시안 .toast: panel-2, 반경 10, line-2 선, 왼쪽 4×18 색 막대(info/good/bad). 시계 아래 가운데.</summary>
         private void BuildToast()
         {
-            toast = UiKit.PanelBox("Toast", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -108f), new Vector2(240f, 38f), UiKit.Panel2, UiKit.RButton, UiKit.Line2).rectTransform;
+            toast = UiKit.PanelBox("Toast", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -ToastTop), new Vector2(240f, 38f), UiKit.Panel2, UiKit.RButton, UiKit.Line2).rectTransform;
             toast.GetComponent<Image>().raycastTarget = false;
             toastBar = UiKit.Box("Bar", toast, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(10f, 0f), new Vector2(4f, 18f), UiKit.Info, 2);
             toastText = UiKit.Label("Text", toast, "", 13, UiKit.Fg, TextAnchor.MiddleLeft);
@@ -825,13 +857,19 @@ namespace ParcelFactory.Game
             return DeliveryScoring.Outcome(scratch, dock);
         }
 
-        public static int ExpectedDelta(CellType dock, Package p) => DeliveryScoring.Delta(ExpectedOutcome(dock, p));
+        public static int ExpectedDelta(CellType dock, Package p) => ExpectedDelta(dock, p, null);
+
+        /// <summary>공장별 보상 보정(스펙 19.2)을 넣은 예상 증감.</summary>
+        public static int ExpectedDelta(CellType dock, Package p, RewardProfile rewards) => DeliveryScoring.Delta(ExpectedOutcome(dock, p), p, rewards);
 
         /// <summary>
         /// 트럭 도크 프롬프트(스펙 14.2–14.3, 15.3, 17.3): 운송 수단이 틀리면 "운송 수단 틀림 −10", 운송장 없음 "출고 −20 · 운송장 없음",
         /// 취급주의 스티커 없음 "출고 −10 · 스티커 없음", 취급주의 정상 출고 "출고 +45". 앞에 꼬리표(파손/취급주의, 항공)를 붙인다.
         /// </summary>
-        public static string DeliverLabel(CellType dock, Package p)
+        public static string DeliverLabel(CellType dock, Package p) => DeliverLabel(dock, p, null);
+
+        /// <summary>공장별 보상 보정(스펙 19.2)을 넣은 도크 프롬프트: 공항 물류센터의 항공 정상 출고는 "항공 출고 +35".</summary>
+        public static string DeliverLabel(CellType dock, Package p, RewardProfile rewards)
         {
             var o = ExpectedOutcome(dock, p);
             if (o == DeliveryOutcome.WrongCarrier) return WrongCarrierLabel;
@@ -845,7 +883,8 @@ namespace ParcelFactory.Game
                 case DeliveryOutcome.NoFragileSticker:
                     label = (outlet ? "출고 " : "반품 ") + Signed(DeliveryScoring.Delta(o)) + " · 스티커 없음"; break;
                 case DeliveryOutcome.DeliveredFragile:
-                    label = "출고 " + Signed(DeliveryScoring.Delta(o)); break;
+                case DeliveryOutcome.Delivered:
+                    label = "출고 " + Signed(DeliveryScoring.Delta(o, p, rewards)); break;
                 default:
                     label = DeliverLabel(outlet, p.Inspected, p.Rejected); break;
             }
@@ -971,6 +1010,22 @@ namespace ParcelFactory.Game
             staminaFill.color = col;
         }
 
+        /// <summary>공장이 둘 이상이면 배송·소실 칩 라벨 앞에 지금 공장 이름을 붙인다("2공장 · 배송"). 값은 지금 공장의 것이다(스펙 19.3).</summary>
+        public static string ChipLabel(GameSession s, string label) => s.Company.Factories.Count > 1 ? s.Factory.Profile.ShortName + " · " + label : label;
+
+        private Text deliveredLabel, lostLabel;
+
+        private void UpdateChipLabels(GameSession s)
+        {
+            if (deliveredLabel == null) deliveredLabel = delivered.transform.parent.Find("Label").GetComponent<Text>();
+            if (lostLabel == null) lostLabel = lost.transform.parent.Find("Label").GetComponent<Text>();
+            var d = ChipLabel(s, "배송");
+            if (deliveredLabel.text == d) return;
+            deliveredLabel.text = d;
+            lostLabel.text = ChipLabel(s, "소실");
+            LayoutRebuilder.MarkLayoutForRebuild(chips);
+        }
+
         private static void SetChip(Text value, int n)
         {
             var s = n.ToString();
@@ -998,6 +1053,7 @@ namespace ParcelFactory.Game
             UpdateMoney(s);
             expText.text = ExpLabel(s.Progression.Exp);
             expText.color = Time.unscaledTime < expFlashUntil ? expFlashColor : UiKit.ExpColor;
+            UpdateChipLabels(s);
             SetChip(delivered, s.Sim.DeliveredCount);
             SetChip(lost, s.Sim.LostCount);
             SetChip(waiting, s.Sim.AwaitingInspectionCount);
@@ -1050,8 +1106,8 @@ namespace ParcelFactory.Game
                 case InteractResult.PutDown: label = "놓기"; break;
                 case InteractResult.Delivered:
                     var dock = s.Grid.Get(fx, fy).Type;
-                    label = DeliverLabel(dock, w.Carrying) + " · " + TruckLabel(s.Sim.Trucks, dock); // 트럭 적재 수(스펙 18)
-                    textColor = ExpectedDelta(dock, w.Carrying) >= 0 ? UiKit.Good : UiKit.Bad;
+                    label = DeliverLabel(dock, w.Carrying, s.Sim.Rewards) + " · " + TruckLabel(s.Sim.Trucks, dock); // 트럭 적재 수(스펙 18)
+                    textColor = ExpectedDelta(dock, w.Carrying, s.Sim.Rewards) >= 0 ? UiKit.Good : UiKit.Bad;
                     break;
                 case InteractResult.TruckAway:
                     label = TruckAwayLabel(s.Sim.Trucks, s.Grid.Get(fx, fy).Type); canAct = false; textColor = UiKit.Bad; break;
@@ -1089,6 +1145,12 @@ namespace ParcelFactory.Game
             }
 
             UpdateBanner();
+            if (CenterShift != appliedShift)
+            {
+                appliedShift = CenterShift;
+                clockBox.anchoredPosition = new Vector2(0f, -(ClockTop + CenterShift));
+                toast.anchoredPosition = new Vector2(0f, -(ToastTop + CenterShift));
+            }
             if (toast.gameObject.activeSelf && Time.unscaledTime > toastUntil) toast.gameObject.SetActive(false);
         }
     }

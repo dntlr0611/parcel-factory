@@ -332,7 +332,7 @@ namespace ParcelFactory.Core.Tests
         {
             var restored = RoundTrip(SplitterSession(Direction.North));
             Assert.AreEqual(Direction.North, restored.Grid.Get(1, 2).RedDirection);
-            Assert.AreEqual(9, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
         }
 
         [Test]

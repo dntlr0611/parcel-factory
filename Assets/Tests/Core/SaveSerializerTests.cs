@@ -29,7 +29,7 @@ namespace ParcelFactory.Core.Tests
         public void Capture_RecordsEverything()
         {
             var st = SaveSerializer.Capture(BuildSample());
-            Assert.AreEqual(9, st.Version);
+            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
             Assert.AreEqual(9, st.UnlockedSize);
             CollectionAssert.AreEquivalent(new[] { "Plot1", "RailNorth", "Splitter" }, st.Purchased);
             Assert.AreEqual(6, st.Cells.Count); // 설치한 4개 + 시작 팔레트 2개
@@ -104,7 +104,7 @@ namespace ParcelFactory.Core.Tests
             var json = SaveSerializer.ToJson(SaveSerializer.Capture(s));
             StringAssert.DoesNotContain("SplitterIndex", json); // 스펙 11.7: 분배기는 상태가 없다
             var restored = SaveSerializer.Restore(SaveSerializer.FromJson(json));
-            Assert.AreEqual(9, SaveSerializer.CurrentVersion);
+            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
             Assert.AreEqual(CellType.Splitter, restored.Grid.Get(1, 2).Type);
             Assert.AreEqual(Direction.South, restored.Grid.Get(1, 2).Direction);
             ConveyorSim.SplitterRoutes(restored.Grid, 1, 2, null, out var blue, out var red, out var blueConnected);
