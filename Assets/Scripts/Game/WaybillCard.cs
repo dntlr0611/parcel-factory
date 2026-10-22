@@ -18,7 +18,7 @@ namespace ParcelFactory.Game
 
     /// <summary>
     /// 운송장 카드(스펙 15.2): 왼쪽에 위에서 내려다본 상자(골판지색 둥근 사각, 테이프 줄, 항공이면 모서리에 항공 마크)와
-    /// 가운데 점선 부착 영역, 오른쪽에 택배에 맞는 운송장 한 장(승인 → 출고 운송장 파랑 머리띠, 거부 → 반품 운송장 빨강, 항공 배지).
+    /// 가운데 점선 부착 영역, 오른쪽에 운송장 한 장(한 종류: 먹색 머리띠 + 흰 글자 "운송장", 항공이면 비행기 배지 + "항공", 스펙 15.4).
     /// 운송장을 끌어 중심이 영역 안에 놓이면 영역 중앙에 착 붙고(WorkerService.AttachWaybill) 0.4초 뒤 닫히며 토스트 "운송장 부착".
     /// 영역 밖이면 제자리로 돌아간다. 끄는 동안 1.05배, 영역 테두리는 앰버. Enter·E·게임패드 A = 바로 붙이기, Esc·게임패드 B = 붙이지 않고 닫기(Panels.CloseAll).
     /// 모든 좌표는 카드 중심 기준(앵커·피벗 0.5)이다.
@@ -86,8 +86,8 @@ namespace ParcelFactory.Game
             var paperImg = Paper.GetComponent<Image>();
             paperImg.raycastTarget = true;
             Paper.gameObject.AddComponent<WaybillDrag>().Card = this;
-            band = UiKit.Box("Band", Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 26f), MaterialLibrary.WaybillOutBand, 6);
-            bandText = UiKit.Label("Kind", band.rectTransform, "출고 운송장", 12, Color.white, TextAnchor.MiddleLeft, Fonts.Bold);
+            band = UiKit.Box("Band", Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 26f), MaterialLibrary.WaybillInk, 6);
+            bandText = UiKit.Label("Kind", band.rectTransform, WaybillTitle, 12, Color.white, TextAnchor.MiddleLeft, Fonts.Bold);
             bandText.rectTransform.offsetMin = new Vector2(10f, 0f);
             airBadgeIcon = UiKit.Box("AirIcon", band.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-40f, 0f), new Vector2(14f, 14f), Color.white, 0);
             airBadgeIcon.sprite = UiKit.Icon("ui-air"); airBadgeIcon.type = Image.Type.Simple; airBadgeIcon.preserveAspect = true;
@@ -131,14 +131,14 @@ namespace ParcelFactory.Game
             return img;
         }
 
-        /// <summary>부착 대기 택배로 카드를 연다. 운송장 종류(출고/반품)·항공 배지·번호·목적지·무게·바코드를 채운다.</summary>
+        /// <summary>운송장 머리띠 글자(스펙 15.4: 출고·반품 구분 없음).</summary>
+        public const string WaybillTitle = "운송장";
+
+        /// <summary>부착 대기 택배로 카드를 연다. 항공 배지·번호·목적지·무게·바코드를 채운다.</summary>
         public void Open(Package p)
         {
             if (p == null || Root == null) return;
             package = p;
-            bool ret = p.Rejected;
-            band.color = ret ? MaterialLibrary.WaybillReturnBand : MaterialLibrary.WaybillOutBand;
-            bandText.text = ret ? "반품 운송장" : "출고 운송장";
             airBadgeIcon.gameObject.SetActive(p.Air);
             airBadgeText.gameObject.SetActive(p.Air);
             airMark.gameObject.SetActive(p.Air);

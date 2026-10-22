@@ -8,20 +8,13 @@ namespace ParcelFactory.Game
     public sealed class BoxMarks : MonoBehaviour
     {
         public GameObject Stamp, Check, AirMark, Waybill;
-        public Renderer WaybillRenderer;
-        private int band = -1; // 운송장 머리띠: -1 미정, 0 출고, 1 반품
 
-        /// <summary>검사 표시 + 항공 마크(겉 라벨, 스펙 14.2) + 운송장(거부면 반품 빨강 머리띠, 스펙 15.3).</summary>
+        /// <summary>검사 표시(거부 도장·승인 체크) + 항공 마크(겉 라벨, 스펙 14.2) + 운송장(한 종류, 스펙 15.4).</summary>
         public void Set(Package p)
         {
             Set(p.Inspected, p.Rejected);
             On(AirMark, p.Air);
             On(Waybill, p.Waybill);
-            if (!p.Waybill) return;
-            int b = p.Rejected ? 1 : 0;
-            if (b == band) return; // 판정이 바뀔 때만 재질을 바꾼다
-            band = b;
-            WaybillRenderer.sharedMaterial = MaterialLibrary.Waybill(p.Rejected);
         }
 
         public void Set(bool inspected, bool rejected)
@@ -96,10 +89,9 @@ namespace ParcelFactory.Game
             var b = LocalBounds(go.transform, m);
             var marks = go.AddComponent<BoxMarks>();
             marks.Waybill = WaybillQuad(go.transform, b);
-            marks.WaybillRenderer = marks.Waybill.GetComponent<Renderer>();
             marks.AirMark = AirMark(go.transform, b);
-            marks.Stamp = Mark(go.transform, "Stamp", StampColor);
-            marks.Check = Mark(go.transform, "Check", CheckColor);
+            marks.Stamp = Mark(go.transform, b, "Stamp", StampColor);
+            marks.Check = Mark(go.transform, b, "Check", CheckColor);
             return go;
         }
 
@@ -120,12 +112,12 @@ namespace ParcelFactory.Game
             return TopQuad(box, "AirMark", pos, new Vector2(side, side), MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-air")));
         }
 
-        /// <summary>상자 윗면 가운데의 운송장(스펙 15.3): 흰 종이 + 머리띠(출고 파랑 / 반품 빨강) + 바코드 줄. 꺼진 채로 만든다.</summary>
+        /// <summary>상자 윗면 가운데의 운송장(스펙 15.3·15.4): 흰 종이 + 먹색 머리띠 + 바코드 줄(한 종류). 꺼진 채로 만든다.</summary>
         private static GameObject WaybillQuad(Transform box, Bounds b)
         {
             float w = Mathf.Min(b.size.x, b.size.z);
             var pos = new Vector3(b.center.x, b.max.y + 0.012f, b.center.z);
-            return TopQuad(box, "Waybill", pos, new Vector2(w * WaybillWidthFraction, w * WaybillDepthFraction), MaterialLibrary.Waybill(false));
+            return TopQuad(box, "Waybill", pos, new Vector2(w * WaybillWidthFraction, w * WaybillDepthFraction), MaterialLibrary.Waybill());
         }
 
         private static GameObject TopQuad(Transform box, string name, Vector3 localPos, Vector2 size, Material mat)
@@ -165,13 +157,14 @@ namespace ParcelFactory.Game
         }
 
         /// <summary>상자 윗면의 납작한 표시. 꺼진 채로 만든다.</summary>
-        private static GameObject Mark(Transform box, string name, Color color)
+        /// <summary>검사 표시(두께 0.02)는 윗면 위에 얹어 운송장(+0.012)·항공 마크보다 높게 둔다. 반품 여부는 이 도장으로만 보인다(스펙 15.4).</summary>
+        private static GameObject Mark(Transform box, Bounds b, string name, Color color)
         {
             var mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.Destroy(mark.GetComponent<Collider>());
             mark.name = name;
             mark.transform.SetParent(box, false);
-            mark.transform.localPosition = new Vector3(0.1f, 0.46f, 0.08f);
+            mark.transform.localPosition = new Vector3(0.1f, b.max.y + 0.01f, 0.08f);
             mark.transform.localScale = new Vector3(0.14f, 0.02f, 0.14f);
             mark.GetComponent<Renderer>().material = MaterialLibrary.Emissive(color, 1.2f);
             mark.SetActive(false);

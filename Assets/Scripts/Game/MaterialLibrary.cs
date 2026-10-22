@@ -87,20 +87,19 @@ namespace ParcelFactory.Game
             return cache[key] = m;
         }
 
-        /// <summary>WaybillTex 머리띠 색: 출고 파랑, 반품 빨강(카드의 운송장과 같은 색, 스펙 15.2).</summary>
-        public static readonly Color WaybillOutBand = new Color(0x3D / 255f, 0x7B / 255f, 0xE0 / 255f), WaybillReturnBand = new Color(0xD9 / 255f, 0x5A / 255f, 0x4A / 255f);
+        /// <summary>운송장 머리띠 먹색 #2A2F36(스펙 15.4). 운송장은 한 종류이고 반품 여부는 검사 도장이 나타낸다. 카드와 3D가 같은 색.</summary>
+        public static readonly Color WaybillInk = new Color(0x2A / 255f, 0x2F / 255f, 0x36 / 255f);
 
-        /// <summary>상자 윗면 운송장(스펙 15.3): 128×84 흰 종이, 위 22px 머리띠(출고 파랑/반품 빨강), 회색 글줄 2개, 아래 바코드 줄.</summary>
-        public static Material Waybill(bool returnBand)
+        /// <summary>상자 윗면 운송장(스펙 15.3·15.4): 128×84 흰 종이, 위 22px 먹색 머리띠, 회색 글줄 2개, 아래 바코드 줄. 한 번 만들어 둔다.</summary>
+        public static Material Waybill()
         {
-            var cached = returnBand ? waybillReturn : waybillOut; // 문자열 키 없이(매 프레임 부르는 곳이 있다)
-            if (cached != null) return cached;
+            if (waybill != null) return waybill;
             Material m;
             const int w = 128, h = 84;
             var buf = new Color[w * h];
             var paper = new Color(0.97f, 0.96f, 0.93f, 1f);
             for (int i = 0; i < buf.Length; i++) buf[i] = paper;
-            FillRect(buf, w, h, 0, h - 22, w, 22, returnBand ? WaybillReturnBand : WaybillOutBand); // y = 0이 아래 행
+            FillRect(buf, w, h, 0, h - 22, w, 22, WaybillInk); // y = 0이 아래 행
             var ink = new Color(0.35f, 0.35f, 0.38f, 1f);
             FillRect(buf, w, h, 10, h - 34, 70, 5, ink);
             FillRect(buf, w, h, 10, h - 44, 46, 4, ink);
@@ -112,14 +111,13 @@ namespace ParcelFactory.Game
                 FillRect(buf, w, h, x, 8, bw, 22, bar);
                 x += bw + 2 + rng.Next(3);
             }
-            var tex = MakeTexture(w, h, buf, TextureWrapMode.Clamp, "Waybill" + (returnBand ? "Return" : "Out"));
+            var tex = MakeTexture(w, h, buf, TextureWrapMode.Clamp, "Waybill");
             m = new Material(Lit(Color.white, 0.15f)) { name = tex.name };
             m.SetTexture("_BaseMap", tex);
-            if (returnBand) waybillReturn = m; else waybillOut = m;
-            return m;
+            return waybill = m;
         }
 
-        private static Material waybillOut, waybillReturn;
+        private static Material waybill;
 
         /// <summary>n×n 칸 창고 바닥: 기본색 tone + 미세 노이즈 + 칸마다 어두운 이음새(2px)와 밝은 하이라이트(1px). 칸당 64px.</summary>
         public static Material Concrete(int tiles, Color baseTone)

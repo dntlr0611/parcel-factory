@@ -68,8 +68,8 @@ namespace ParcelFactory.Game
         // 체력 바(스펙 11.3): 상태줄 왼쪽 140×10. 50 초과 초록, 20 초과 노랑, 그 외 빨강. 20 아래면 깜빡인다.
         public const float StaminaBarWidth = 140f, StaminaBarHeight = 10f, StaminaPulseBelow = 20f;
         public const string ExhaustedToast = "지쳤습니다. 잠시 쉬세요", ExhaustedPrompt = "집기 (지침)";
-        /// <summary>운송장 부착대(스펙 15.1): 미검사 택배를 올리려 할 때 토스트, 부착 대기 택배 앞 프롬프트.</summary>
-        public const string NeedsInspectionMessage = "먼저 검사하세요", LabelPrompt = "운송장 붙이기", WaybillAttachedToast = "운송장 부착";
+        /// <summary>운송장 부착대(스펙 15.1): 부착 대기 택배 앞 프롬프트, 붙인 뒤 토스트.</summary>
+        public const string LabelPrompt = "운송장 붙이기", WaybillAttachedToast = "운송장 부착";
         // 시안 배치(1280×800 기준 px): 핫바 bottom 16, 슬롯 72, 상태줄 bottom 104(핫바 바로 위), 설정 배너 bottom 142. 터치 모드는 96 올린다.
         private const float SlotSize = 72f, HotbarPad = 8f, HotbarGap = 8f, HotbarY = 16f, StatusY = 106f, StatusH = 28f, BannerY = 144f, TouchLift = 96f;
 
@@ -80,7 +80,7 @@ namespace ParcelFactory.Game
             "<color=#f4f3ee>B</color> 상점 · <color=#f4f3ee>C</color> 상태창(EXP 강화) · <color=#f4f3ee>P</color> 일시정지 · <color=#f4f3ee>T</color> 배속\n" +
             "<color=#f4f3ee>1~8</color> 도구 선택 · <color=#f4f3ee>Q·Esc</color> 빈손\n" +
             "<color=#f4f3ee>R</color> 설정 → 화살표로 방향(분배기·팔레트는 R → 1 파랑/2 빨강). 설치된 부품을 바라보고 R이면 그 자리에서 바꿉니다\n" +
-            "검사대 위 택배는 검사 전까지 멈춥니다. 검사한 택배는 부착대에서 E로 운송장을 끌어다 붙이세요(운송장 없이 출고 −20 · 반품 −10).\n" +
+            "검사대 위 택배는 검사 전까지 멈춥니다. 부착대는 운송장 없는 택배를 멈춥니다: E로 운송장을 끌어다 붙이세요(검사대와 순서 무관, 운송장 없이 출고 −20 · 반품 −10).\n" +
             "팔레트에서 집어 트럭으로: 정상은 출고, 불량은 반품.\n" +
             "입고 8초마다 1개(배송 5건마다 빨라져 최소 3초) · 정상 출고 +30, 불량 반품 +10 · 해체 2초 후 80% 환불\n" +
             "택배는 검사대(3)에서 E로 검사한 뒤 출고/반품하세요. 검사 없이 트럭에 넣으면 출고 −20 · 반품 −10(스펙 16.1).\n" +
@@ -689,7 +689,6 @@ namespace ParcelFactory.Game
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다", ToastKind.Bad); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
                 case InteractResult.Exhausted: Toast(ExhaustedToast, ToastKind.Bad); break;
-                case InteractResult.NeedsInspection: Toast(NeedsInspectionMessage, ToastKind.Bad); break;
                 case InteractResult.Placed:
                     var tool = input.SelectedTool;
                     var s = GameBootstrap.Instance.Session;
@@ -932,7 +931,6 @@ namespace ParcelFactory.Game
                     break;
                 case InteractResult.InspectionRequired: label = "검사"; break;
                 case InteractResult.LabelRequired: label = LabelPrompt; break;
-                case InteractResult.NeedsInspection: label = NeedsInspectionMessage; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Exhausted: label = ExhaustedPrompt; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Placed: label = PlaceLabel(tool.Value, true, input.ToolSplitterRed); break;
                 case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false, input.ToolSplitterRed); canAct = false; textColor = UiKit.Bad; break;

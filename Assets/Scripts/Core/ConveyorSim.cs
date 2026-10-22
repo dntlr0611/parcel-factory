@@ -107,9 +107,9 @@ namespace ParcelFactory.Core
         public bool IsAwaitingInspection(Package p) =>
             !p.Inspected && grid.Get(p.X, p.Y).Type == CellType.Table;
 
-        /// <summary>운송장 부착대 위에서 운송장을 기다리는 택배인가(스펙 15.1): 검사됐고 운송장이 없을 때만 멈춘다.</summary>
+        /// <summary>운송장 부착대 위에서 운송장을 기다리는 택배인가(스펙 15.4): 운송장이 없으면 검사 여부와 상관없이 멈춘다.</summary>
         public bool IsAwaitingLabel(Package p) =>
-            p.Inspected && !p.Waybill && grid.Get(p.X, p.Y).Type == CellType.Labeler;
+            !p.Waybill && grid.Get(p.X, p.Y).Type == CellType.Labeler;
 
         /// <summary>운송장 부착대에서 운송장을 기다리는 택배 수(HUD 칩 "운송장 대기 n").</summary>
         public int AwaitingLabelCount

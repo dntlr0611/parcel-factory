@@ -55,7 +55,8 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(card.IsOpen, "waybill card did not open");
                 Assert.IsTrue(boot.Input.UiBlocksInput, "card should block world input");
                 Assert.AreSame(p, card.Package);
-                Assert.AreEqual("출고 운송장", card.Paper.Find("Band/Kind").GetComponent<Text>().text);
+                Assert.AreEqual(WaybillCard.WaybillTitle, card.Paper.Find("Band/Kind").GetComponent<Text>().text);
+                Assert.AreEqual(MaterialLibrary.WaybillInk, card.Paper.Find("Band").GetComponent<Image>().color, "single ink band (spec 15.4)");
                 Assert.IsFalse(card.Paper.Find("Band/AirBadge").gameObject.activeSelf);
 
                 // 영역 밖에 놓으면 제자리로 돌아간다
@@ -104,7 +105,7 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator Labeler_KeyboardFallback_EscCloses_ReturnWaybillForRejectedAir()
+        public IEnumerator Labeler_KeyboardFallback_EscCloses_SameWaybillForRejectedAir()
         {
             var boot = GameBootstrap.Ensure();
             try
@@ -115,7 +116,8 @@ namespace ParcelFactory.Game.Tests
                 yield return null;
                 var card = boot.Panels.Waybill;
                 Assert.IsTrue(card.IsOpen);
-                Assert.AreEqual("반품 운송장", card.Paper.Find("Band/Kind").GetComponent<Text>().text);
+                Assert.AreEqual(WaybillCard.WaybillTitle, card.Paper.Find("Band/Kind").GetComponent<Text>().text); // 반품도 같은 운송장(스펙 15.4)
+                Assert.AreEqual(MaterialLibrary.WaybillInk, card.Paper.Find("Band").GetComponent<Image>().color);
                 Assert.IsTrue(card.Paper.Find("Band/AirBadge").gameObject.activeSelf, "air badge hidden");
                 Assert.IsTrue(card.Card.Find("BoxTop/AirMark").gameObject.activeSelf, "air mark on box hidden");
 
@@ -137,7 +139,11 @@ namespace ParcelFactory.Game.Tests
                 var box = boot.GetComponent<PackageViews>().ViewOf(p.Id);
                 var wb = box.transform.Find("Waybill");
                 Assert.IsTrue(wb.gameObject.activeSelf);
-                Assert.AreSame(MaterialLibrary.Waybill(true), wb.GetComponent<Renderer>().sharedMaterial, "rejected parcel should carry a red-band return waybill");
+                Assert.AreSame(MaterialLibrary.Waybill(), wb.GetComponent<Renderer>().sharedMaterial, "one waybill material for every parcel");
+                var stamp = box.transform.Find("Stamp");
+                Assert.IsTrue(stamp.gameObject.activeSelf, "rejected parcel shows the reject stamp");
+                Assert.IsFalse(box.transform.Find("Check").gameObject.activeSelf);
+                Assert.Greater(stamp.localPosition.y + stamp.localScale.y / 2f, wb.localPosition.y, "stamp stays visible above the waybill");
                 var mark = box.transform.Find("AirMark");
                 Assert.IsTrue(mark.gameObject.activeSelf);
                 Assert.AreEqual(wb.localPosition.x, mark.localPosition.x, 0.001f, "air mark is centred on the box top");
@@ -171,7 +177,7 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator NoWaybill_Delivery_PromptsAndCosts_AndUninspectedIsRefused()
+        public IEnumerator NoWaybill_Delivery_PromptsAndCosts_AndUninspectedCanBeLabelled()
         {
             var boot = GameBootstrap.Ensure();
             try
@@ -201,18 +207,22 @@ namespace ParcelFactory.Game.Tests
                 boot.Input.Interact();
                 Assert.AreEqual(money0 - 30, s.Economy.Money);
 
-                // 미검사 택배를 부착대에 올리려 하면 "먼저 검사하세요"
+                // 미검사 택배도 부착대에 올릴 수 있고, 운송장을 기다린다(스펙 15.4)
                 s.Economy.Earn(100);
                 Assert.AreEqual(BuildResult.Ok, s.Build.TryPlace(2, 3, CellType.Labeler, Direction.East));
                 var u = f.Create(s.Sim.NextId++, 0, 0, Direction.East);
                 s.Worker.Worker.Carrying = u;
                 s.Worker.Worker.X = 2f; s.Worker.Worker.Y = 4f; s.Worker.Worker.Facing = Direction.South;
                 yield return null;
-                Assert.AreEqual(HudController.NeedsInspectionMessage, prompt.text);
-                boot.Input.Interact();
-                Assert.AreSame(u, s.Worker.Worker.Carrying);
-                Assert.AreEqual(HudController.NeedsInspectionMessage, boot.Hud.LastToast);
+                Assert.AreEqual("놓기", prompt.text);
                 Assert.AreEqual("부착대" + StatusBars.FocusSuffix, boot.StatusBars.TextAt(2, 3));
+                boot.Input.Interact();
+                Assert.IsNull(s.Worker.Worker.Carrying);
+                s.Sim.Tick(1f);
+                Assert.IsTrue(s.Sim.IsAwaitingLabel(u));
+                yield return null;
+                Assert.AreEqual(HudController.LabelPrompt, prompt.text);
+                StringAssert.StartsWith("부착대 · 운송장 없음", boot.StatusBars.TextAt(2, 3));
                 LogAssert.NoUnexpectedReceived();
             }
             finally

@@ -71,29 +71,77 @@ namespace ParcelFactory.Core.Tests
         // ---- 멈춤 / 통과 ----
 
         [Test]
-        public void StopsOnlyInspectedParcelsWithoutWaybill()
+        public void StopsEveryParcelWithoutWaybill_InspectedOrNot()
         {
+            // 스펙 15.4: 운송장은 한 종류라 검사 여부와 상관없이 운송장 없는 택배는 모두 멈춘다.
             Line();
-            var stop = Make(false);
-            sim.PlaceCarried(stop, 1, 3);
-            for (int i = 0; i < 6; i++) sim.Tick(0.5f);
-            Assert.AreEqual((2, 3), (stop.X, stop.Y));
-            Assert.IsTrue(sim.IsAwaitingLabel(stop));
-            Assert.AreEqual(1, sim.AwaitingLabelCount);
-            sim.Take(stop);
+            foreach (var stop in new[] { Make(false), Make(true), Make(null) })
+            {
+                sim.PlaceCarried(stop, 1, 3);
+                for (int i = 0; i < 6; i++) sim.Tick(0.5f);
+                Assert.AreEqual((2, 3), (stop.X, stop.Y), "inspected=" + stop.Inspected);
+                Assert.IsTrue(sim.IsAwaitingLabel(stop));
+                Assert.AreEqual(1, sim.AwaitingLabelCount);
+                sim.Take(stop);
+            }
 
-            foreach (var pass in new[] { Make(null), Make(false, waybill: true), Make(true, waybill: true) })
+            foreach (var pass in new[] { Make(null, waybill: true), Make(false, waybill: true), Make(true, waybill: true) })
             {
                 sim.PlaceCarried(pass, 1, 3);
                 sim.Tick(1f); sim.Tick(1f);
-                Assert.AreEqual((3, 3), (pass.X, pass.Y), "should pass the labeler");
+                Assert.AreEqual((3, 3), (pass.X, pass.Y), "a parcel with a waybill passes the labeler");
                 Assert.IsFalse(sim.IsAwaitingLabel(pass));
                 sim.Take(pass);
             }
-            var rejected = Make(true);
-            sim.PlaceCarried(rejected, 1, 3);
+        }
+
+        [Test]
+        public void UninspectedParcel_LabelerThenTable_StopsAtBoth()
+        {
+            // 부착대 (2,3) → 검사대 (3,3) → 레일 (4,3): 검사 전 택배가 부착대에서 멈추고, 운송장을 붙이면 검사대로 가 검사를 기다린다.
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(1, 3, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(2, 3, CellType.Labeler, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(3, 3, CellType.Table, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(4, 3, CellType.Conveyor, Direction.East));
+            var p = Make(null);
+            sim.PlaceCarried(p, 1, 3);
             for (int i = 0; i < 4; i++) sim.Tick(1f);
-            Assert.AreEqual((2, 3), (rejected.X, rejected.Y), "rejected parcels also need a (return) waybill");
+            Assert.AreEqual((2, 3), (p.X, p.Y));
+            Assert.IsTrue(sim.IsAwaitingLabel(p));
+            ws.Worker.X = 2; ws.Worker.Y = 4; ws.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.LabelRequired, ws.Interact(null));
+            Assert.IsTrue(ws.AttachWaybill());
+            Assert.IsFalse(p.Inspected);
+            for (int i = 0; i < 4; i++) sim.Tick(1f);
+            Assert.AreEqual((3, 3), (p.X, p.Y), "should continue to the table and wait there");
+            Assert.IsTrue(sim.IsAwaitingInspection(p));
+            ws.Worker.X = 3; ws.Worker.Y = 4; ws.Worker.Facing = Direction.South;
+            Assert.AreEqual(InteractResult.InspectionRequired, ws.Interact(null));
+            Assert.IsTrue(ws.Inspect(false));
+            sim.Tick(1f);
+            Assert.AreEqual((4, 3), (p.X, p.Y));
+            Assert.IsTrue(p.Waybill && p.Inspected && !p.Rejected);
+        }
+
+        [Test]
+        public void InspectedParcel_TableThenLabeler_StopsAtBoth()
+        {
+            // 반대 순서: 검사대 (2,3) → 부착대 (3,3) → 레일 (4,3).
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(1, 3, CellType.Conveyor, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(2, 3, CellType.Table, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(3, 3, CellType.Labeler, Direction.East));
+            Assert.AreEqual(BuildResult.Ok, build.TryPlace(4, 3, CellType.Conveyor, Direction.East));
+            var p = Make(null);
+            sim.PlaceCarried(p, 1, 3);
+            for (int i = 0; i < 4; i++) sim.Tick(1f);
+            Assert.AreEqual((2, 3), (p.X, p.Y));
+            p.Inspect(true);
+            for (int i = 0; i < 4; i++) sim.Tick(1f);
+            Assert.AreEqual((3, 3), (p.X, p.Y));
+            Assert.IsTrue(sim.IsAwaitingLabel(p));
+            p.Waybill = true;
+            sim.Tick(1f);
+            Assert.AreEqual((4, 3), (p.X, p.Y));
         }
 
         [Test]
@@ -137,22 +185,20 @@ namespace ParcelFactory.Core.Tests
         }
 
         [Test]
-        public void Worker_PutDownOnLabeler_RequiresInspection()
+        public void Worker_PutDownOnLabeler_AnyParcel_WaitsForWaybill()
         {
+            // 스펙 15.4: 검사 전 택배도 손으로 올려놓을 수 있다("먼저 검사하세요" 거부 없음).
             Line();
             ws.Worker.X = 2; ws.Worker.Y = 4; ws.Worker.Facing = Direction.South;
-            ws.Worker.Carrying = Make(null);
-            Assert.AreEqual(InteractResult.NeedsInspection, ws.Preview(null));
-            Assert.AreEqual(InteractResult.NeedsInspection, ws.Interact(null));
-            Assert.IsNotNull(ws.Worker.Carrying);
-
-            var ok = Make(false);
-            ws.Worker.Carrying = ok;
+            var u = Make(null);
+            ws.Worker.Carrying = u;
+            Assert.AreEqual(InteractResult.PutDown, ws.Preview(null));
             Assert.AreEqual(InteractResult.PutDown, ws.Interact(null));
             Assert.IsNull(ws.Worker.Carrying);
             sim.Tick(1f);
-            Assert.AreEqual((2, 3), (ok.X, ok.Y)); // 놓인 자리에서 운송장을 기다린다
+            Assert.AreEqual((2, 3), (u.X, u.Y)); // 놓인 자리에서 운송장을 기다린다
             Assert.AreEqual(InteractResult.LabelRequired, ws.Preview(null));
+            Assert.IsFalse(Enum.IsDefined(typeof(InteractResult), "NeedsInspection"));
         }
 
         // ---- 자동 검사기 ----

@@ -24,8 +24,6 @@ namespace ParcelFactory.Core
         Exhausted,
         /// <summary>부착대 위 택배가 운송장을 기다린다(스펙 15.1): 운송장 카드를 연다.</summary>
         LabelRequired,
-        /// <summary>검사 안 된 택배를 부착대에 올리려 함(스펙 15.1): "먼저 검사하세요".</summary>
-        NeedsInspection,
     }
 
     /// <summary>작업자 규칙: 건물 안 12×12 전체를 연속 좌표로 걷고(레일·도크·잠긴 칸 위 통과, 스펙 10.3),
@@ -219,7 +217,6 @@ namespace ParcelFactory.Core
                 if (fc.IsDock) return InteractResult.Delivered;
                 if (fc.Type == CellType.Pallet)
                     return !fc.IsPalletFull && !fc.Demolishing ? InteractResult.PutDown : InteractResult.CannotPutHere;
-                if (fc.Type == CellType.Labeler && !Worker.Carrying.Inspected && fc.HasFreeLane && !fc.Demolishing) return InteractResult.NeedsInspection;
                 if (fc.IsTrack && fc.HasFreeLane && !fc.Demolishing) return InteractResult.PutDown; // 브릿지는 빈 차선이 하나라도 있으면
                 return InteractResult.CannotPutHere;
             }
