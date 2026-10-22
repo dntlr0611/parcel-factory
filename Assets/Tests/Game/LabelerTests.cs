@@ -69,25 +69,39 @@ namespace ParcelFactory.Game.Tests
                 e.position = start + new Vector2(0f, 140f);
                 ExecuteEvents.Execute(paper, e, ExecuteEvents.dragHandler);
                 ExecuteEvents.Execute(paper, e, ExecuteEvents.endDragHandler);
-                Assert.IsFalse(card.Attached);
+                Assert.IsFalse(card.WaybillDone);
+                Assert.IsFalse(card.CompleteButton.interactable, "완료 stays off until the waybill is on");
                 yield return new WaitForSecondsRealtime(WaybillCard.SnapSeconds + 0.1f);
                 Assert.AreEqual(WaybillCard.PaperHome.x, card.Paper.anchoredPosition.x, 0.5f);
                 Assert.AreEqual(WaybillCard.PaperHome.y, card.Paper.anchoredPosition.y, 0.5f);
                 Assert.IsFalse(p.Waybill);
 
-                // 영역 안에 놓으면 붙고 0.4초 뒤 닫힌다
+                // 다 붙이기 전 Enter(= Complete): 토스트만, 아무것도 반영하지 않는다(스펙 15.5)
+                card.Complete();
+                Assert.IsTrue(card.IsOpen);
+                Assert.IsFalse(p.Waybill);
+                Assert.AreEqual(WaybillCard.NeedWaybillToast, boot.Hud.LastToast);
+
+                // 영역 안에 놓으면 카드 안에서만 붙는다. 완료 버튼이 켜지고, 닫히지 않으며 코어는 그대로.
                 start = ScreenOf(card.Paper);
                 e = Pointer(start);
                 ExecuteEvents.Execute(paper, e, ExecuteEvents.beginDragHandler);
                 e.position = ScreenOf(card.Zone) + new Vector2(6f, -4f);
                 ExecuteEvents.Execute(paper, e, ExecuteEvents.dragHandler);
                 ExecuteEvents.Execute(paper, e, ExecuteEvents.endDragHandler);
-                Assert.IsTrue(card.Attached);
-                Assert.IsTrue(p.Waybill);
-                yield return new WaitForSecondsRealtime(WaybillCard.SnapSeconds + 0.05f);
+                Assert.IsTrue(card.WaybillDone);
+                Assert.IsTrue(card.AllPlaced);
+                Assert.IsTrue(card.CompleteButton.interactable, "완료 turns on once everything is placed");
+                Assert.IsFalse(p.Waybill, "nothing is committed before Enter");
+                yield return new WaitForSecondsRealtime(WaybillCard.SnapSeconds + 0.3f);
                 Assert.AreEqual(card.Zone.anchoredPosition.x, card.Paper.anchoredPosition.x, 0.5f, "paper should snap to the zone centre");
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay);
-                Assert.IsFalse(card.IsOpen, "card should close 0.4 s after attaching");
+                Assert.IsTrue(card.IsOpen, "no auto-close");
+                Assert.IsTrue(boot.Session.Sim.IsAwaitingLabel(p));
+
+                // Enter(완료 버튼과 같은 길): 반영하고 닫는다
+                card.CompleteButton.onClick.Invoke();
+                Assert.IsTrue(p.Waybill);
+                Assert.IsFalse(card.IsOpen);
                 Assert.AreEqual(HudController.WaybillAttachedToast, boot.Hud.LastToast);
                 Assert.IsFalse(boot.Input.UiBlocksInput);
                 yield return null;
@@ -105,7 +119,7 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator Labeler_KeyboardFallback_EscCloses_SameWaybillForRejectedAir()
+        public IEnumerator Labeler_EscRevertsPlacedWaybill_PadAPlacesThenCompletes_SameWaybillForRejectedAir()
         {
             var boot = GameBootstrap.Ensure();
             try
@@ -121,21 +135,33 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(card.Paper.Find("Band/AirBadge").gameObject.activeSelf, "air badge hidden");
                 Assert.IsTrue(card.Card.Find("BoxTop/AirMark").gameObject.activeSelf, "air mark on box hidden");
 
-                // Esc: 붙이지 않고 닫는다. 택배는 부착대에 남는다.
+                // 끌어 붙인 뒤 Esc: 카드에서 붙인 것을 되돌리고 닫는다. 택배는 부착대에 남는다(스펙 15.5).
+                var e = new PointerEventData(EventSystem.current) { position = ScreenOf(card.Paper) };
+                ExecuteEvents.Execute(card.Paper.gameObject, e, ExecuteEvents.beginDragHandler);
+                e.position = ScreenOf(card.Zone);
+                ExecuteEvents.Execute(card.Paper.gameObject, e, ExecuteEvents.dragHandler);
+                ExecuteEvents.Execute(card.Paper.gameObject, e, ExecuteEvents.endDragHandler);
+                Assert.IsTrue(card.WaybillDone);
                 boot.Input.PressEscape();
                 yield return null;
                 Assert.IsFalse(card.IsOpen);
                 Assert.IsFalse(p.Waybill);
                 Assert.IsTrue(boot.Session.Sim.IsAwaitingLabel(p));
-
-                // 키보드 대체(Enter·E와 같은 경로)
                 boot.Input.Interact();
                 yield return null;
                 Assert.IsTrue(card.IsOpen);
-                card.AttachNow();
+                Assert.IsFalse(card.WaybillDone, "reopened card starts from the core state (reverted)");
+                Assert.AreEqual(WaybillCard.PaperHome.x, card.Paper.anchoredPosition.x, 0.5f);
+
+                // 게임패드 A: 하나 붙이기 → 다시 A: 완료
+                Assert.IsTrue(card.PlaceNext());
+                Assert.IsTrue(card.WaybillDone);
+                Assert.IsFalse(p.Waybill);
+                Assert.IsTrue(card.IsOpen);
+                Assert.IsFalse(card.PlaceNext(), "nothing left to place → completes");
                 Assert.IsTrue(p.Waybill);
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay + 0.1f);
                 Assert.IsFalse(card.IsOpen);
+                yield return null; // 상자 표시는 LateUpdate에서 바뀐다
                 var box = boot.GetComponent<PackageViews>().ViewOf(p.Id);
                 var wb = box.transform.Find("Waybill");
                 Assert.IsTrue(wb.gameObject.activeSelf);

@@ -186,28 +186,34 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsFalse(card.WaybillDone);
                 yield return new WaitForSecondsRealtime(WaybillCard.SnapSeconds + 0.1f);
 
-                // 운송장 먼저: 붙지만 카드는 열려 있다
+                // 운송장 먼저: 카드 안에서만 붙고, 스티커가 남아 완료는 꺼져 있다
                 DragTo(card.Paper.gameObject, card.Paper, ScreenOf(card.Zone));
                 Assert.IsTrue(card.WaybillDone);
-                Assert.IsTrue(p.Waybill);
-                Assert.IsFalse(card.Attached, "still needs the sticker");
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay + 0.1f);
-                Assert.IsTrue(card.IsOpen, "card stays open until both are attached");
+                Assert.IsFalse(p.Waybill, "nothing is committed before Enter (spec 15.5)");
+                Assert.IsFalse(card.CompleteButton.interactable, "still needs the sticker");
+                card.Complete(); // Enter
+                Assert.IsTrue(card.IsOpen);
+                Assert.AreEqual(WaybillCard.NeedStickerToast, boot.Hud.LastToast);
+                Assert.IsFalse(p.Waybill);
                 Assert.AreSame(p, s.Worker.PendingLabel);
                 Assert.IsTrue(s.Sim.IsAwaitingLabel(p));
 
-                // 스티커를 옆면 칸에
+                // 스티커를 옆면 칸에 → 완료 켜짐, 아직 반영 없음
                 DragTo(card.Sticker.gameObject, card.Sticker, ScreenOf(card.StickerZone));
                 Assert.IsTrue(card.StickerDone);
-                Assert.IsTrue(p.FragileSticker);
-                Assert.IsTrue(card.Attached);
+                Assert.IsTrue(card.CompleteButton.interactable);
+                Assert.IsFalse(p.FragileSticker);
                 yield return new WaitForSecondsRealtime(WaybillCard.SnapSeconds + 0.05f);
                 Assert.AreEqual(card.StickerZone.anchoredPosition.x, card.Sticker.anchoredPosition.x, 0.5f, "sticker snaps into the side cell");
                 Assert.AreEqual(WaybillCard.StickerZoneSize / WaybillCard.StickerSize, card.Sticker.localScale.x, 0.01f);
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay);
+                Assert.IsTrue(card.IsOpen, "no auto-close");
+                // Enter: 둘 다 반영하고 닫는다
+                card.Complete();
+                Assert.IsTrue(p.Waybill && p.FragileSticker);
                 Assert.IsFalse(card.IsOpen);
                 Assert.AreEqual(HudController.WaybillAttachedToast, boot.Hud.LastToast);
                 Assert.IsFalse(s.Sim.IsAwaitingLabel(p));
+                Assert.IsNull(s.Worker.PendingLabel);
                 LogAssert.NoUnexpectedReceived();
             }
             finally
@@ -218,7 +224,7 @@ namespace ParcelFactory.Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator WaybillCard_KeyboardAttachesBoth_AndOnlyStickerWhenWaybillIsOn()
+        public IEnumerator WaybillCard_PadAPlacesOneAtATime_EscReverts_AndOnlyStickerWhenWaybillIsOn()
         {
             var boot = GameBootstrap.Ensure();
             try
@@ -236,9 +242,27 @@ namespace ParcelFactory.Game.Tests
                 boot.Input.Interact();
                 yield return null;
                 var card = boot.Panels.Waybill;
-                card.AttachNow();
-                Assert.IsTrue(p.Waybill && p.FragileSticker, "Enter attaches whatever is left");
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay + 0.1f);
+                card.Complete(); // Enter는 붙이지 않는다
+                Assert.IsFalse(p.Waybill || p.FragileSticker);
+                Assert.AreEqual(WaybillCard.NeedWaybillToast, boot.Hud.LastToast);
+                // 게임패드 A: 운송장 → 스티커 → 완료
+                Assert.IsTrue(card.PlaceNext());
+                Assert.IsTrue(card.WaybillDone && !card.StickerDone);
+                Assert.IsTrue(card.PlaceNext());
+                Assert.IsTrue(card.StickerDone);
+                Assert.IsFalse(p.Waybill || p.FragileSticker, "placing is card-local");
+                // Esc(B와 같은 길): 둘 다 되돌리고 닫는다
+                boot.Panels.CloseAll();
+                Assert.IsFalse(card.IsOpen);
+                Assert.IsFalse(p.Waybill || p.FragileSticker);
+                Assert.IsTrue(s.Sim.IsAwaitingLabel(p));
+                boot.Input.Interact();
+                yield return null;
+                Assert.IsTrue(card.IsOpen);
+                Assert.IsFalse(card.WaybillDone || card.StickerDone, "reverted");
+                card.PlaceNext(); card.PlaceNext();
+                Assert.IsFalse(card.PlaceNext(), "all placed → A completes");
+                Assert.IsTrue(p.Waybill && p.FragileSticker);
                 Assert.IsFalse(card.IsOpen);
 
                 s.Sim.Take(p);
@@ -253,10 +277,12 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(card.WaybillDone, "an existing waybill shows already attached");
                 Assert.AreEqual(card.Zone.anchoredPosition.x, card.Paper.anchoredPosition.x, 0.5f);
                 Assert.IsFalse(card.StickerDone);
+                Assert.IsFalse(card.CompleteButton.interactable);
                 DragTo(card.Sticker.gameObject, card.Sticker, ScreenOf(card.StickerZone));
-                Assert.IsTrue(q.FragileSticker);
-                Assert.IsTrue(card.Attached);
-                yield return new WaitForSecondsRealtime(WaybillCard.CloseDelay + 0.1f);
+                Assert.IsFalse(q.FragileSticker);
+                Assert.IsTrue(card.CompleteButton.interactable);
+                card.Complete();
+                Assert.IsTrue(q.FragileSticker && q.Waybill);
                 Assert.IsFalse(card.IsOpen);
             }
             finally

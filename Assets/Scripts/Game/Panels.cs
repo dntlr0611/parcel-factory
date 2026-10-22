@@ -111,7 +111,7 @@ namespace ParcelFactory.Game
         {
             var session = GameBootstrap.Instance.Session;
             if (inspect.gameObject.activeSelf && session.Worker.PendingInspection == null) inspect.gameObject.SetActive(false);
-            if (WaybillOpen && !Waybill.Attached && session.Worker.PendingLabel == null) Waybill.Close(); // 다른 경로로 대기가 풀렸다
+            if (WaybillOpen && session.Worker.PendingLabel == null) Waybill.Close(); // 다른 경로로 대기가 풀렸다(완료는 스스로 닫는다)
             if (SummaryOpen && session.Clock.IsOpen) summary.gameObject.SetActive(false); // 다른 경로로 다음 날이 시작됐다
             Sync();
         }
@@ -123,7 +123,7 @@ namespace ParcelFactory.Game
             status.gameObject.SetActive(false);
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             demolish.gameObject.SetActive(false); pendingDemolish = null;
-            if (WaybillOpen && !Waybill.Attached) Waybill.Close();
+            if (WaybillOpen) Waybill.Close(); // 카드에서 붙인 것은 되돌린다(스펙 15.5)
             Sync();
         }
 
