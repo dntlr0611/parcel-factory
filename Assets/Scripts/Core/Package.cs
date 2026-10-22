@@ -40,6 +40,12 @@ namespace ParcelFactory.Core
         public bool Air;
         /// <summary>운송장이 붙었는가(스펙 15). 부착대에서 작업자가 붙이거나 자동 검사기가 붙인다.</summary>
         public bool Waybill;
+        /// <summary>취급주의 택배(스펙 17.1). 겉 표시라 검사 전에도 보인다. 항공과 따로 정한다.</summary>
+        public bool Fragile;
+        /// <summary>파손됨(스펙 17.2). 파손되면 Bad도 true가 되고 검사 결과가 지워진다. 운송장·스티커는 그대로.</summary>
+        public bool Broken;
+        /// <summary>취급주의 스티커가 붙었는가(스펙 17.3). 부착대에서 작업자가 붙이거나 자동 검사기가 붙인다.</summary>
+        public bool FragileSticker;
         public PackageLabel Label;
 
         public void Inspect(bool reject)

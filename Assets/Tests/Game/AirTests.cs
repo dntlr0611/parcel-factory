@@ -158,7 +158,7 @@ namespace ParcelFactory.Game.Tests
                 Assert.AreEqual((11, 7), s.Worker.FacingTile());
                 yield return null;
                 var promptText = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
-                Assert.AreEqual("운송 수단 틀림 −10", promptText.text);
+                Assert.AreEqual("운송 수단 틀림 −10 · 0/30", promptText.text); // 트럭 적재 수(스펙 18)
                 int money0 = s.Economy.Money;
                 boot.Input.Interact();
                 Assert.IsNull(s.Worker.Worker.Carrying);
@@ -171,7 +171,7 @@ namespace ParcelFactory.Game.Tests
                 air.Waybill = true;
                 s.Worker.Worker.Carrying = air;
                 yield return null;
-                Assert.AreEqual("항공 출고 +30", promptText.text);
+                Assert.AreEqual("항공 출고 +30 · 1/30", promptText.text);
                 boot.Input.Interact();
                 Assert.AreEqual(money0 + 20, s.Economy.Money);
                 Assert.AreEqual("항공 정상 출고 +30", boot.Hud.LastToast);

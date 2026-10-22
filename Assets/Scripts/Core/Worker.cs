@@ -24,6 +24,8 @@ namespace ParcelFactory.Core
         Exhausted,
         /// <summary>부착대 위 택배가 운송장을 기다린다(스펙 15.1): 운송장 카드를 연다.</summary>
         LabelRequired,
+        /// <summary>바라보는 트럭 도크의 트럭이 떠나 있다(스펙 18): 들고 있는 택배를 넣을 수 없다.</summary>
+        TruckAway,
     }
 
     /// <summary>작업자 규칙: 건물 안 12×12 전체를 연속 좌표로 걷고(레일·도크·잠긴 칸 위 통과, 스펙 10.3),
@@ -153,6 +155,7 @@ namespace ParcelFactory.Core
                 CancelLabel();
                 // 달려서 움직인 프레임만 소모한다(걷기는 소모 없음, 양 축 모두 막히면 소모 없음).
                 if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * dt);
+                if (IsRunning) sim.Break(Worker.Carrying); // 취급주의 택배를 들고 실제로 달리면 파손(스펙 17.2)
             }
             if (!moved) IsRunning = false;
             return moved;
@@ -214,7 +217,7 @@ namespace ParcelFactory.Core
 
             if (Worker.Carrying != null)
             {
-                if (fc.IsDock) return InteractResult.Delivered;
+                if (fc.IsDock) return sim.Trucks.IsAway(fc.Type) ? InteractResult.TruckAway : InteractResult.Delivered;
                 if (fc.Type == CellType.Pallet)
                     return !fc.IsPalletFull && !fc.Demolishing ? InteractResult.PutDown : InteractResult.CannotPutHere;
                 if (fc.IsTrack && fc.HasFreeLane && !fc.Demolishing) return InteractResult.PutDown; // 브릿지는 빈 차선이 하나라도 있으면
@@ -306,8 +309,14 @@ namespace ParcelFactory.Core
 
         public void CancelInspection() => PendingInspection = null;
 
-        /// <summary>대기 중인 운송장 부착을 확정한다(스펙 15.2). 택배가 부착대를 떠났거나 작업자가 그 칸을 바라보지 않으면 false.</summary>
-        public bool AttachWaybill()
+        /// <summary>대기 중인 택배에 운송장을 붙인다(스펙 15.2). 택배가 부착대를 떠났거나 작업자가 그 칸을 바라보지 않거나 이미 운송장이 있으면
+        /// false이고 대기를 푼다. 붙인 뒤에도 취급주의 스티커가 남았으면 대기(PendingLabel)를 유지한다(스펙 17.3).</summary>
+        public bool AttachWaybill() => AttachLabel(false);
+
+        /// <summary>대기 중인 취급주의 택배에 취급주의 스티커를 붙인다(스펙 17.3). 취급주의가 아니거나 이미 붙었으면 false. 운송장이 남았으면 대기 유지.</summary>
+        public bool AttachFragileSticker() => AttachLabel(true);
+
+        private bool AttachLabel(bool sticker)
         {
             var p = PendingLabel;
             PendingLabel = null;
@@ -315,7 +324,17 @@ namespace ParcelFactory.Core
             var (fx, fy) = FacingTile();
             if (fx != p.X || fy != p.Y) return false;
             if (sim.PackageAt(p.X, p.Y) != p || !sim.IsAwaitingLabel(p)) return false;
-            p.Waybill = true;
+            if (sticker)
+            {
+                if (!p.Fragile || p.FragileSticker) return false;
+                p.FragileSticker = true;
+            }
+            else
+            {
+                if (p.Waybill) return false;
+                p.Waybill = true;
+            }
+            if (sim.IsAwaitingLabel(p)) PendingLabel = p;
             return true;
         }
 

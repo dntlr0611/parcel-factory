@@ -192,7 +192,7 @@ namespace ParcelFactory.Game.Tests
                 s.Worker.Worker.X = 10f; s.Worker.Worker.Y = 2f; s.Worker.Worker.Facing = Direction.East;
                 yield return null;
                 var prompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
-                Assert.AreEqual("출고 −20 · 운송장 없음", prompt.text);
+                Assert.AreEqual("출고 −20 · 운송장 없음 · 0/30", prompt.text); // 트럭 적재 수(스펙 18)
                 int money0 = s.Economy.Money;
                 boot.Input.Interact();
                 Assert.AreEqual(money0 - 20, s.Economy.Money);
@@ -203,7 +203,7 @@ namespace ParcelFactory.Game.Tests
                 s.Worker.Worker.Carrying = r;
                 s.Worker.Worker.Y = 4f;
                 yield return null;
-                Assert.AreEqual("반품 −10 · 운송장 없음", prompt.text);
+                Assert.AreEqual("반품 −10 · 운송장 없음 · 0/30", prompt.text);
                 boot.Input.Interact();
                 Assert.AreEqual(money0 - 30, s.Economy.Money);
 

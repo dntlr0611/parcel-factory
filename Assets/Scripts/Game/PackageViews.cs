@@ -8,13 +8,18 @@ namespace ParcelFactory.Game
     public sealed class BoxMarks : MonoBehaviour
     {
         public GameObject Stamp, Check, AirMark, Waybill;
+        /// <summary>취급주의(스펙 17.1): 옆면 네 곳의 흐린 인쇄(스티커 전) / 선명한 스티커(부착 후), 파손 시 윗면 금 무늬(17.2).</summary>
+        public GameObject FragilePrint, FragileSticker, Crack;
 
-        /// <summary>검사 표시(거부 도장·승인 체크) + 항공 마크(겉 라벨, 스펙 14.2) + 운송장(한 종류, 스펙 15.4).</summary>
+        /// <summary>검사 표시(거부 도장·승인 체크) + 항공 마크(겉 라벨, 스펙 14.2) + 운송장(한 종류, 스펙 15.4) + 취급주의 옆면·금 무늬(스펙 17).</summary>
         public void Set(Package p)
         {
             Set(p.Inspected, p.Rejected);
             On(AirMark, p.Air);
             On(Waybill, p.Waybill);
+            On(FragilePrint, p.Fragile && !p.FragileSticker);
+            On(FragileSticker, p.Fragile && p.FragileSticker);
+            On(Crack, p.Broken);
         }
 
         public void Set(bool inspected, bool rejected)
@@ -29,13 +34,111 @@ namespace ParcelFactory.Game
         }
     }
 
-    /// <summary>매 프레임 Sim.Packages를 읽어 상자를 그린다. 들고 있는 택배는 WorkerView가 그린다.</summary>
+    /// <summary>
+    /// 취급주의 택배 파손 효과(스펙 17.2): 골판지 조각 10개가 위·바깥으로 튀었다가 떨어지며 작아진다(0.7초, 일시정지와 무관하게 실제 시간).
+    /// 끝나면 스스로 지운다.
+    /// </summary>
+    public sealed class BreakFx : MonoBehaviour
+    {
+        public const float Seconds = 0.7f;
+        private const int Count = 10;
+        private readonly Transform[] shards = new Transform[Count];
+        private readonly Vector3[] velocity = new Vector3[Count], spin = new Vector3[Count];
+        private float age;
+
+        public static BreakFx Spawn(Transform parent, Vector3 world)
+        {
+            var go = new GameObject("BreakFx");
+            go.transform.SetParent(parent, false);
+            go.transform.position = world;
+            return go.AddComponent<BreakFx>();
+        }
+
+        private void Start()
+        {
+            var rng = new System.Random(GetInstanceID());
+            var cardboard = MaterialLibrary.Lit(new Color(0xC8 / 255f, 0x9B / 255f, 0x6A / 255f), 0.1f);
+            var orange = MaterialLibrary.Lit(MaterialLibrary.FragileOrange, 0.2f);
+            for (int i = 0; i < Count; i++)
+            {
+                var c = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Destroy(c.GetComponent<Collider>());
+                c.name = "Shard";
+                c.transform.SetParent(transform, false);
+                float sz = 0.05f + 0.04f * (float)rng.NextDouble();
+                c.transform.localScale = new Vector3(sz, sz * 0.35f, sz * 0.8f);
+                c.GetComponent<Renderer>().sharedMaterial = i % 4 == 0 ? orange : cardboard;
+                float a = (i + (float)rng.NextDouble() * 0.6f) / Count * Mathf.PI * 2f;
+                velocity[i] = new Vector3(Mathf.Cos(a) * 1.6f, 2.2f + 1.2f * (float)rng.NextDouble(), Mathf.Sin(a) * 1.6f);
+                spin[i] = new Vector3(rng.Next(-720, 720), rng.Next(-720, 720), rng.Next(-720, 720));
+                shards[i] = c.transform;
+            }
+        }
+
+        private void Update()
+        {
+            float dt = Time.unscaledDeltaTime;
+            age += dt;
+            float k = Mathf.Clamp01(1f - age / Seconds);
+            for (int i = 0; i < Count; i++)
+            {
+                if (shards[i] == null) continue;
+                velocity[i].y -= 9f * dt;
+                shards[i].localPosition += velocity[i] * dt;
+                shards[i].localRotation *= Quaternion.Euler(spin[i] * dt);
+                shards[i].localScale *= Mathf.Lerp(1f, 0.96f, 1f - k);
+            }
+            if (age >= Seconds) Destroy(gameObject);
+        }
+    }
+
+    /// <summary>매 프레임 Sim.Packages를 읽어 상자를 그린다. 들고 있는 택배는 WorkerView가 그린다. 파손되면 그 자리에 BreakFx를 띄운다.</summary>
     public sealed class PackageViews : MonoBehaviour
     {
         private readonly Dictionary<int, BoxMarks> active = new Dictionary<int, BoxMarks>();
         private readonly Stack<BoxMarks> pool = new Stack<BoxMarks>();
         private readonly HashSet<int> seen = new HashSet<int>();
         private Transform root;
+        private ConveyorSim boundSim;
+
+        /// <summary>마지막 파손 효과(테스트용). 끝나면 null이 된다(Unity의 파괴된 오브젝트).</summary>
+        public BreakFx LastBreakFx { get; private set; }
+
+        private void Bind(ConveyorSim sim)
+        {
+            if (boundSim == sim) return;
+            if (boundSim != null) boundSim.PackageBroken -= OnBroken;
+            boundSim = sim;
+            if (boundSim != null) boundSim.PackageBroken += OnBroken;
+        }
+
+        private void OnDestroy() => Bind(null);
+
+        private void Start()
+        {
+            var boot = GameBootstrap.Instance;
+            if (boot == null) return;
+            if (boot.Session != null) Bind(boot.Session.Sim);
+            boot.SessionReplaced += s => Bind(s.Sim); // 같은 오브젝트의 컴포넌트라 함께 파괴된다
+        }
+
+        /// <summary>파손 순간 상자가 있는 곳: 손에 들었으면 작업자 손, 팔레트 더미면 그 층, 아니면 칸 위 택배 높이.</summary>
+        private void OnBroken(Package p)
+        {
+            var boot = GameBootstrap.Instance;
+            if (boot == null || boot.Session == null) return;
+            var s = boot.Session;
+            Vector3 pos;
+            if (s.Worker.Worker.Carrying == p && boot.Worker != null && boot.Worker.CarryAnchor != null) pos = boot.Worker.CarryAnchor.position;
+            else
+            {
+                var c = s.Grid.Get(p.X, p.Y);
+                pos = Grid3D.Tile(p.X, p.Y);
+                int i = c.Type == CellType.Pallet ? c.Pallet.IndexOf(p) : -1;
+                pos.y = i >= 0 ? SurfaceHeight(CellType.Pallet) + PalletLayerHeight * (i / PalletPerLayer) : PackageHeight(c, p.Lane);
+            }
+            LastBreakFx = BreakFx.Spawn(boot.WorldRoot, pos + new Vector3(0f, 0.3f, 0f));
+        }
 
         /// <summary>택배 id의 상자 오브젝트(지금 그리는 중이 아니면 null). 테스트용.</summary>
         public GameObject ViewOf(int id) => active.TryGetValue(id, out var box) ? box.gameObject : null;
@@ -58,7 +161,7 @@ namespace ParcelFactory.Game
 
         /// <summary>팔레트 더미 한 층의 높이. 상자는 층당 2개(x ±0.22), 용량 6 = 3층.</summary>
         public const float PalletLayerHeight = 0.4f;
-        public const int PalletPerLayer = 2;
+        public const int PalletPerLayer = Cell.PalletSlots;
 
         /// <summary>브릿지 고가 벨트 바닥 높이와 윗길 택배 높이(스펙 11.12). 아랫길은 레일과 같은 0.4.</summary>
         public const float BridgeDeckHeight = 0.9f, BridgeUpperHeight = 1.3f;
@@ -92,7 +195,56 @@ namespace ParcelFactory.Game
             marks.AirMark = AirMark(go.transform, b);
             marks.Stamp = Mark(go.transform, b, "Stamp", StampColor);
             marks.Check = Mark(go.transform, b, "Check", CheckColor);
+            marks.FragilePrint = SideMarks(go.transform, b, "FragilePrint", MaterialLibrary.FragilePrint());
+            marks.FragileSticker = SideMarks(go.transform, b, "FragileSticker", MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-fragile")));
+            marks.Crack = CrackQuad(go.transform, b);
             return go;
+        }
+
+        /// <summary>취급주의 스티커가 옆면 짧은 변(높이·폭 중 작은 것)에서 차지하는 비율.</summary>
+        public const float FragileStickerFraction = 0.62f;
+
+        /// <summary>
+        /// 옆면 네 곳(±x, ±z)의 가운데에 붙인 같은 표시(스펙 17.1). 윗면은 항공 마크·운송장 자리라 쓰지 않는다. 묶음(name) 아래 Side0..3, 꺼진 채로 만든다.
+        /// Quad 앞면(−z)이 바깥을 보도록 돌리고 면에서 0.004 띄운다. 텍스처 위쪽 = 월드 위.
+        /// </summary>
+        private static GameObject SideMarks(Transform box, Bounds b, string name, Material mat)
+        {
+            var group = new GameObject(name);
+            group.transform.SetParent(box, false);
+            float side = Mathf.Min(b.size.y, Mathf.Min(b.size.x, b.size.z)) * FragileStickerFraction;
+            const float off = 0.004f;
+            var faces = new[]
+            {
+                (new Vector3(b.max.x + off, b.center.y, b.center.z), Quaternion.Euler(0f, -90f, 0f)),
+                (new Vector3(b.min.x - off, b.center.y, b.center.z), Quaternion.Euler(0f, 90f, 0f)),
+                (new Vector3(b.center.x, b.center.y, b.max.z + off), Quaternion.Euler(0f, 180f, 0f)),
+                (new Vector3(b.center.x, b.center.y, b.min.z - off), Quaternion.identity),
+            };
+            for (int i = 0; i < faces.Length; i++)
+            {
+                var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                Object.Destroy(q.GetComponent<Collider>());
+                q.name = "Side" + i;
+                q.transform.SetParent(group.transform, false);
+                q.transform.localPosition = faces[i].Item1;
+                q.transform.localRotation = faces[i].Item2;
+                q.transform.localScale = new Vector3(side, side, 1f);
+                var r = q.GetComponent<Renderer>();
+                r.sharedMaterial = mat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            group.SetActive(false);
+            return group;
+        }
+
+        /// <summary>파손 금 무늬(mark-crack, 스펙 17.2): 윗면 전체, 항공 마크(+0.006)와 운송장(+0.012) 사이(+0.009). 꺼진 채로 만든다.
+        /// 선이 가늘어(128px에 2px) 멀리서 끊기지 않도록 알파 컷오프를 낮춰(0.2) 안티에일리어싱 가장자리까지 그린다.</summary>
+        private static GameObject CrackQuad(Transform box, Bounds b)
+        {
+            float w = Mathf.Min(b.size.x, b.size.z) * AirMarkFraction;
+            var pos = new Vector3(b.center.x, b.max.y + 0.009f, b.center.z);
+            return TopQuad(box, "Crack", pos, new Vector2(w, w), MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-crack"), 0f, 0.2f));
         }
 
         /// <summary>항공 마크가 상자 윗면 폭에서 차지하는 비율(사용자 요청 2026-10-22: 윗면 전체에 보이게). 가장자리 3%만 골판지가 보인다.</summary>
@@ -181,6 +333,7 @@ namespace ParcelFactory.Game
         {
             var boot = GameBootstrap.Instance;
             if (boot == null || boot.Session == null) return;
+            Bind(boot.Session.Sim);
             if (root == null) { root = new GameObject("Packages").transform; root.SetParent(boot.WorldRoot, false); }
             seen.Clear();
             foreach (var p in boot.Session.Sim.Packages)

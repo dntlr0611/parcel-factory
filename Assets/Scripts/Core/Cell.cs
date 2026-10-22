@@ -14,6 +14,8 @@ namespace ParcelFactory.Core
     {
         /// <summary>팔레트 한 칸에 쌓을 수 있는 택배 수.</summary>
         public const int PalletCapacity = 6;
+        /// <summary>팔레트 한 층의 자리 수(2자리 × 3층). 인덱스 i의 자리는 i % PalletSlots, 층은 i / PalletSlots(뷰와 같다).</summary>
+        public const int PalletSlots = 2;
 
         public CellType Type = CellType.Empty;
         public Direction Direction = Direction.East;

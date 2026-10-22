@@ -145,6 +145,7 @@ namespace ParcelFactory.Game
         /// <summary>
         /// 부품 상태 문구: 레일 "→", 고속 "고속 →", 브릿지 "브릿지 ↑"(윗길 방향), 검사대 "검사대" 또는 "검사 대기 1", 자동 검사기 "자동 →",
         /// 분배기 "파 → · 빨 ↓"(빨간 출구가 없거나 연결되지 않았으면 흐린 글자), 팔레트 "파랑 3/6".
+        /// 검사대·부착대 위 택배가 취급주의(파손)면 " · 취급주의"("· 파손") 꼬리표, 부착대는 스티커 상태도(스펙 17).
         /// 항공 모드(스펙 14.5): 분배기 "분배기 · 항공 1→ · 2↓"(1번 초록, 2번 노랑), 검사기 "검사기 · 항공 1→ · 2↓"(1번 흰색, 2번 #2F86EB).
         /// </summary>
         public static string Describe(GameSession s, int x, int y)
@@ -170,14 +171,19 @@ namespace ParcelFactory.Game
                 case CellType.Labeler:
                 {
                     // 운송장 부착대(스펙 15.1·15.3): "부착대", 택배가 있으면 운송장 상태를 붙인다.
+                    // 취급주의면 스티커 상태와 꼬리표(스펙 17.1·17.3): "부착대 · 운송장 ✓ · 스티커 없음 · 취급주의"
                     var p = s.Sim.PackageAt(x, y);
-                    return p == null ? "부착대" : "부착대 · " + (p.Waybill ? "운송장 ✓" : "운송장 없음");
+                    if (p == null) return "부착대";
+                    var text = "부착대 · " + (p.Waybill ? "운송장 ✓" : "운송장 없음");
+                    if (p.Fragile) text += (p.FragileSticker ? " · 스티커 ✓" : " · 스티커 없음") + " · " + HudController.FragileTagOf(p).TrimEnd();
+                    return text;
                 }
                 case CellType.Table:
                 {
                     var p = s.Sim.PackageAt(x, y);
                     int n = p != null && s.Sim.IsAwaitingInspection(p) ? 1 : 0;
-                    return n > 0 ? "검사 대기 " + n : "검사대";
+                    var tag = HudController.FragileTagOf(p).TrimEnd(); // 취급주의·파손 꼬리표(스펙 17.1)
+                    return (n > 0 ? "검사 대기 " + n : "검사대") + (tag.Length > 0 ? " · " + tag : "");
                 }
                 case CellType.Splitter:
                 {

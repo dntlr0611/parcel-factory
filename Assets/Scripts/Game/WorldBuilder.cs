@@ -30,6 +30,14 @@ namespace ParcelFactory.Game
         private Transform root, lotRoot, wallsRoot, eastWall, airDocks, westWall, inletDocks;
         private GameSession bound;
         private int framedSize = -1, framedW, framedH;
+        /// <summary>동쪽 트럭(스펙 18 교대 연출용): 도크 종류 → 차량, 지붕 항공 마크(항공 트럭만). 동쪽을 다시 만들면 바뀐다.</summary>
+        private readonly Dictionary<CellType, (Transform car, Transform sign)> trucks = new Dictionary<CellType, (Transform, Transform)>();
+
+        /// <summary>도크의 트럭 차량. 아직 없으면(항공 도크 확장 전) null.</summary>
+        public Transform TruckOf(CellType dock) => trucks.TryGetValue(dock, out var t) && t.car != null ? t.car : null;
+
+        /// <summary>항공 트럭 지붕 마크(차량과 같이 움직인다). 없으면 null.</summary>
+        public Transform TruckSignOf(CellType dock) => trucks.TryGetValue(dock, out var t) && t.sign != null ? t.sign : null;
 
         public void Build(GameSession session)
         {
@@ -287,8 +295,8 @@ namespace ParcelFactory.Game
             // 차량은 벽 밖 출입구 앞에 후진 주차한다(모델 앞 = +z 가정: 뒤가 출입구를 향하도록 yaw).
             // 트럭 도크(스펙 10.1)는 동쪽 벽 출입구 바로 안쪽 칸 (11,2)·(11,4). 좌표는 FactoryGrid에서만 읽는다.
             Dock(docks, FactoryGrid.InletX, FactoryGrid.InletY, InletSlab, "van", -8.5f, -90f, truck: false, InletVan);
-            Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true, Hex(0x3D7BE0));
-            Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "delivery", 8.6f, 90f, truck: true, Hex(0xD95A4A), "Dock_truck"); // 이름은 예전 그대로(테스트·참조 호환), 차량은 탑차로 통일
+            trucks[CellType.Outlet] = (Dock(docks, FactoryGrid.OutletX, FactoryGrid.OutletY, new Color(0.24f, 0.48f, 0.88f), "delivery", 8.6f, 90f, truck: true, Hex(0x3D7BE0)).transform, null);
+            trucks[CellType.ReturnDock] = (Dock(docks, FactoryGrid.ReturnDockX, FactoryGrid.ReturnDockY, new Color(0.85f, 0.35f, 0.29f), "delivery", 8.6f, 90f, truck: true, Hex(0xD95A4A), "Dock_truck").transform, null); // 이름은 예전 그대로(테스트·참조 호환), 차량은 탑차로 통일
         }
 
         /// <summary>항공 트럭 색(스펙 14.1): 항공 출고 초록, 항공 반품 노랑.</summary>
@@ -315,10 +323,18 @@ namespace ParcelFactory.Game
             if (airRet) rows.Add(RowZ(FactoryGrid.AirReturnDockY));
             SideWall(eastWall, HalfBuilding, rows);
 
+            trucks.Remove(CellType.AirOutlet);
+            trucks.Remove(CellType.AirReturnDock);
             if (airOut)
-                AirSign(Dock(airDocks, FactoryGrid.AirOutletX, FactoryGrid.AirOutletY, AirOutletColor, "delivery", 8.6f, 90f, truck: true, AirOutletColor, "Dock_air-outlet"), AirOutletColor);
+            {
+                var car = Dock(airDocks, FactoryGrid.AirOutletX, FactoryGrid.AirOutletY, AirOutletColor, "delivery", 8.6f, 90f, truck: true, AirOutletColor, "Dock_air-outlet");
+                trucks[CellType.AirOutlet] = (car.transform, AirSign(car, AirOutletColor));
+            }
             if (airRet)
-                AirSign(Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "delivery", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return"), AirReturnColor);
+            {
+                var car = Dock(airDocks, FactoryGrid.AirReturnDockX, FactoryGrid.AirReturnDockY, AirReturnColor, "delivery", 8.6f, 90f, truck: true, AirReturnColor, "Dock_air-return");
+                trucks[CellType.AirReturnDock] = (car.transform, AirSign(car, AirReturnColor));
+            }
         }
 
         /// <summary>입고 트럭 색(초록). 부지 확장 입고구도 (0,2)와 같다.</summary>
@@ -353,10 +369,10 @@ namespace ParcelFactory.Game
         /// (파란 둥근 사각 + 흰 테두리 + 흰 비행기)를 짐칸 지붕 위에 평평하게 눕힌다. 크기는 지붕 짧은 변의 72%.
         /// 이름(AirSign/Board/Icon)은 테스트가 찾는다.
         /// </summary>
-        private static void AirSign(GameObject car, Color frameColor)
+        private static Transform AirSign(GameObject car, Color frameColor)
         {
             var rs = car.GetComponentsInChildren<Renderer>();
-            if (rs.Length == 0) return;
+            if (rs.Length == 0) return null;
             var b = rs[0].bounds;
             foreach (var r in rs) b.Encapsulate(r.bounds);
             var sign = new GameObject("AirSign").transform;
@@ -374,6 +390,7 @@ namespace ParcelFactory.Game
             var ir = icon.GetComponent<Renderer>();
             ir.sharedMaterial = MaterialLibrary.Decal(Resources.Load<Texture2D>("UI/Icons/mark-air"), 0.35f);
             ir.shadowCastingMode = ShadowCastingMode.Off;
+            return sign;
         }
 
         /// <summary>항공 마크 파랑(mark-air.png의 #2F86EB).</summary>

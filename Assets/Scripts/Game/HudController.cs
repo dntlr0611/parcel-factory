@@ -70,6 +70,8 @@ namespace ParcelFactory.Game
         public const string ExhaustedToast = "지쳤습니다. 잠시 쉬세요", ExhaustedPrompt = "집기 (지침)";
         /// <summary>운송장 부착대(스펙 15.1): 부착 대기 택배 앞 프롬프트, 붙인 뒤 토스트.</summary>
         public const string LabelPrompt = "운송장 붙이기", WaybillAttachedToast = "운송장 부착";
+        /// <summary>취급주의(스펙 17): 꼬리표, 파손 꼬리표·토스트, 스티커만 남았을 때 부착대 프롬프트.</summary>
+        public const string FragileTag = "취급주의", BrokenTag = "파손", BrokenToast = "취급주의 택배 파손", StickerPrompt = "취급주의 스티커 붙이기";
         // 시안 배치(1280×800 기준 px): 핫바 bottom 16, 슬롯 72, 상태줄 bottom 104(핫바 바로 위), 설정 배너 bottom 142. 터치 모드는 96 올린다.
         private const float SlotSize = 72f, HotbarPad = 8f, HotbarGap = 8f, HotbarY = 16f, StatusY = 106f, StatusH = 28f, BannerY = 144f, TouchLift = 96f;
 
@@ -87,7 +89,10 @@ namespace ParcelFactory.Game
             "분배기: 파란 화살표 = 승인 택배, 빨간 화살표 = 거부 택배\n" +
             "브릿지: 윗길은 설정 방향, 아랫길은 옆에서 들어온 택배가 직진 (레일 교차용)\n" +
             "부지 확장 2 이후: 파란 비행기 마크 = 항공 택배 → 항공 트럭(초록 출고 · 노랑 반품). 운송 수단이 틀리면 −10\n" +
-            "분배기·검사기 <color=#f4f3ee>R → 3</color> 모드(검사/항공): 검사기 항공 모드는 흰 화살표 = 일반 · 파란 화살표 = 항공 택배, 분배기 항공 모드는 초록 = 정상 · 노랑 = 반품";
+            "분배기·검사기 <color=#f4f3ee>R → 3</color> 모드(검사/항공): 검사기 항공 모드는 흰 화살표 = 일반 · 파란 화살표 = 항공 택배, 분배기 항공 모드는 초록 = 정상 · 노랑 = 반품\n" +
+            "부지 확장 2 다음 날부터: 주황 유리잔 = 취급주의 택배. 부착대에서 운송장과 취급주의 스티커를 둘 다 붙이세요(스티커 없음 −10, 정상 출고 +45).\n" +
+            "취급주의는 고속 레일·들고 달리기·팔레트에서 위에 2개 이상 쌓이면 파손 → 불량이 되어 다시 검사(거부 → 반품)\n" +
+            "트럭은 30개를 실으면 떠나고 20분(약 20초) 뒤 빈 트럭이 옵니다. 그동안 그 도크는 받지 않습니다. 퇴근 때 모두 출발";
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
@@ -185,6 +190,9 @@ namespace ParcelFactory.Game
             {
                 boundSession.Sim.PackageDelivered -= OnPackageDelivered;
                 boundSession.Sim.ScannerBlocked -= OnScannerBlocked;
+                boundSession.Sim.PackageBroken -= OnPackageBroken;
+                boundSession.Sim.Trucks.TruckDeparted -= OnTruckDeparted;
+                boundSession.DayEnded -= OnDayEnded;
                 boundSession.Build.CellChanged -= OnCellChanged;
                 boundSession.Progression.ExpChanged -= OnExpChanged;
             }
@@ -195,6 +203,10 @@ namespace ParcelFactory.Game
             if (boundSession == null) return;
             boundSession.Sim.PackageDelivered += OnPackageDelivered;
             boundSession.Sim.ScannerBlocked += OnScannerBlocked;
+            boundSession.Sim.PackageBroken += OnPackageBroken;
+            boundSession.Sim.Trucks.TruckDeparted += OnTruckDeparted;
+            boundSession.DayEnded += OnDayEnded;
+            closingDepartures = 0;
             boundSession.Build.CellChanged += OnCellChanged;
             boundSession.Progression.ExpChanged += OnExpChanged;
             lastExp = boundSession.Progression.Exp;
@@ -227,7 +239,7 @@ namespace ParcelFactory.Game
         private void OnPackageDelivered(Package p, DeliveryOutcome outcome, int delta)
         {
             var msg = DeliveryMessage(outcome);
-            if (p.Air && outcome != DeliveryOutcome.WrongCarrier) msg = AirTag + " " + msg;
+            if (outcome != DeliveryOutcome.WrongCarrier) msg = PackageTags(p) + msg;
             Toast(msg, DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
             var (dx, dy) = DockTile(boundSession.Sim.LastDeliveredDock);
             SpawnMoneyPopup(dx, dy, delta);
@@ -237,6 +249,67 @@ namespace ParcelFactory.Game
         public const string ScannerBlockedToast = "검사기 출구가 막혔습니다";
 
         private void OnScannerBlocked(int x, int y) => Toast(ScannerBlockedToast, ToastKind.Bad);
+
+        private void OnPackageBroken(Package p) => Toast(BrokenToast, ToastKind.Bad);
+
+        /// <summary>택배 꼬리표(스펙 14.2·17.1): 파손이면 "파손 ", 취급주의면 "취급주의 ", 항공이면 "항공 "을 이 순서로 붙인다.</summary>
+        public static string PackageTags(Package p) =>
+            (p.Broken ? BrokenTag + " " : p.Fragile ? FragileTag + " " : "") + (p.Air ? AirTag + " " : "");
+
+        /// <summary>취급주의 꼬리표만(집기·검사 프롬프트, 미니 상태바): "파손 " 또는 "취급주의 ", 아니면 "".</summary>
+        public static string FragileTagOf(Package p) =>
+            p == null ? "" : p.Broken ? BrokenTag + " " : p.Fragile ? FragileTag + " " : "";
+
+        /// <summary>트럭 대기 남은 시간(게임 분 = 1x 실제 초) "0:12". 올림.</summary>
+        public static string WaitClock(float minutes)
+        {
+            int t = Mathf.CeilToInt(Mathf.Max(0f, minutes));
+            return t / 60 + ":" + (t % 60).ToString("00");
+        }
+
+        /// <summary>도크마다 마지막으로 만든 트럭 문구. (적재 수, 떠남, 남은 분 올림)이 같으면 다시 만들지 않는다(매 프레임 할당 방지).</summary>
+        private static readonly Dictionary<CellType, (int loaded, bool away, int wait, string label, string awayLabel)> truckLabels =
+            new Dictionary<CellType, (int, bool, int, string, string)>();
+
+        private static (int loaded, bool away, int wait, string label, string awayLabel) TruckTexts(TruckFleet t, CellType dock)
+        {
+            bool away = t.IsAway(dock);
+            int loaded = t.Loaded(dock), wait = away ? Mathf.CeilToInt(t.AwayMinutes(dock)) : 0;
+            if (truckLabels.TryGetValue(dock, out var c) && c.loaded == loaded && c.away == away && c.wait == wait) return c;
+            var label = away ? "다음 차 " + WaitClock(wait) : loaded + "/" + TruckFleet.TruckCapacity;
+            return truckLabels[dock] = (loaded, away, wait, label, "트럭 대기 중 · " + label);
+        }
+
+        /// <summary>트럭 알약·도크 프롬프트(스펙 18): 있으면 "12/30", 떠나 있으면 "다음 차 0:12".</summary>
+        public static string TruckLabel(TruckFleet t, CellType dock) => TruckTexts(t, dock).label;
+
+        /// <summary>떠난 트럭 도크에 넣으려 할 때(스펙 18) 프롬프트·토스트: "트럭 대기 중 · 다음 차 0:12".</summary>
+        public static string TruckAwayLabel(TruckFleet t, CellType dock) => TruckTexts(t, dock).awayLabel;
+
+        /// <summary>트럭 이름(출발 토스트): 출고 / 반품 / 항공 출고 / 항공 반품.</summary>
+        public static string TruckName(CellType dock) =>
+            dock == CellType.ReturnDock ? "반품" : dock == CellType.AirOutlet ? "항공 출고" : dock == CellType.AirReturnDock ? "항공 반품" : "출고";
+
+        /// <summary>트럭 출발 토스트(스펙 17.4): "출고 트럭 출발 · 다음 차 0:20".</summary>
+        public static string TruckDepartedToast(TruckFleet t, CellType dock) => TruckName(dock) + " 트럭 출발 · " + TruckLabel(t, dock);
+
+        /// <summary>18:00 한꺼번에 출발할 때 한 번만: "트럭 2대 출발".</summary>
+        public static string ClosingDeparturesToast(int n) => "트럭 " + n + "대 출발";
+
+        /// <summary>퇴근(18:00) 출발 수. 트럭마다 토스트를 띄우지 않고 DayEnded에서 한 번에 알린다.</summary>
+        private int closingDepartures;
+
+        private void OnTruckDeparted(CellType dock)
+        {
+            if (!boundSession.Clock.IsOpen) { closingDepartures++; return; }
+            Toast(TruckDepartedToast(boundSession.Sim.Trucks, dock));
+        }
+
+        private void OnDayEnded(DaySummary d)
+        {
+            if (closingDepartures > 0) Toast(ClosingDeparturesToast(closingDepartures));
+            closingDepartures = 0;
+        }
 
         /// <summary>항공 택배 꼬리표(스펙 14.2).</summary>
         public const string AirTag = "항공";
@@ -286,6 +359,8 @@ namespace ParcelFactory.Game
                 case DeliveryOutcome.WrongCarrier: return WrongCarrierLabel;
                 case DeliveryOutcome.NoWaybillToOutlet: return "출고 " + Signed(DeliveryScoring.Delta(o)) + " · 운송장 없음";
                 case DeliveryOutcome.NoWaybillToReturn: return "반품 " + Signed(DeliveryScoring.Delta(o)) + " · 운송장 없음";
+                case DeliveryOutcome.NoFragileSticker: return "스티커 없음 " + Signed(DeliveryScoring.Delta(o));
+                case DeliveryOutcome.DeliveredFragile: return "정상 출고 " + Signed(DeliveryScoring.Delta(o));
                 default: return o.ToString();
             }
         }
@@ -689,6 +764,13 @@ namespace ParcelFactory.Game
                 case InteractResult.NotEnoughMoney: Toast("잔액이 부족합니다", ToastKind.Bad); break;
                 case InteractResult.Standing: Toast("서 있는 자리에는 놓을 수 없습니다"); break;
                 case InteractResult.Exhausted: Toast(ExhaustedToast, ToastKind.Bad); break;
+                case InteractResult.TruckAway:
+                {
+                    var ss = GameBootstrap.Instance.Session;
+                    var (tx, ty) = ss.Worker.FacingTile();
+                    Toast(TruckAwayLabel(ss.Sim.Trucks, ss.Grid.Get(tx, ty).Type), ToastKind.Bad);
+                    break;
+                }
                 case InteractResult.Placed:
                     var tool = input.SelectedTool;
                     var s = GameBootstrap.Instance.Session;
@@ -715,23 +797,59 @@ namespace ParcelFactory.Game
 
         /// <summary>도크 종류와 항공 여부까지 본 트럭 도크 프롬프트(스펙 14.2–14.3): 운송 수단이 틀리면 "운송 수단 틀림 −10",
         /// 항공 택배를 항공 트럭에 넣으면 "항공 출고 +30"처럼 꼬리표를 붙인다. 항공 도크는 대응하는 일반 도크 문구.</summary>
-        public static string DeliverLabel(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true)
+        public static string DeliverLabel(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true) =>
+            DeliverLabel(dock, Assumed(air, inspected, rejected, waybill));
+
+        public static int ExpectedDelta(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true) =>
+            ExpectedDelta(dock, Assumed(air, inspected, rejected, waybill));
+
+        /// <summary>예전 bool 인자 형태용 가상 택배(재사용, 메인 스레드 전용).</summary>
+        private static readonly Package assumedArgs = new Package();
+        /// <summary>ExpectedOutcome이 매 프레임 쓰는 가상 택배(재사용, 메인 스레드 전용).</summary>
+        private static readonly Package scratch = new Package();
+
+        private static Package Assumed(bool air, bool inspected, bool rejected, bool waybill)
         {
-            if (air != Cell.IsAirDock(dock)) return WrongCarrierLabel;
-            bool outlet = IsOutletDock(dock);
-            // 운송장 없음(스펙 15.3): 미검사 다음 순서. "출고 −20 · 운송장 없음"
-            var label = inspected && !waybill
-                ? (outlet ? "출고 " : "반품 ") + Signed(DeliveryScoring.Delta(outlet ? DeliveryOutcome.NoWaybillToOutlet : DeliveryOutcome.NoWaybillToReturn)) + " · 운송장 없음"
-                : DeliverLabel(outlet, inspected, rejected);
-            return air ? AirTag + " " + label : label;
+            var p = assumedArgs;
+            p.Air = air; p.Waybill = waybill; p.Fragile = false; p.FragileSticker = false; p.Broken = false; p.Bad = false;
+            p.Inspected = inspected; p.Rejected = inspected && rejected;
+            return p;
         }
 
-        public static int ExpectedDelta(CellType dock, bool air, bool inspected, bool rejected, bool waybill = true)
+        /// <summary>프롬프트용 예상 결과: 검사 판정이 옳다고 가정한다(불량 여부 = 거부 여부). 운송 수단·미검사·운송장·취급주의 스티커는 실제 상태 그대로.</summary>
+        public static DeliveryOutcome ExpectedOutcome(CellType dock, Package p)
         {
-            if (air != Cell.IsAirDock(dock)) return DeliveryScoring.Delta(DeliveryOutcome.WrongCarrier);
+            bool inspected = p.Inspected, rejected = p.Inspected && p.Rejected;
+            scratch.Air = p.Air; scratch.Waybill = p.Waybill; scratch.Fragile = p.Fragile; scratch.FragileSticker = p.FragileSticker; scratch.Broken = p.Broken;
+            scratch.Inspected = inspected; scratch.Rejected = rejected; scratch.Bad = rejected;
+            return DeliveryScoring.Outcome(scratch, dock);
+        }
+
+        public static int ExpectedDelta(CellType dock, Package p) => DeliveryScoring.Delta(ExpectedOutcome(dock, p));
+
+        /// <summary>
+        /// 트럭 도크 프롬프트(스펙 14.2–14.3, 15.3, 17.3): 운송 수단이 틀리면 "운송 수단 틀림 −10", 운송장 없음 "출고 −20 · 운송장 없음",
+        /// 취급주의 스티커 없음 "출고 −10 · 스티커 없음", 취급주의 정상 출고 "출고 +45". 앞에 꼬리표(파손/취급주의, 항공)를 붙인다.
+        /// </summary>
+        public static string DeliverLabel(CellType dock, Package p)
+        {
+            var o = ExpectedOutcome(dock, p);
+            if (o == DeliveryOutcome.WrongCarrier) return WrongCarrierLabel;
             bool outlet = IsOutletDock(dock);
-            if (inspected && !waybill) return DeliveryScoring.Delta(outlet ? DeliveryOutcome.NoWaybillToOutlet : DeliveryOutcome.NoWaybillToReturn);
-            return ExpectedDelta(outlet, inspected, rejected);
+            string label;
+            switch (o)
+            {
+                case DeliveryOutcome.NoWaybillToOutlet:
+                case DeliveryOutcome.NoWaybillToReturn:
+                    label = (outlet ? "출고 " : "반품 ") + Signed(DeliveryScoring.Delta(o)) + " · 운송장 없음"; break;
+                case DeliveryOutcome.NoFragileSticker:
+                    label = (outlet ? "출고 " : "반품 ") + Signed(DeliveryScoring.Delta(o)) + " · 스티커 없음"; break;
+                case DeliveryOutcome.DeliveredFragile:
+                    label = "출고 " + Signed(DeliveryScoring.Delta(o)); break;
+                default:
+                    label = DeliverLabel(outlet, p.Inspected, p.Rejected); break;
+            }
+            return PackageTags(p) + label;
         }
 
         private static bool IsOutletDock(CellType dock) => dock == CellType.Outlet || dock == CellType.AirOutlet;
@@ -898,7 +1016,7 @@ namespace ParcelFactory.Game
             UpdateClock(s.Clock);
             UpdateStamina(w.Stamina, s.Worker.EffectiveMaxStamina, s.Worker.IsRunning);
             var tool = input.SelectedTool;
-            var statusLine = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? ((w.Carrying.Air ? AirTag + " " : "") + "택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
+            var statusLine = (s.Worker.IsRunning ? RunningPrefix : "") + (w.Carrying != null ? (PackageTags(w.Carrying) + "택배 #" + w.Carrying.Id + " 운반 중 · 레일·팔레트·트럭을 보고 E")
                 : tool.HasValue ? (Name(tool.Value.Type) + " " + DirLabel(tool.Value.Type, tool.Value.Direction) + " 들고 있음 · E로 설치, R 설정")
                 : "빈손 · 1~8로 도구 선택");
             if (workerText.text != statusLine)
@@ -922,15 +1040,29 @@ namespace ParcelFactory.Game
             Color textColor = UiKit.Fg;
             switch (r)
             {
-                case InteractResult.PickedUp: label = s.Grid.Get(fx, fy).Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기"; break;
+                case InteractResult.PickedUp:
+                {
+                    var fcell = s.Grid.Get(fx, fy);
+                    var top = fcell.Type == CellType.Pallet ? fcell.Pallet[fcell.Pallet.Count - 1] : s.Sim.PackageAt(fx, fy);
+                    label = FragileTagOf(top) + (fcell.Type == CellType.Pallet ? "집기 (" + s.Sim.PalletCount(fx, fy) + ")" : "집기");
+                    break;
+                }
                 case InteractResult.PutDown: label = "놓기"; break;
                 case InteractResult.Delivered:
                     var dock = s.Grid.Get(fx, fy).Type;
-                    label = DeliverLabel(dock, w.Carrying.Air, w.Carrying.Inspected, w.Carrying.Rejected, w.Carrying.Waybill);
-                    textColor = ExpectedDelta(dock, w.Carrying.Air, w.Carrying.Inspected, w.Carrying.Rejected, w.Carrying.Waybill) >= 0 ? UiKit.Good : UiKit.Bad;
+                    label = DeliverLabel(dock, w.Carrying) + " · " + TruckLabel(s.Sim.Trucks, dock); // 트럭 적재 수(스펙 18)
+                    textColor = ExpectedDelta(dock, w.Carrying) >= 0 ? UiKit.Good : UiKit.Bad;
                     break;
-                case InteractResult.InspectionRequired: label = "검사"; break;
-                case InteractResult.LabelRequired: label = LabelPrompt; break;
+                case InteractResult.TruckAway:
+                    label = TruckAwayLabel(s.Sim.Trucks, s.Grid.Get(fx, fy).Type); canAct = false; textColor = UiKit.Bad; break;
+                case InteractResult.InspectionRequired: label = FragileTagOf(s.Sim.PackageAt(fx, fy)) + "검사"; break;
+                case InteractResult.LabelRequired:
+                {
+                    var lp = s.Sim.PackageAt(fx, fy);
+                    // 운송장은 붙었고 취급주의 스티커만 남음(스펙 17.3) → "취급주의 스티커 붙이기"(이미 취급주의라 꼬리표 없음)
+                    label = lp != null && lp.Waybill ? StickerPrompt : FragileTagOf(lp) + LabelPrompt;
+                    break;
+                }
                 case InteractResult.Exhausted: label = ExhaustedPrompt; canAct = false; textColor = UiKit.Bad; break;
                 case InteractResult.Placed: label = PlaceLabel(tool.Value, true, input.ToolSplitterRed); break;
                 case InteractResult.NotEnoughMoney: label = PlaceLabel(tool.Value, false, input.ToolSplitterRed); canAct = false; textColor = UiKit.Bad; break;

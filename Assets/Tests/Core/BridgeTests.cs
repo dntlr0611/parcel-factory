@@ -384,7 +384,7 @@ namespace ParcelFactory.Core.Tests
         {
             var s = BridgeSession(out var up, out var low);
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(8, st.Version);
+            Assert.AreEqual(9, st.Version);
             Assert.AreEqual("Upper", st.Packages.Single(p => p.Id == up.Id).Lane);
             Assert.AreEqual("Lower", st.Packages.Single(p => p.Id == low.Id).Lane);
 

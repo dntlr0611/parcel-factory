@@ -10,6 +10,8 @@ namespace ParcelFactory.Core
         public const double AirChanceAfterPlot2 = 0.25;
         /// <summary>항공 택배의 라벨 배송 방법.</summary>
         public const string AirMethod = "항공";
+        /// <summary>부지 확장 2를 산 다음 날부터 취급주의 택배 비율(스펙 17.1). GameSession이 FragileChance에 넣는다.</summary>
+        public const double FragileChanceAfterPlot2 = 0.15;
         private static readonly string[] Destinations = { "서울", "부산", "대구", "광주", "인천" };
         private static readonly string[] Methods = { "일반", "익일", "당일" };
 
@@ -18,6 +20,8 @@ namespace ParcelFactory.Core
 
         /// <summary>새 택배가 항공일 확률. 0이면 항공 추첨을 하지 않아 난수 순서가 이전과 같다.</summary>
         public double AirChance { get; set; }
+        /// <summary>새 택배가 취급주의일 확률. 0이면 추첨하지 않아 난수 순서가 이전과 같다.</summary>
+        public double FragileChance { get; set; }
 
         public PackageFactory(Random rng, double badChance = BadChance, double airChance = 0.0)
         {
@@ -40,6 +44,8 @@ namespace ParcelFactory.Core
             // 항공 추첨은 맨 마지막: 같은 시드에서 다른 필드가 바뀌지 않는다.
             bool air = AirChance > 0.0 && rng.NextDouble() < AirChance;
             if (air) label.Method = AirMethod;
+            // 취급주의 추첨은 항공 다음(맨 마지막): 같은 시드에서 다른 필드가 바뀌지 않는다(스펙 17.1).
+            bool fragile = FragileChance > 0.0 && rng.NextDouble() < FragileChance;
             return new Package
             {
                 Id = id,
@@ -51,6 +57,7 @@ namespace ParcelFactory.Core
                 EntryHeading = heading,
                 Bad = bad,
                 Air = air,
+                Fragile = fragile,
                 Label = label,
             };
         }

@@ -65,9 +65,9 @@ namespace ParcelFactory.Game
         /// 텍스처 데칼(알파 컷아웃, 스펙 14 항공 마크·표지판): 텍스처 색 그대로, 방향광과 무관하게 읽히도록 같은 텍스처로 glow배 발광한다.
         /// 템플릿 PF_Cutout(Lit + _ALPHATEST_ON + _EMISSION)을 복제한다.
         /// </summary>
-        public static Material Decal(Texture tex, float glow = 0.6f)
+        public static Material Decal(Texture tex, float glow = 0.6f, float cutoff = 0.5f)
         {
-            string key = $"decal:{(tex != null ? tex.GetInstanceID() : 0)}:{glow}";
+            string key = $"decal:{(tex != null ? tex.GetInstanceID() : 0)}:{glow}:{cutoff}";
             if (cache.TryGetValue(key, out var m)) return m;
             m = FromTemplate("PF_Cutout", "Universal Render Pipeline/Lit");
             m.name = "Decal-" + (tex != null ? tex.name : "none");
@@ -76,7 +76,7 @@ namespace ParcelFactory.Game
             m.SetFloat("_Smoothness", 0.2f);
             m.SetFloat("_Metallic", 0f);
             m.SetFloat("_AlphaClip", 1f);
-            m.SetFloat("_Cutoff", 0.5f);
+            m.SetFloat("_Cutoff", cutoff);
             m.EnableKeyword("_ALPHATEST_ON");
             m.EnableKeyword("_EMISSION");
             m.SetTexture("_EmissionMap", tex);
@@ -118,6 +118,39 @@ namespace ParcelFactory.Game
         }
 
         private static Material waybill;
+
+        /// <summary>취급주의 스티커 주황(mark-fragile.png의 #F28B30, 스펙 17.1).</summary>
+        public static readonly Color FragileOrange = new Color(0xF2 / 255f, 0x8B / 255f, 0x30 / 255f);
+
+        /// <summary>
+        /// 부착 전 취급주의 표시(스펙 17.1 "흐린 인쇄"): 반투명 주황 둥근 사각 테두리. 128px 흰 테두리(안티에일리어싱, 둥근 반경 24, 선 9px)를
+        /// 투명 Unlit 템플릿(PF_Transparent)에 주황 55%로 물들인다. 한 번 만들어 둔다.
+        /// </summary>
+        public static Material FragilePrint()
+        {
+            if (fragilePrint != null) return fragilePrint;
+            const int n = 128;
+            const float r = 24f, stroke = 9f, inset = 6f;
+            var buf = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    // 둥근 사각형까지의 부호 있는 거리(안쪽 음수)
+                    float px = Mathf.Abs(x + 0.5f - n / 2f) - (n / 2f - inset - r);
+                    float py = Mathf.Abs(y + 0.5f - n / 2f) - (n / 2f - inset - r);
+                    float outside = new Vector2(Mathf.Max(px, 0f), Mathf.Max(py, 0f)).magnitude + Mathf.Min(Mathf.Max(px, py), 0f) - r;
+                    float a = Mathf.Clamp01(0.5f - outside) * Mathf.Clamp01(outside + stroke + 0.5f);
+                    buf[y * n + x] = new Color(1f, 1f, 1f, a);
+                }
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, true, false) { name = "FragilePrint", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Trilinear, anisoLevel = 4 };
+            tex.SetPixels(buf);
+            tex.Apply(true, true);
+            var m = new Material(Transparent(new Color(FragileOrange.r, FragileOrange.g, FragileOrange.b, 0.55f))) { name = "FragilePrint" };
+            m.SetTexture("_BaseMap", tex);
+            return fragilePrint = m;
+        }
+
+        private static Material fragilePrint;
 
         /// <summary>n×n 칸 창고 바닥: 기본색 tone + 미세 노이즈 + 칸마다 어두운 이음새(2px)와 밝은 하이라이트(1px). 칸당 64px.</summary>
         public static Material Concrete(int tiles, Color baseTone)

@@ -16,6 +16,12 @@ namespace ParcelFactory.Core
         /// <summary>입고구마다의 타이머(v8, 스펙 16.2). 없으면(null, v7 이하) (0,2)는 SpawnTimer, 나머지는 기본값(간격의 절반).</summary>
         public List<InletTimerState> InletTimers;
         public int NextPackageId;
+        /// <summary>취급주의 택배 시작일(v9, 스펙 17.1). 부지 확장 2가 없으면 0. v8 이하에는 없다(부지 확장 2가 있으면 읽은 날 + 1).</summary>
+        public int FragileFromDay;
+        /// <summary>트럭 네 대의 적재 수·대기(v9, 스펙 18, TruckFleet.Docks 순서). 없으면(null, v8 이하) 모두 빈 트럭.</summary>
+        public List<TruckState> Trucks;
+        /// <summary>그날 출발한 트럭 수(v9). 하루 요약용.</summary>
+        public int TrucksDepartedToday;
         public int DeliveredCount;
         public int LostCount;
         public bool Paused;
@@ -43,6 +49,15 @@ namespace ParcelFactory.Core
         public int StaminaLevel;
         public int SpeedLevel;
         public int RegenLevel;
+    }
+
+    public sealed class TruckState
+    {
+        /// <summary>도크 종류 이름(Outlet/ReturnDock/AirOutlet/AirReturnDock).</summary>
+        public string Dock;
+        public int Loaded;
+        /// <summary>빈 트럭이 들어올 때까지 남은 게임 분. 0이면 트럭이 도크에 있다.</summary>
+        public float AwayMinutes;
     }
 
     public sealed class InletTimerState
@@ -93,6 +108,10 @@ namespace ParcelFactory.Core
         public bool Air;
         /// <summary>운송장(v7, 스펙 15.3). 없으면 false.</summary>
         public bool Waybill;
+        /// <summary>취급주의·파손·취급주의 스티커(v9, 스펙 17). 없으면 false.</summary>
+        public bool Fragile;
+        public bool Broken;
+        public bool FragileSticker;
         public string LabelDestination;
         public int LabelWeight;
         public string LabelMethod;

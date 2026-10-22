@@ -15,7 +15,17 @@ namespace ParcelFactory.Game
         private Image iMethodAir;
         /// <summary>검사 카드의 운송장 상태(스펙 15.3).</summary>
         private Text iWaybill;
-        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, statusExp, sTitle, sDelivered, sLost, sInspected, sMoney, sExp;
+        private Text iDest, iWeight, iMethod, iScale, iId, dText, dRefund, shopMoney, statusExp, sTitle, sDelivered, sLost, sInspected, sMoney, sExp, sTrucks;
+        /// <summary>검사 카드의 취급주의·파손 줄(스펙 17.1·17.2). 취급주의 택배일 때만 보이고 그만큼 종이·카드가 길어진다.</summary>
+        private Text iFragile, iBroken;
+        /// <summary>취급주의 줄의 깨진 유리잔 아이콘(ui-fragile, 주황).</summary>
+        private Image iFragileIcon;
+        private RectTransform iPaper, iCard, iHint;
+        private float iPaperH, iCardH, iHintY;
+        /// <summary>검사 카드 한 줄 높이(줄 22 + 간격 7).</summary>
+        public const float InspectRowStep = 29f;
+        /// <summary>검사 카드 취급주의 줄 색(종이 위 주황, mark-fragile #F28B30보다 어둡게 해 글자가 읽히게).</summary>
+        public static readonly Color FragileInk = new Color(0xC8 / 255f, 0x5E / 255f, 0x12 / 255f);
         /// <summary>상태창 행 순서.</summary>
         public static readonly Stat[] StatOrder = { Stat.Stamina, Stat.Speed, Stat.Regen };
         private (int x, int y)? pendingDemolish;
@@ -301,6 +311,7 @@ namespace ParcelFactory.Game
             const float paperH = 12f + 4f * 22f + 3f * 7f + 10f + 10f;
             inspect = Card("Inspect", new Vector2(CardW, CardPad + 22f + 12f + paperH + 12f + 36f + 12f + CardBtnH + 16f), "택배 검사");
             var card = inspect.Find("Card");
+            iCard = (RectTransform)card; iCardH = iCard.sizeDelta.y; iPaperH = paperH; iHintY = CardPad + 22f + 12f + paperH + 12f;
             var idKey = UiKit.Keycap(card, "#1", 20f, 11, "IdKey");
             UiKit.Place((RectTransform)idKey.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-CardPad, -CardPad), new Vector2(30f, 20f));
             iId = idKey.Text; iId.name = "Id";
@@ -323,9 +334,18 @@ namespace ParcelFactory.Game
             var dash = UiKit.Rect("Dash", paper, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(12f + 87f + 2f)), new Vector2(-28f, 1f));
             var dashImg = dash.gameObject.AddComponent<Image>(); dashImg.sprite = UiSprites.Dash(); dashImg.type = Image.Type.Tiled; dashImg.color = UiKit.PaperDash; dashImg.raycastTarget = false;
             iScale = Row("Scale", "저울 실측", 12f + 87f + 10f, UiKit.Danger);
+            // 취급주의(주황)·파손(빨강) 줄은 저울 실측 아래에 붙는다. 보일 때만 종이가 아래로 길어진다(OpenInspect).
+            iFragile = Row("Fragile", "취급", 12f + 87f + 10f + InspectRowStep, FragileInk);
+            iBroken = Row("Broken", "상태", 12f + 87f + 10f + 2f * InspectRowStep, UiKit.Danger);
+            var fragRt = UiKit.Rect("FragileIcon", paper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(-14f, -(12f + 87f + 10f + InspectRowStep + 11f)), new Vector2(16f, 16f));
+            iFragileIcon = fragRt.gameObject.AddComponent<Image>();
+            iFragileIcon.sprite = UiKit.Icon("ui-fragile"); iFragileIcon.preserveAspect = true; iFragileIcon.raycastTarget = false;
+            iFragileIcon.color = FragileInk;
+            iPaper = paper;
             var hint = UiKit.Label("Hint", card, "표기와 실측이 다르면 거부하세요. 거부한 택배는 반품구로 보내야 합니다.", 12, UiKit.Muted, TextAnchor.UpperLeft);
             hint.lineSpacing = 1.1f;
             UiKit.Top(hint.rectTransform, CardPad + 22f + 12f + paperH + 12f, 36f, CardPad, CardPad);
+            iHint = hint.rectTransform;
             var buttons = ButtonRow(card);
             UiKit.Btn("CancelInspect", buttons, "취소", () => { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); Sync(); }, minWidth: 64f);
             UiKit.Btn("Reject", buttons, "거부", () => { GameBootstrap.Instance.Session.Worker.Inspect(true); inspect.gameObject.SetActive(false); Sync(); }, style: BtnStyle.Danger, minWidth: 72f);
@@ -344,8 +364,27 @@ namespace ParcelFactory.Game
             iWaybill.text = p.Waybill ? "운송장 ✓" : "운송장 없음"; // 스펙 15.3
             iWaybill.color = p.Waybill ? UiKit.Good : UiKit.Muted;
             if (p.Air) iMethodAir.rectTransform.anchoredPosition = new Vector2(-(14f + Mathf.Ceil(iMethod.preferredWidth) + 6f), iMethodAir.rectTransform.anchoredPosition.y);
+            // 취급주의 줄(스펙 17.1), 파손 줄 빨강(스펙 17.2: 파손품은 거부가 맞다).
+            int rows = p.Fragile ? (p.Broken ? 2 : 1) : 0;
+            SetRow(iFragile, rows >= 1); SetRow(iBroken, rows >= 2);
+            UiKit.SetNumText(iFragile, HudController.FragileTag, false);
+            UiKit.SetNumText(iBroken, HudController.BrokenTag + " · 거부하세요", false);
+            iFragileIcon.gameObject.SetActive(rows >= 1);
+            if (rows >= 1) iFragileIcon.rectTransform.anchoredPosition = new Vector2(-(14f + Mathf.Ceil(iFragile.preferredWidth) + 6f), iFragileIcon.rectTransform.anchoredPosition.y);
+            float extra = rows * InspectRowStep;
+            iPaper.sizeDelta = new Vector2(iPaper.sizeDelta.x, iPaperH + extra);
+            iCard.sizeDelta = new Vector2(iCard.sizeDelta.x, iCardH + extra);
+            UiKit.Top(iHint, iHintY + extra, 36f, CardPad, CardPad);
             inspect.gameObject.SetActive(true);
             Sync();
+        }
+
+        /// <summary>검사 카드 종이 줄(값 + 왼쪽 라벨 "…L")을 함께 켜고 끈다.</summary>
+        private static void SetRow(Text value, bool on)
+        {
+            value.gameObject.SetActive(on);
+            var label = value.transform.parent.Find(value.name + "L");
+            if (label != null) label.gameObject.SetActive(on);
         }
 
         private void BuildDemolish()
@@ -363,7 +402,7 @@ namespace ParcelFactory.Game
         {
             // 시안 .sum: 행 사이 1px 선, 패딩 9 0, 라벨 muted 13, 값 Sora Bold 16. "다음 날"은 primary, 최소 150 · 높이 40 · 15.
             const float rowH = 36f, top = CardPad + 22f + 6f;
-            summary = Card("DaySummary", new Vector2(CardW, top + 5f * rowH + 16f + 40f + 18f), "1일차 마감");
+            summary = Card("DaySummary", new Vector2(CardW, top + 6f * rowH + 16f + 40f + 18f), "1일차 마감");
             var card = summary.Find("Card");
             sTitle = card.Find("Title").GetComponent<Text>();
             int index = 0;
@@ -381,6 +420,7 @@ namespace ParcelFactory.Game
             sInspected = Row("Inspected", "검사", UiKit.Fg);
             sExp = Row("Exp", "획득 EXP", UiKit.ExpColor);
             sMoney = Row("Money", "잔액 변화", UiKit.Accent);
+            sTrucks = Row("Trucks", "출발한 트럭", UiKit.Fg); // 스펙 18
             var next = UiKit.Btn("NextDay", card, "다음 날", NextDay, style: BtnStyle.Primary, height: 40f, fontSize: 15, fixedSize: new Vector2(150f, 40f));
             UiKit.Place((RectTransform)next.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(150f, 40f));
         }
@@ -399,6 +439,7 @@ namespace ParcelFactory.Game
             UiKit.SetNumText(sMoney, d.StartMoney + " → " + d.EndMoney + " (" + HudController.Signed(d.EndMoney - d.StartMoney) + ")", true);
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
             UiKit.SetNumText(sExp, d.Exp.ToString(), true);
+            UiKit.SetNumText(sTrucks, d.TrucksDeparted + "대", true);
             summary.gameObject.SetActive(true);
             summary.SetAsLastSibling(); // 운송장 카드 등 나중에 만든 모달보다 위에
             input.ClearPad();

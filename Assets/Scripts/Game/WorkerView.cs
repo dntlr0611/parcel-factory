@@ -114,7 +114,8 @@ namespace ParcelFactory.Game
             {
                 var cell = boot.Session.Grid.Get(fx, fy);
                 cursor.position = Grid3D.Tile(fx, fy) + new Vector3(0f, 0.03f + PackageViews.TopHeight(cell), 0f);
-                bool refused = boot.Input != null && ws.Preview(boot.Input.SelectedTool) == InteractResult.Locked;
+                var preview = boot.Input != null ? ws.Preview(boot.Input.SelectedTool) : InteractResult.NoTool;
+                bool refused = preview == InteractResult.Locked || preview == InteractResult.TruckAway; // 떠난 트럭 도크도 빨갛게(스펙 18)
                 var c = refused ? RefusedTint : CursorTint;
                 c.a = 0.45f + 0.10f * Mathf.Sin(Time.time * 6f); // 0.35~0.55: 어두운 잠긴 바닥 위에서도 보이게
                 cursorRenderer.material.SetColor("_BaseColor", c);

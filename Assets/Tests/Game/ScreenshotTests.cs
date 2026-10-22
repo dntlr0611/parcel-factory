@@ -422,7 +422,7 @@ namespace ParcelFactory.Game.Tests
                 yield return new WaitForSeconds(HudController.PopupSeconds + 0.2f); // 설치비 팝업이 사라질 때까지
                 var prompt = boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>();
                 Debug.Log($"[Screenshot] air prompt '{prompt.text}', packages {s.Sim.Packages.Count}, scanner '{boot.StatusBars.TextAt(3, 2)}', air splitter '{boot.StatusBars.TextAt(10, 7)}'");
-                Assert.AreEqual("항공 출고 +30", prompt.text);
+                Assert.AreEqual("항공 출고 +30 · 0/30", prompt.text);
                 Assert.IsNotNull(GameObject.Find("World/AirDocks/Dock_air-outlet/AirSign"), "air sign missing");
                 // 상자 윗면의 항공 마크·운송장이 읽히도록 동쪽 절반을 가까이(거리 14) 찍는다. 카메라 각도는 게임과 같다.
                 yield return Capture(boot, "unity-air.png", Width, Height, cam =>
@@ -549,6 +549,161 @@ namespace ParcelFactory.Game.Tests
             yield return null;
         }
 
+        /// <summary>
+        /// 취급주의 택배(스펙 17): 북쪽으로 흐르는 세로 줄 (3,0) 레일 → (3,1) 고속 레일 → (3,2)(3,3)(3,4) 레일. 아래부터 옆면 흐린 인쇄(스티커 전) 상자,
+        /// 고속 레일에서 파손된 상자(윗면 금 무늬, 검사 지워짐), 항공 + 취급주의(인쇄), 스티커 + 운송장 + 승인 상자, 항공 + 스티커 상자.
+        /// 부착대 (5,2)(시작 팔레트 자리)의 취급주의 택배로 운송장 카드를 열었다. 운송장은 이미 가운데에 붙었고(두 장 중 하나), 취급주의 스티커를
+        /// 상자 그림 왼쪽 아래 옆면 칸 쪽으로 끌고 있다(칸 테두리 앰버). 상자 줄은 카드 오른쪽 화면에 오도록 카메라를 서쪽으로 옮겨 가까이 찍는다. 일시정지로 고정한다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Fragile()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(2000);
+                s.Unlocks.Grant(UnlockId.FastNorth);
+                s.Unlocks.Grant(UnlockId.RailNorth);
+                Assert.AreEqual(BuildResult.Ok, s.Build.BeginDemolish(5, 2));
+                s.Build.Tick(BuildService.DemolishSeconds + 0.1f);
+                Place(s, 3, 0, CellType.Conveyor, Direction.North);
+                Place(s, 3, 1, CellType.FastConveyor, Direction.North);
+                for (int y = 2; y <= 4; y++) Place(s, 3, y, CellType.Conveyor, Direction.North);
+                Place(s, 5, 2, CellType.Labeler, Direction.East);
+                var f = new PackageFactory(new System.Random(41), 0.0);
+                Package Put(int x, int y, bool sticker, bool air = false, bool? reject = null, float progress = 0.5f)
+                {
+                    var p = f.Create(s.Sim.NextId++, 0, 0, Direction.North);
+                    p.Fragile = true;
+                    p.Air = air;
+                    if (air) p.Label.Method = PackageFactory.AirMethod;
+                    if (reject.HasValue) p.Inspect(reject.Value);
+                    p.Waybill = sticker;
+                    p.FragileSticker = sticker;
+                    s.Sim.PlaceCarried(p, x, y);
+                    p.Progress = progress;
+                    return p;
+                }
+                Put(3, 0, false);                             // 흐린 인쇄
+                var broken = Put(3, 1, true, reject: false);  // 고속 레일 → 파손(금 무늬, 검사 지워짐)
+                Assert.IsTrue(broken.Broken);
+                Put(3, 2, false, air: true);                  // 항공 + 취급주의(인쇄)
+                Put(3, 3, true, reject: false);               // 스티커 + 운송장 + 승인
+                Put(3, 4, true, air: true, reject: true);     // 항공 + 스티커 + 거부 도장
+                var onLabeler = Put(5, 2, false, reject: false, progress: 1f);
+                onLabeler.Waybill = true; // 운송장은 붙었고 스티커만 남음 → 카드에서 하나 붙은 상태
+                Assert.IsTrue(s.Sim.IsAwaitingLabel(onLabeler));
+                s.Worker.Worker.X = 5.0f; s.Worker.Worker.Y = 3.0f; s.Worker.Worker.Facing = Direction.South;
+                s.Clock.Set(2, 640f);
+                yield return new WaitForSeconds(2f); // 설치비 팝업·파손 토스트(1.8초)가 사라질 때까지
+                boot.Input.Interact();
+                yield return null;
+                var card = boot.Panels.Waybill;
+                Assert.IsTrue(card.IsOpen, "waybill card did not open");
+                Assert.IsTrue(card.WaybillDone && !card.StickerDone);
+                var st = card.Sticker.gameObject;
+                var start = RectTransformUtility.WorldToScreenPoint(null, card.Sticker.position);
+                var zone = RectTransformUtility.WorldToScreenPoint(null, card.StickerZone.position);
+                var e = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { position = start };
+                UnityEngine.EventSystems.ExecuteEvents.Execute(st, e, UnityEngine.EventSystems.ExecuteEvents.beginDragHandler);
+                // 옆면 칸 바로 오른쪽(카드 좌표 (−200, −78)): 상자 옆면 띠 위, 운송장과 겹치지 않게
+                e.position = RectTransformUtility.WorldToScreenPoint(null, card.Card.TransformPoint(new Vector3(-200f, -78f, 0f))) + (start - RectTransformUtility.WorldToScreenPoint(null, card.Sticker.position));
+                UnityEngine.EventSystems.ExecuteEvents.Execute(st, e, UnityEngine.EventSystems.ExecuteEvents.dragHandler);
+                Assert.IsTrue(card.IsDragging);
+                yield return new WaitForSeconds(0.2f);
+                Debug.Log($"[Screenshot] fragile labeler '{boot.StatusBars.TextAt(5, 2)}', prompt '{boot.Hud.Root.Find("Prompt/Text").GetComponent<Text>().text}', broken #{broken.Id} inspected={broken.Inspected}");
+                yield return Capture(boot, "unity-fragile.png", Width, Height, cam =>
+                {
+                    var target = Grid3D.TileF(0.4f, 2.1f);
+                    cam.transform.position = target + new Vector3(0f, 14.5f, -10.5f).normalized * 9.6f;
+                    cam.transform.LookAt(target);
+                });
+                UnityEngine.EventSystems.ExecuteEvents.Execute(st, e, UnityEngine.EventSystems.ExecuteEvents.endDragHandler);
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>
+        /// 트럭 적재량과 교대(스펙 18): 부지 확장 2의 동쪽 트럭 네 대. 출고(파랑) 트럭이 30개를 싣고 벽 밖으로 빠져나가는 중(알약 "다음 차 0:20"),
+        /// 반품 12/30, 항공 출고 27/30(앰버에 가깝게), 항공 반품 3/30. 출고 앞 레일 (10,2)에는 택배가 기다린다.
+        /// 출발 연출 중간에서 게임을 일시정지해(트럭도 멈춘다) 찍는다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Trucks()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+                var s = boot.Session;
+                s.Paused = true;
+                s.Economy.Earn(2000);
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                yield return null;
+                for (int x = 7; x <= 10; x++) Place(s, x, 2, CellType.Conveyor, Direction.East);
+                var f = new PackageFactory(new System.Random(51), 0.0);
+                for (int x = 9; x <= 10; x++)
+                {
+                    var p = f.Create(s.Sim.NextId++, 0, 0, Direction.East);
+                    p.Inspect(false); p.Waybill = true;
+                    s.Sim.PlaceCarried(p, x, 2);
+                    p.Progress = x == 10 ? 1f : 0.5f;
+                }
+                s.Sim.Trucks.Restore(CellType.ReturnDock, 12, 0f);
+                s.Sim.Trucks.Restore(CellType.AirOutlet, 27, 0f);
+                s.Sim.Trucks.Restore(CellType.AirReturnDock, 3, 0f);
+                s.Worker.Worker.X = 9.0f; s.Worker.Worker.Y = 5.0f; s.Worker.Worker.Facing = Direction.North;
+                s.Clock.Set(2, 700f);
+                yield return new WaitForSeconds(HudController.PopupSeconds + 0.2f); // 설치비 팝업이 사라질 때까지
+                Assert.AreEqual("27/30", boot.Trucks.TextOf(CellType.AirOutlet));
+                s.Sim.Trucks.Restore(CellType.Outlet, 0, TruckFleet.TruckReturnMinutes); // 방금 30개째를 싣고 출발
+                yield return null;
+                // 트럭 연출은 게임 일시정지 중에는 멈추므로(스펙 17.4) 잠깐 풀었다가 중간에서 다시 멈춘다. 대기 시간이 1분 안팎 줄어든다.
+                s.Paused = false;
+                float until = Time.realtimeSinceStartup + 3f;
+                while (boot.Trucks.Progress(CellType.Outlet) < 0.55f && Time.realtimeSinceStartup < until) yield return null;
+                s.Paused = true;
+                Assert.IsTrue(boot.Trucks.IsDriving(CellType.Outlet), "outlet truck should be mid-departure");
+                Debug.Log($"[Screenshot] trucks outlet '{boot.Trucks.TextOf(CellType.Outlet)}' progress {boot.Trucks.Progress(CellType.Outlet):F2}, return '{boot.Trucks.TextOf(CellType.ReturnDock)}', air '{boot.Trucks.TextOf(CellType.AirOutlet)}' / '{boot.Trucks.TextOf(CellType.AirReturnDock)}'");
+                StringAssert.StartsWith("다음 차 0:", boot.Trucks.TextOf(CellType.Outlet));
+                yield return Capture(boot, "unity-trucks.png", Width, Height, cam =>
+                {
+                    var target = Grid3D.TileF(10.4f, 5.4f);
+                    cam.transform.position = target + new Vector3(0f, 14.5f, -10.5f).normalized * 17f;
+                    cam.transform.LookAt(target);
+                });
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
         private static void Place(GameSession s, int x, int y, CellType t, Direction d)
         {
             var r = s.Build.TryPlace(x, y, t, d);
@@ -601,6 +756,7 @@ namespace ParcelFactory.Game.Tests
             yield return null;
             FixPrompt(boot, cam);
             if (boot.StatusBars != null) boot.StatusBars.Refresh(); // 카메라 기준으로 다시 투영
+            if (boot.Trucks != null) boot.Trucks.Refresh();
             Canvas.ForceUpdateCanvases();
             cam.Render();
             var prevActive = RenderTexture.active;

@@ -15,6 +15,8 @@ namespace ParcelFactory.Core
         public IReadOnlyList<Package> Packages => packages;
         /// <summary>새 택배를 만드는 팩토리. GameSession이 부지 확장 2 이후 AirChance를 켠다(스펙 14.2).</summary>
         public PackageFactory Factory => factory;
+        /// <summary>동쪽 트럭 네 대의 적재량·교대(스펙 18). 도크 판정 때마다 실고, 떠나 있는 도크로는 보내지 않는다.</summary>
+        public TruckFleet Trucks { get; } = new TruckFleet();
         /// <summary>가장 최근 판정이 난 도크 종류. PackageDelivered 핸들러 안에서 그 판정의 도크다(금액 팝업 위치용).</summary>
         public CellType LastDeliveredDock { get; private set; } = CellType.Empty;
         public int NextId { get; set; } = 1;
@@ -38,6 +40,23 @@ namespace ParcelFactory.Core
         public event Action<Package, DeliveryOutcome, int> PackageDelivered;
         /// <summary>Tick 루프 중간에 발생한다. 핸들러는 시뮬레이션을 변경(생성·제거)하면 안 되며 읽기만 해야 한다.</summary>
         public event Action<Package> PackageLost;
+        /// <summary>취급주의 택배가 파손된 순간(스펙 17.2). Tick·Move 중간일 수 있으므로 핸들러는 읽기만 해야 한다.</summary>
+        public event Action<Package> PackageBroken;
+
+        /// <summary>
+        /// 취급주의 택배를 파손시킨다(스펙 17.2): Broken, 실제 불량(Bad)이 되고 검사 결과를 지운다(다시 검사해야 한다). 운송장·스티커는 그대로.
+        /// 취급주의가 아니거나 이미 파손됐으면 false. 파손 조건(고속 레일 진입·들고 달리기·위에 2개 이상)은 호출하는 쪽이 판단한다.
+        /// </summary>
+        public bool Break(Package p)
+        {
+            if (p == null || !p.Fragile || p.Broken) return false;
+            p.Broken = true;
+            p.Bad = true;
+            p.Inspected = false;
+            p.Rejected = false;
+            PackageBroken?.Invoke(p);
+            return true;
+        }
 
         public ConveyorSim(FactoryGrid grid, Economy economy, PackageFactory factory = null)
         {
@@ -107,9 +126,13 @@ namespace ParcelFactory.Core
         public bool IsAwaitingInspection(Package p) =>
             !p.Inspected && grid.Get(p.X, p.Y).Type == CellType.Table;
 
-        /// <summary>운송장 부착대 위에서 운송장을 기다리는 택배인가(스펙 15.4): 운송장이 없으면 검사 여부와 상관없이 멈춘다.</summary>
+        /// <summary>운송장 부착대 위에서 운송장을 기다리는 택배인가(스펙 15.4): 운송장이 없으면 검사 여부와 상관없이 멈춘다.
+        /// 취급주의 택배는 스티커도 붙어야 지나간다(스펙 17.3).</summary>
         public bool IsAwaitingLabel(Package p) =>
-            !p.Waybill && grid.Get(p.X, p.Y).Type == CellType.Labeler;
+            NeedsLabel(p) && grid.Get(p.X, p.Y).Type == CellType.Labeler;
+
+        /// <summary>부착대에서 붙일 것이 남았는가: 운송장이 없거나, 취급주의인데 스티커가 없다(스펙 17.3).</summary>
+        public static bool NeedsLabel(Package p) => !p.Waybill || (p.Fragile && !p.FragileSticker);
 
         /// <summary>운송장 부착대에서 운송장을 기다리는 택배 수(HUD 칩 "운송장 대기 n").</summary>
         public int AwaitingLabelCount
@@ -163,12 +186,15 @@ namespace ParcelFactory.Core
             cell.SetOccupant(p.Lane, p.Id);
             packages.Add(p);
             if (cell.Type == CellType.Scanner) Scan(p); // 스캐너는 놓는 순간에도 판정한다
+            if (cell.Type == CellType.FastConveyor) Break(p); // 손으로 고속 레일에 올려도 고속 레일 칸에 들어간 것이다(스펙 17.2)
         }
 
-        /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다.</summary>
+        /// <summary>작업자가 들고 있던 택배를 도크에 직접 넣는다. 판정 증감을 돌려준다. 그 도크의 트럭이 떠나 있으면 InvalidOperationException
+        /// (WorkerService.Preview가 TruckAway로 먼저 막는다, 스펙 18).</summary>
         public int DeliverCarried(Package p, CellType dockType)
         {
             if (packages.Contains(p)) throw new InvalidOperationException($"package {p.Id} is still on the line");
+            if (Trucks.IsAway(dockType)) throw new InvalidOperationException($"the {dockType} truck is away");
             return ApplyDelivery(p, dockType);
         }
 
@@ -202,7 +228,15 @@ namespace ParcelFactory.Core
             return true;
         }
 
-        private static void Stack(Package p, Cell pallet, int x, int y)
+        /// <summary>팔레트 더미에서 같은 자리 위층에 이 개수 이상이 쌓이면 아래의 취급주의 택배가 파손된다(스펙 17.2).</summary>
+        public const int CrushAbove = 2;
+
+        /// <summary>더미에서 인덱스 i 상자의 같은 자리 위층에 놓인 상자 수(j > i, (j − i) % PalletSlots == 0). 화면에 그려진 쌓임 그대로다.</summary>
+        public static int StackedAbove(int count, int i) => Math.Max(0, (count - 1 - i) / Cell.PalletSlots);
+
+        /// <summary>더미에 올린다(손·레일 모두 이 길). 같은 자리 위층에 CrushAbove개 이상 쌓인 취급주의 택배는 파손된다
+        /// (2자리 × 3층이라 실제로는 1층 상자가 그 자리에 3층 상자가 올라오는 순간).</summary>
+        private void Stack(Package p, Cell pallet, int x, int y)
         {
             p.X = x;
             p.Y = y;
@@ -210,6 +244,8 @@ namespace ParcelFactory.Core
             p.EntryHeading = p.Heading;
             p.Lane = Lane.Upper;
             pallet.Pallet.Add(p);
+            for (int i = 0; i < pallet.Pallet.Count; i++)
+                if (StackedAbove(pallet.Pallet.Count, i) >= CrushAbove) Break(pallet.Pallet[i]);
         }
 
         /// <summary>분배기의 연결된 출구(스펙 11.6 판정, 11.7에서도 그대로). 분배기 방향 기준 왼쪽 → 앞 → 오른쪽 → 뒤 순서로,
@@ -354,7 +390,11 @@ namespace ParcelFactory.Core
                 if (!grid.InBounds(nx, ny)) { if (hold) continue; Lose(i, p); i--; continue; }
 
                 var next = grid.Get(nx, ny);
-                if (next.IsDock) { Deliver(i, p, next.Type); i--; continue; }
+                if (next.IsDock)
+                {
+                    if (Trucks.IsAway(next.Type)) continue; // 트럭이 떠나 있으면 도크 앞에서 기다린다(소실 아님, 스펙 18)
+                    Deliver(i, p, next.Type); i--; continue;
+                }
                 if (next.Type == CellType.Pallet)
                 {
                     if (next.IsPalletFull || next.Demolishing) continue; // 대기
@@ -377,6 +417,7 @@ namespace ParcelFactory.Core
                 p.EntryHeading = p.Heading;
                 p.Heading = HeadingFor(nx, ny, p.Heading, p);
                 if (next.Type == CellType.Scanner) Scan(p);
+                if (next.Type == CellType.FastConveyor) Break(p); // 고속 레일 칸에 들어가는 순간 파손(스펙 17.2)
             }
             UpdateHolding();
         }
@@ -395,11 +436,13 @@ namespace ParcelFactory.Core
         /// <summary>항공 모드 검사기 (x, y)가 지금 택배를 붙잡고 있는가(마지막 틱 기준). 미니 상태바용.</summary>
         public bool IsHolding(int x, int y) => holding.Contains((x, y));
 
-        /// <summary>자동 검사기: 아직 판정 안 된 택배를 정확히 판정하고(사람 판정은 그대로), 운송장도 붙인다(스펙 15.3).</summary>
+        /// <summary>자동 검사기: 아직 판정 안 된 택배를 정확히 판정하고(사람 판정은 그대로, 파손품은 Bad라 거부), 운송장과
+        /// 취급주의 스티커도 붙인다(스펙 15.3, 17.3).</summary>
         private void Scan(Package p)
         {
             if (!p.Inspected) { p.Inspect(p.Bad); NoteInspected(); }
             p.Waybill = true;
+            if (p.Fragile) p.FragileSticker = true;
         }
 
         /// <summary>칸 위의 택배를 모두 소실 처리한다. 팔레트 더미도 비운다(해체는 더미가 있으면 막히지만 안전망).</summary>
@@ -427,6 +470,7 @@ namespace ParcelFactory.Core
             economy.Adjust(delta);
             if (DeliveryScoring.IsSuccess(outcome)) DeliveredCount++;
             PackageDelivered?.Invoke(p, outcome, delta);
+            Trucks.Load(dockType); // 판정·돈은 그 순간, 30개째면 트럭 출발(스펙 18)
             return delta;
         }
 

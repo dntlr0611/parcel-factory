@@ -13,8 +13,9 @@ namespace ParcelFactory.Core
     public static class SaveSerializer
     {
         /// <summary>v7: 택배 Air(스펙 14.4). v6 저장도 읽는다(Air = false, 항공 도크는 부지 확장 2 복원 때 다시 생긴다).
-        /// v8: 입고구마다의 타이머(스펙 16.2). v7 이하도 읽는다(부지 확장 입고구 자리의 설치물은 환불 철거).</summary>
-        public const int CurrentVersion = 8;
+        /// v8: 입고구마다의 타이머(스펙 16.2). v7 이하도 읽는다(부지 확장 입고구 자리의 설치물은 환불 철거).
+        /// v9: 취급주의 Fragile·Broken·FragileSticker·FragileFromDay(스펙 17), 트럭 적재·대기(스펙 18). v8 이하는 모두 없는 상태로 읽는다.</summary>
+        public const int CurrentVersion = 9;
         /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
         public const int MinReadableVersion = 6;
 
@@ -45,7 +46,13 @@ namespace ParcelFactory.Core
                 StaminaLevel = s.Progression.Level(Stat.Stamina),
                 SpeedLevel = s.Progression.Level(Stat.Speed),
                 RegenLevel = s.Progression.Level(Stat.Regen),
+                FragileFromDay = s.FragileFromDay,
+                TrucksDepartedToday = s.Sim.Trucks.DepartedToday,
+                Trucks = new List<TruckState>(),
             };
+            foreach (var d in TruckFleet.Docks)
+                if (!Cell.IsAirDock(d) || s.Unlocks.IsPurchased(UnlockId.Plot2)) // 항공 트럭은 부지 확장 2 이후에만 있다
+                    st.Trucks.Add(new TruckState { Dock = d.ToString(), Loaded = s.Sim.Trucks.Loaded(d), AwayMinutes = s.Sim.Trucks.AwayMinutes(d) });
 
             foreach (var id in s.Unlocks.Purchased)
                 st.Purchased.Add(id.ToString());
@@ -255,6 +262,31 @@ namespace ParcelFactory.Core
             s.DayStartLost = st.DayStartLost;
             s.DayStartInspected = st.DayStartInspected;
             s.DayStartExp = st.DayStartExp;
+
+            // 취급주의 시작일(스펙 17.1): 시계를 복원한 뒤에 넣어야 확률이 그날 기준으로 정해진다.
+            bool plot2 = s.Unlocks.IsPurchased(UnlockId.Plot2);
+            if (st.Version < 9) s.FragileFromDay = plot2 ? st.Day + 1 : 0; // 산 날을 모르므로 읽은 날의 다음 날부터
+            else
+            {
+                if (plot2 ? st.FragileFromDay < 1 || st.FragileFromDay > st.Day + 1 : st.FragileFromDay != 0)
+                    throw new SaveVersionException($"invalid FragileFromDay {st.FragileFromDay}");
+                s.FragileFromDay = st.FragileFromDay;
+            }
+            // 트럭(스펙 18). 없으면 모두 빈 트럭. 잘못된 도크·범위 밖 값은 예외 → corrupt save.
+            if (st.Trucks != null)
+            {
+                var seen = new HashSet<CellType>();
+                foreach (var t in st.Trucks)
+                {
+                    if (t == null) throw new SaveVersionException("null truck");
+                    var dock = ParseDefined<CellType>(t.Dock);
+                    if (!seen.Add(dock)) throw new SaveVersionException($"duplicate truck {dock}");
+                    if (Cell.IsAirDock(dock) && !plot2) throw new SaveVersionException($"air truck {dock} without Plot2");
+                    s.Sim.Trucks.Restore(dock, t.Loaded, t.AwayMinutes);
+                }
+            }
+            if (st.TrucksDepartedToday < 0) throw new SaveVersionException($"invalid TrucksDepartedToday {st.TrucksDepartedToday}");
+            s.Sim.Trucks.DepartedToday = st.TrucksDepartedToday;
             return s;
         }
 
@@ -264,6 +296,7 @@ namespace ParcelFactory.Core
             Progress = p.Progress, Heading = p.Heading.ToString(), EntryHeading = p.EntryHeading.ToString(),
             Lane = p.Lane.ToString(),
             Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected, Air = p.Air, Waybill = p.Waybill,
+            Fragile = p.Fragile, Broken = p.Broken, FragileSticker = p.FragileSticker,
             LabelDestination = p.Label?.Destination, LabelWeight = p.Label?.Weight ?? 0,
             LabelMethod = p.Label?.Method, LabelScale = p.Label?.Scale ?? 0,
         };
@@ -274,6 +307,8 @@ namespace ParcelFactory.Core
             if (float.IsNaN(p.Progress) || p.Progress < 0f || p.Progress > 1f)
                 throw new SaveVersionException($"package {p.Id} invalid progress {p.Progress}");
             if (p.Id < 0) throw new SaveVersionException($"package id {p.Id} < 0");
+            if ((p.Broken || p.FragileSticker) && !p.Fragile) throw new SaveVersionException($"package {p.Id} is not fragile but broken/stickered");
+            if (p.Broken && !p.Bad) throw new SaveVersionException($"package {p.Id} is broken but not bad");
             return new Package
             {
                 Id = p.Id,
@@ -284,6 +319,7 @@ namespace ParcelFactory.Core
                 EntryHeading = ParseDefined<Direction>(p.EntryHeading),
                 Lane = p.Lane == null ? Lane.Upper : ParseDefined<Lane>(p.Lane),
                 Bad = p.Bad, Inspected = p.Inspected, Rejected = p.Rejected, Air = p.Air, Waybill = p.Waybill,
+                Fragile = p.Fragile, Broken = p.Broken, FragileSticker = p.FragileSticker,
                 Label = new PackageLabel { Destination = p.LabelDestination ?? "", Weight = p.LabelWeight, Method = p.LabelMethod ?? "", Scale = p.LabelScale },
             };
         }

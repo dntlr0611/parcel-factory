@@ -15,10 +15,13 @@ namespace ParcelFactory.Core
         WrongCarrier,         // 항공 택배 → 일반 트럭, 일반 택배 → 항공 트럭 −10 (스펙 14.3)
         NoWaybillToOutlet,    // 검사했지만 운송장 없이 출고(일반·항공) −20 (스펙 15.3)
         NoWaybillToReturn,    // 검사했지만 운송장 없이 반품(일반·항공) −10
+        NoFragileSticker,     // 취급주의 스티커 없이 출고·반품(운송장 다음 순서) −10 (스펙 17.3)
+        DeliveredFragile,     // 취급주의 택배를 파손 없이 정상 출고 +45 (스펙 17.3)
     }
 
     /// <summary>스펙 9.3 판정표 + 14.3: 운송 수단(항공/일반)이 틀리면 검사 여부보다 먼저 WrongCarrier.
-    /// 항공 출고·반품은 각각 출고·반품 규칙을 따른다. 15.3: 운송 수단 틀림 → 미검사 → 운송장 없음 → 기존 결과 순서.</summary>
+    /// 항공 출고·반품은 각각 출고·반품 규칙을 따른다. 15.3: 운송 수단 틀림 → 미검사 → 운송장 없음 → 기존 결과 순서.
+    /// 17.3: 운송장 없음 다음에 취급주의 스티커 없음(−10), 취급주의 정상 출고는 +45. 파손품은 Bad라 기존 불량 규칙을 따른다.</summary>
     public static class DeliveryScoring
     {
         public static DeliveryOutcome Outcome(Package p, CellType dock)
@@ -30,11 +33,14 @@ namespace ParcelFactory.Core
                 case CellType.Outlet:
                     if (!p.Inspected) return DeliveryOutcome.UninspectedToOutlet;
                     if (!p.Waybill) return DeliveryOutcome.NoWaybillToOutlet;
+                    if (p.Fragile && !p.FragileSticker) return DeliveryOutcome.NoFragileSticker;
                     if (p.Rejected) return DeliveryOutcome.RejectedToOutlet;
-                    return p.Bad ? DeliveryOutcome.BadToOutlet : DeliveryOutcome.Delivered;
+                    if (p.Bad) return DeliveryOutcome.BadToOutlet;
+                    return p.Fragile ? DeliveryOutcome.DeliveredFragile : DeliveryOutcome.Delivered;
                 case CellType.ReturnDock:
                     if (!p.Inspected) return DeliveryOutcome.UninspectedToReturn;
                     if (!p.Waybill) return DeliveryOutcome.NoWaybillToReturn;
+                    if (p.Fragile && !p.FragileSticker) return DeliveryOutcome.NoFragileSticker;
                     if (p.Rejected) return p.Bad ? DeliveryOutcome.ReturnedBad : DeliveryOutcome.GoodToReturn;
                     return DeliveryOutcome.ApprovedToReturn;
                 default:
@@ -57,11 +63,13 @@ namespace ParcelFactory.Core
                 case DeliveryOutcome.WrongCarrier: return -10;
                 case DeliveryOutcome.NoWaybillToOutlet: return -20;
                 case DeliveryOutcome.NoWaybillToReturn: return -10;
+                case DeliveryOutcome.NoFragileSticker: return -10;
+                case DeliveryOutcome.DeliveredFragile: return 45;
                 default: throw new ArgumentOutOfRangeException(nameof(o));
             }
         }
 
         public static bool IsSuccess(DeliveryOutcome o) =>
-            o == DeliveryOutcome.Delivered || o == DeliveryOutcome.ReturnedBad;
+            o == DeliveryOutcome.Delivered || o == DeliveryOutcome.DeliveredFragile || o == DeliveryOutcome.ReturnedBad;
     }
 }

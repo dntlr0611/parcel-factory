@@ -21,6 +21,8 @@ namespace ParcelFactory.Game
         public InputController Input { get; private set; }
         public HudController Hud { get; private set; }
         public StatusBars StatusBars { get; private set; }
+        /// <summary>동쪽 트럭 적재 알약과 출발·도착 연출(스펙 18).</summary>
+        public TruckViews Trucks { get; private set; }
         public Panels Panels { get; private set; }
         /// <summary>시작 화면(스펙 12.1). 부팅 직후 StartScreen.ShowOnBoot이면 뜬다.</summary>
         public StartScreen StartScreen { get; private set; }
@@ -66,6 +68,7 @@ namespace ParcelFactory.Game
             Ghost = ghostGo.AddComponent<PlacementGhost>();
             Hud = gameObject.AddComponent<HudController>();
             StatusBars = gameObject.AddComponent<StatusBars>();
+            Trucks = gameObject.AddComponent<TruckViews>();
             Panels = gameObject.AddComponent<Panels>();
             StartScreen = gameObject.AddComponent<StartScreen>();
             Audio = gameObject.AddComponent<AudioDirector>();

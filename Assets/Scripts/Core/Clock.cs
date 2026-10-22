@@ -66,5 +66,7 @@ namespace ParcelFactory.Core
         public int StartMoney, EndMoney;
         /// <summary>그날 획득한 EXP(지출은 빼지 않는다, 스펙 11.5).</summary>
         public int Exp;
+        /// <summary>그날 출발한 트럭 수(30개 적재 + 퇴근 출발, 스펙 18).</summary>
+        public int TrucksDeparted;
     }
 }
