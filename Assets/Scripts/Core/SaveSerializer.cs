@@ -16,8 +16,9 @@ namespace ParcelFactory.Core
         /// v8: 입고구마다의 타이머(스펙 16.2). v7 이하도 읽는다(부지 확장 입고구 자리의 설치물은 환불 철거).
         /// v9: 취급주의 Fragile·Broken·FragileSticker·FragileFromDay(스펙 17), 트럭 적재·대기(스펙 18). v8 이하는 모두 없는 상태로 읽는다.
         /// v10: 여러 공장(스펙 19.5) — 1공장은 최상위 필드 그대로, 2·3공장은 OtherFactories, 지금 공장 번호 CurrentFactory.
-        /// 트럭은 도크마다 차량 목록(스펙 20). v9 이하는 1공장 하나짜리 회사, 도크마다 1대로 읽는다.</summary>
-        public const int CurrentVersion = 10;
+        /// 트럭은 도크마다 차량 목록(스펙 20). v9 이하는 1공장 하나짜리 회사, 도크마다 1대로 읽는다.
+        /// v11: 점심 카드(스펙 21.4) — 오늘의 메뉴, 계약, 확정 여부, 계약 후보 셋. v10 이하는 메뉴·계약 없음으로 읽는다.</summary>
+        public const int CurrentVersion = 11;
         /// <summary>읽을 수 있는 가장 오래된 버전. v6(EXP·강화, 스펙 11.5) 미만은 거부한다.</summary>
         public const int MinReadableVersion = 6;
 
@@ -42,7 +43,12 @@ namespace ParcelFactory.Core
                 RegenLevel = s.Progression.Level(Stat.Regen),
                 CurrentFactory = c.CurrentIndex,
                 OtherFactories = new List<FactoryState>(),
+                LunchMenu = c.Menu.ToString(),
+                LunchConfirmed = c.LunchConfirmed,
+                Contract = c.Contract == null ? null : ToState(c.Contract),
+                ContractCandidates = new List<ContractState>(),
             };
+            foreach (var k in c.ContractCandidates) st.ContractCandidates.Add(ToState(k));
             CaptureFactory(c.Factories[0], st);
             for (int i = 1; i < c.Factories.Count; i++)
             {
@@ -196,7 +202,54 @@ namespace ParcelFactory.Core
             s.Worker.Worker.Stamina = st.Stamina;
             s.DayStartMoney = st.DayStartMoney;
             s.DayStartExp = st.DayStartExp;
+            RestoreLunch(st, company, s.Clock);
             return s;
+        }
+
+        /// <summary>점심 카드(v11, 스펙 21.4). v10 이하는 필드가 없어 메뉴·계약 없음·미확정·후보 없음으로 읽힌다(점심 중이면 다음 틱에 후보를 뽑는다).
+        /// 메뉴나 계약이 있으면 확정했어야 한다. 후보는 종류가 겹치지 않는다.</summary>
+        private static void RestoreLunch(GameState st, Company company, Clock clock)
+        {
+            var menu = st.LunchMenu == null ? LunchMenu.None : ParseDefined<LunchMenu>(st.LunchMenu);
+            var contract = st.Contract == null ? null : FromState(st.Contract);
+            if ((menu != LunchMenu.None || contract != null) && !st.LunchConfirmed)
+                throw new SaveVersionException("lunch menu or contract without a confirmed lunch card");
+            if (st.LunchConfirmed && clock.MinuteOfDay < Clock.LunchStart)
+                throw new SaveVersionException("lunch card confirmed before noon");
+            if (menu != LunchMenu.None && clock.Phase == DayPhase.Closed)
+                throw new SaveVersionException($"menu {menu} still active after 18:00");
+            var list = new List<Contract>();
+            if (st.ContractCandidates != null)
+            {
+                if (st.ContractCandidates.Count != 0 && st.ContractCandidates.Count != 3)
+                    throw new SaveVersionException($"{st.ContractCandidates.Count} contract candidates (0 or 3)");
+                var kinds = new HashSet<ContractKind>();
+                foreach (var cs in st.ContractCandidates)
+                {
+                    var k = FromState(cs);
+                    if (k.Progress != 0 || k.Achieved) throw new SaveVersionException($"candidate {k.Kind} has progress");
+                    if (!kinds.Add(k.Kind)) throw new SaveVersionException($"duplicate candidate {k.Kind}");
+                    list.Add(k);
+                }
+            }
+            if (contract != null && list.Count > 0 && !list.Exists(k => k.Kind == contract.Kind && k.Target == contract.Target))
+                throw new SaveVersionException($"contract {contract.Kind} {contract.Target} is not among the candidates");
+            company.RestoreLunch(menu, st.LunchConfirmed, list, contract);
+        }
+
+        private static ContractState ToState(Contract c) => new ContractState { Kind = c.Kind.ToString(), Target = c.Target, Progress = c.Progress, Achieved = c.Achieved };
+
+        /// <summary>개수 계약: 목표 1 이상, 진행 0..목표, 달성 = 진행이 목표. "0개" 류: 목표 0, 진행 0 이상, 달성이면 진행 0.</summary>
+        private static Contract FromState(ContractState cs)
+        {
+            if (cs == null) throw new SaveVersionException("null contract");
+            var c = new Contract { Kind = ParseDefined<ContractKind>(cs.Kind), Target = cs.Target, Progress = cs.Progress, Achieved = cs.Achieved };
+            bool ok = c.IsZeroKind
+                ? c.Target == 0 && c.Progress >= 0 && (!c.Achieved || c.Progress == 0)
+                : c.Target >= 1 && c.Progress >= 0 && c.Progress <= c.Target && c.Achieved == (c.Progress == c.Target);
+            if (!ok || !ContractCatalog.IsValidTarget(c.Kind, c.Target))
+                throw new SaveVersionException($"invalid contract {c.Kind} {c.Progress}/{c.Target} achieved={c.Achieved}");
+            return c;
         }
 
         /// <summary>공장 한 곳을 되살린다. economy는 회사 돈(예전 칸 환불), version은 파일 버전(v9 이하의 예전 칸 규칙에 쓴다), carried는 이 공장에서 작업자가 든 택배(id 검사용).</summary>

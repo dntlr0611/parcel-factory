@@ -96,7 +96,8 @@ namespace ParcelFactory.Game
             "취급주의는 고속 레일·들고 달리기·팔레트에서 위에 2개 이상 쌓이면 파손 → 불량이 되어 다시 검사(거부 → 반품)\n" +
             "트럭은 30개를 실으면 떠나고 20분(약 20초) 뒤 빈 트럭이 옵니다. 그동안 그 도크는 받지 않습니다. 퇴근 때 모두 출발\n" +
             "상점에서 택배차를 더 사면(도크마다 최대 3대) 차고의 트럭이 2분 만에 교대합니다\n" +
-            "<color=#f4f3ee>Tab</color>·LB/RB 공장 이동(손을 비우고) · 새 공장은 바로 앞 공장(2공장은 1공장, 3공장은 2공장)에 부지 확장 2와 자동 검사기가 있어야 상점에서 삽니다";
+            "<color=#f4f3ee>Tab</color>·LB/RB 공장 이동(손을 비우고) · 새 공장은 바로 앞 공장(2공장은 1공장, 3공장은 2공장)에 부지 확장 2와 자동 검사기가 있어야 상점에서 삽니다\n" +
+            "<color=#f4f3ee>L</color> 점심 카드(12:00~13:00): 메뉴 버프(18:00까지) · 오후 계약 보너스(실패 감점 없음)";
 
         private static readonly Dictionary<CellType, string> Names = new Dictionary<CellType, string>
         {
@@ -157,7 +158,7 @@ namespace ParcelFactory.Game
             Root = canvas.GetComponent<RectTransform>();
             rootCanvas = canvas;
             rootGroup = canvas.gameObject.AddComponent<CanvasGroup>();
-            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildStamina(); BuildClock(); BuildToast(); BuildHelp(); BuildBanner();
+            BuildTopLeft(); BuildTopRight(); BuildHotbar(); BuildPrompt(); BuildPopups(); BuildStatus(); BuildStamina(); BuildClock(); BuildLunchChips(); BuildToast(); BuildHelp(); BuildBanner();
             if (TouchMode) BuildTouchControls();
             input.ToolChanged += RefreshHotbar;
             input.ToolChanged += RefreshTouchLabels;
@@ -198,6 +199,7 @@ namespace ParcelFactory.Game
                 {
                     boundSession.DayEnded -= OnDayEnded;
                     boundSession.Progression.ExpChanged -= OnExpChanged;
+                    boundSession.Company.ContractAchieved -= OnContractAchieved;
                 }
                 boundSession = session;
                 expFlashUntil = 0f;
@@ -205,6 +207,7 @@ namespace ParcelFactory.Game
                 {
                     boundSession.DayEnded += OnDayEnded;
                     boundSession.Progression.ExpChanged += OnExpChanged;
+                    boundSession.Company.ContractAchieved += OnContractAchieved;
                     lastExp = boundSession.Progression.Exp;
                     if (expText != null) { expText.text = ExpLabel(lastExp); expText.color = UiKit.ExpColor; }
                 }
@@ -240,6 +243,104 @@ namespace ParcelFactory.Game
 
         private void OnUnlocked(UnlockId _) => RefreshHotbar();
 
+        /// <summary>계약 달성(스펙 21.3): "계약 달성! +₩250 · EXP +30".</summary>
+        private void OnContractAchieved(Contract c)
+        {
+            Toast(c.AchievedToast, ToastKind.Good);
+            priorityToastUntil = Time.unscaledTime + PriorityToastSeconds; // 같은 틱의 배송 토스트가 덮지 않게
+        }
+
+        /// <summary>계약 달성 토스트는 이 시간 동안 성공 배송 토스트에 덮이지 않는다(다른 토스트는 그대로).</summary>
+        public const float PriorityToastSeconds = 1.5f;
+        private float priorityToastUntil = float.NegativeInfinity;
+
+        // ── 점심 칩·계약 진행 칩·메뉴 배지(스펙 21) ──
+        /// <summary>점심 칩·계약 칩 높이와 시계 아래 간격. 칩이 보이면 토스트를 ChipH + ChipGap만큼 내린다.</summary>
+        public const float ChipH = 28f, ChipGap = 8f, MenuBadgeH = 22f;
+        public const string LunchChipText = "점심";
+        private Button lunchChip;
+        private RectTransform lunchChipRt, contractChip, menuBadge;
+        private Image contractChipBg, contractChipBorder, contractIcon, menuBadgeIcon;
+        private Text contractChipText, menuBadgeText;
+        private ContractKind shownChipKind;
+        private int shownChipProgress = -1, shownChipTarget = -1;
+
+        /// <summary>점심 칩(앰버 알약 + 그릇 아이콘 + 키캡 L, 누르면 카드), 계약 진행 칩(진행 = 패널, 달성 = 초록), 체력 알약 옆 메뉴 배지.</summary>
+        private void BuildLunchChips()
+        {
+            lunchChip = UiKit.Btn("LunchChip", Root, LunchChipText, () => input.RequestLunch(), icon: UiKit.LunchIconName, key: "L", style: BtnStyle.Primary,
+                height: ChipH, fontSize: 13, radius: Mathf.RoundToInt(ChipH / 2f), padX: 12, fit: true, elevation: UiKit.Elevation.Panel, iconSize: 16f);
+            lunchChipRt = (RectTransform)lunchChip.transform;
+            lunchChipRt.anchorMin = lunchChipRt.anchorMax = new Vector2(0.5f, 1f); lunchChipRt.pivot = new Vector2(0.5f, 1f);
+            lunchChipRt.gameObject.SetActive(false);
+
+            contractChipBg = UiKit.Pill("ContractChip", Root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), Vector2.zero, ChipH, 200f);
+            contractChip = contractChipBg.rectTransform;
+            contractChipBorder = contractChip.Find("Border").GetComponent<Image>();
+            var irt = UiKit.Rect("Icon", contractChip, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(11f, 0f), new Vector2(15f, 15f));
+            contractIcon = irt.gameObject.AddComponent<Image>();
+            contractIcon.sprite = UiKit.Icon(UiKit.ContractIconName); contractIcon.preserveAspect = true; contractIcon.raycastTarget = false;
+            contractChipText = UiKit.Label("Text", contractChip, "", 13, UiKit.Fg, TextAnchor.MiddleLeft, Fonts.Bold);
+            contractChipText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            contractChipText.rectTransform.offsetMin = new Vector2(32f, 0f);
+            contractChip.gameObject.SetActive(false);
+
+            var badge = UiKit.Box("MenuBadge", Root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(60f, MenuBadgeH), UiKit.Accent, Mathf.RoundToInt(MenuBadgeH / 2f));
+            UiKit.AddShadow(badge.rectTransform, Mathf.RoundToInt(MenuBadgeH / 2f), UiKit.Elevation.Low);
+            menuBadge = badge.rectTransform;
+            var brt = UiKit.Rect("Icon", menuBadge, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(8f, 0f), new Vector2(13f, 13f));
+            menuBadgeIcon = brt.gameObject.AddComponent<Image>();
+            menuBadgeIcon.sprite = UiKit.Icon(UiKit.LunchIconName); menuBadgeIcon.preserveAspect = true; menuBadgeIcon.raycastTarget = false; menuBadgeIcon.color = UiKit.AccentFg;
+            menuBadgeText = UiKit.Label("Text", menuBadge, "", 12, UiKit.AccentFg, TextAnchor.MiddleLeft, Fonts.Bold);
+            menuBadgeText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            menuBadgeText.rectTransform.offsetMin = new Vector2(25f, 0f);
+            menuBadge.gameObject.SetActive(false);
+        }
+
+        /// <summary>메뉴 배지 문구(효과 있는 메뉴만, 그냥 쉬기는 배지 없음): "국밥".</summary>
+        public static string MenuBadgeText(LunchMenu m) => m == LunchMenu.None || m == LunchMenu.Rest ? null : LunchMenus.Name(m);
+
+        /// <summary>칩 하나가 보이면 true(토스트를 그만큼 내린다).</summary>
+        private bool UpdateLunchChips(GameSession s, float lift)
+        {
+            var c = s.Company;
+            float y = -(ClockTop + 36f + ChipGap + CenterShift);
+            bool lunch = c.LunchCardAvailable;
+            if (lunchChipRt.gameObject.activeSelf != lunch) lunchChipRt.gameObject.SetActive(lunch);
+            if (lunch) lunchChipRt.anchoredPosition = new Vector2(0f, y);
+            var k = c.Contract;
+            bool showContract = !lunch && k != null && s.Clock.IsOpen;
+            if (contractChip.gameObject.activeSelf != showContract) contractChip.gameObject.SetActive(showContract);
+            if (showContract)
+            {
+                contractChip.anchoredPosition = new Vector2(0f, y);
+                if (k.Kind != shownChipKind || k.Progress != shownChipProgress || k.Target != shownChipTarget) // 바뀔 때만 문자열을 만든다
+                {
+                    shownChipKind = k.Kind; shownChipProgress = k.Progress; shownChipTarget = k.Target;
+                    contractChipText.text = k.ChipText;
+                    contractChip.sizeDelta = new Vector2(32f + Mathf.Ceil(contractChipText.preferredWidth) + 14f, ChipH);
+                }
+                Color fill = k.Achieved ? UiKit.Good : UiKit.Panel2, fg = k.Achieved ? UiKit.OkFg : k.Failed ? UiKit.Bad : UiKit.Fg;
+                contractChipBg.color = fill;
+                contractChipBorder.color = k.Achieved ? UiKit.Good : k.Failed ? UiKit.Bad : UiKit.Line2;
+                contractChipText.color = fg;
+                contractIcon.color = k.Achieved ? UiKit.OkFg : k.Failed ? UiKit.Bad : UiKit.Accent;
+            }
+            var badgeText = s.Clock.IsOpen ? MenuBadgeText(c.Menu) : null;
+            bool badge = badgeText != null;
+            if (menuBadge.gameObject.activeSelf != badge) menuBadge.gameObject.SetActive(badge);
+            if (badge)
+            {
+                if (menuBadgeText.text != badgeText)
+                {
+                    menuBadgeText.text = badgeText;
+                    menuBadge.sizeDelta = new Vector2(25f + Mathf.Ceil(menuBadgeText.preferredWidth) + 10f, MenuBadgeH);
+                }
+                menuBadge.anchoredPosition = new Vector2(stamina.anchoredPosition.x - stamina.sizeDelta.x - 6f, StatusY + lift + (StatusH - MenuBadgeH) * 0.5f);
+            }
+            return lunch || showContract;
+        }
+
         private void OnDestroy() => BindSession(null);
 
         /// <summary>좌상단 EXP 줄 문구: "EXP 10".</summary>
@@ -260,7 +361,9 @@ namespace ParcelFactory.Game
         {
             var msg = DeliveryMessage(outcome, delta);
             if (outcome != DeliveryOutcome.WrongCarrier) msg = PackageTags(p) + msg;
-            Toast(msg, DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad);
+            var kind = DeliveryScoring.IsSuccess(outcome) ? ToastKind.Good : ToastKind.Bad;
+            // 계약 달성 토스트를 잠시 지킨다: 성공 배송 토스트만 건너뛴다(감점 토스트는 그대로 보인다).
+            if (kind == ToastKind.Bad || Time.unscaledTime >= priorityToastUntil) Toast(msg, kind);
             var (dx, dy) = DockTile(boundSite.Sim.LastDeliveredDock);
             SpawnMoneyPopup(dx, dy, delta);
         }
@@ -1145,11 +1248,12 @@ namespace ParcelFactory.Game
             }
 
             UpdateBanner();
-            if (CenterShift != appliedShift)
+            float chipShift = UpdateLunchChips(s, lift) ? ChipH + ChipGap : 0f; // 점심·계약 칩이 시계 아래에 있으면 토스트를 그 아래로
+            if (CenterShift + chipShift != appliedShift)
             {
-                appliedShift = CenterShift;
+                appliedShift = CenterShift + chipShift;
                 clockBox.anchoredPosition = new Vector2(0f, -(ClockTop + CenterShift));
-                toast.anchoredPosition = new Vector2(0f, -(ToastTop + CenterShift));
+                toast.anchoredPosition = new Vector2(0f, -(ToastTop + CenterShift + chipShift));
             }
             if (toast.gameObject.activeSelf && Time.unscaledTime > toastUntil) toast.gameObject.SetActive(false);
         }

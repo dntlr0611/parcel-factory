@@ -132,6 +132,56 @@ namespace ParcelFactory.Game
             return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), BasePpu, 0, SpriteMeshType.FullRect);
         });
 
+        /// <summary>구내식당 아이콘(64px 흰색, 스펙 21.1): 반원 그릇 + 테두리 + 굽 + 김 세 줄. 아이콘 묶음에 없어 코드로 그린다.</summary>
+        public static Sprite BowlIcon() => Get("icon-bowl", () => MakeIcon(p =>
+        {
+            float body = Mathf.Max((p - new Vector2(0f, 2f)).magnitude - 25f, p.y - 2f);       // 아래 반원
+            float rim = Sdf(p - new Vector2(0f, 3f), new Vector2(28f, 3.5f), 3f);             // 테두리
+            float foot = Sdf(p - new Vector2(0f, -25f), new Vector2(10f, 3f), 2f);            // 굽
+            float d = Mathf.Min(Mathf.Min(body, rim), foot);
+            for (int i = -1; i <= 1; i++)                                                      // 김(조금 휜 줄)
+            {
+                float x = i * 10f;
+                d = Mathf.Min(d, Capsule(p, new Vector2(x, 12f), new Vector2(x + 3f, 20f), 2.4f));
+                d = Mathf.Min(d, Capsule(p, new Vector2(x + 3f, 20f), new Vector2(x, 28f), 2.4f));
+            }
+            return d;
+        }));
+
+        /// <summary>계약 아이콘(64px 흰색, 스펙 21.3): 클립보드 테두리 + 집게 + 체크 표시.</summary>
+        public static Sprite ContractIcon() => Get("icon-contract", () => MakeIcon(p =>
+        {
+            float outer = Sdf(p - new Vector2(0f, -3f), new Vector2(21f, 26f), 5f);
+            float board = Mathf.Abs(outer + 2.5f) - 2.5f;                                        // 테두리(두께 5)
+            float clip = Sdf(p - new Vector2(0f, 23f), new Vector2(11f, 6f), 3f);               // 집게
+            float check = Mathf.Min(Capsule(p, new Vector2(-10f, -3f), new Vector2(-3f, -11f), 3f), Capsule(p, new Vector2(-3f, -11f), new Vector2(10f, 6f), 3f));
+            return Mathf.Min(Mathf.Min(board, clip), check);
+        }));
+
+        /// <summary>64px 흰색 아이콘: sdf(p)는 중심 기준 좌표(y 위)의 부호 거리.</summary>
+        private static Sprite MakeIcon(System.Func<Vector2, float> sdf)
+        {
+            const int n = 64;
+            var tex = NewTex(n, n);
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float d = sdf(new Vector2(x + 0.5f - 32f, y + 0.5f - 32f));
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - d) * 255f));
+                }
+            tex.SetPixels32(px); tex.Apply(false, false);
+            return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), BasePpu, 0, SpriteMeshType.FullRect);
+        }
+
+        /// <summary>선분 a–b에서 반지름 r 캡슐의 부호 거리.</summary>
+        private static float Capsule(Vector2 p, Vector2 a, Vector2 b, float r)
+        {
+            var ab = b - a;
+            float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / Vector2.Dot(ab, ab));
+            return (p - a - ab * t).magnitude - r;
+        }
+
         private static Sprite Get(string key, System.Func<Sprite> make)
         {
             if (cache.TryGetValue(key, out var s) && s != null) return s;

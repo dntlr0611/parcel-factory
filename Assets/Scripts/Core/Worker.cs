@@ -55,8 +55,12 @@ namespace ParcelFactory.Core
         public Progression Progression { get; }
         /// <summary>강화가 반영된 최대 체력(100 + 20 × 체력 레벨).</summary>
         public float EffectiveMaxStamina => Progression.MaxStamina;
-        /// <summary>강화가 반영된 기본 걷기 속도(Speed × 속도 배율). 체력 저하·달리기 배율은 Move가 곱한다.</summary>
-        public float EffectiveSpeed => Speed * Progression.SpeedMultiplier;
+        /// <summary>강화와 점심 메뉴가 반영된 기본 걷기 속도(Speed × 속도 배율 × 메뉴 배율). 체력 저하·달리기 배율은 Move가 곱한다.</summary>
+        public float EffectiveSpeed => Speed * Progression.SpeedMultiplier * MenuSpeedMultiplier;
+        /// <summary>점심 메뉴의 이동 속도 배율(스펙 21.2: 제육볶음 1.15). 기본 1. 회사가 확정 때 켜고 18:00에 끈다.</summary>
+        public float MenuSpeedMultiplier { get; set; } = 1f;
+        /// <summary>점심 메뉴의 달리기 체력 소모 배율(스펙 21.2: 국밥 0.7). 기본 1.</summary>
+        public float RunDrainMultiplier { get; set; } = 1f;
         /// <summary>검사대에서 검사를 기다리는 택배. 검사 카드 UI가 이를 보고 Inspect를 호출한다.</summary>
         public Package PendingInspection { get; private set; }
         /// <summary>부착대에서 운송장을 기다리는 택배(스펙 15.2). 운송장 카드가 이를 보고 AttachWaybill을 호출한다.</summary>
@@ -168,7 +172,7 @@ namespace ParcelFactory.Core
                 CancelInspection();
                 CancelLabel();
                 // 달려서 움직인 프레임만 소모한다(걷기는 소모 없음, 양 축 모두 막히면 소모 없음).
-                if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * dt);
+                if (IsRunning) Worker.Stamina = Clamp(Worker.Stamina - (Worker.Carrying != null ? RunCarryDrain : RunDrain) * RunDrainMultiplier * dt);
                 if (IsRunning) sim.Break(Worker.Carrying); // 취급주의 택배를 들고 실제로 달리면 파손(스펙 17.2)
             }
             if (!moved) IsRunning = false;

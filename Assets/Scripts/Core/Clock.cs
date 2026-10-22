@@ -72,5 +72,7 @@ namespace ParcelFactory.Core
         public int ClosingDepartures;
         /// <summary>공장별 한 줄(스펙 19.1, 번호 순서). 위의 배송·소실·검사·트럭 수는 이 줄들의 합이다.</summary>
         public System.Collections.Generic.List<FactoryDaySummary> Factories = new System.Collections.Generic.List<FactoryDaySummary>();
+        /// <summary>그날의 오후 계약(스펙 21.3, 요약 시점의 복사본). 없으면 null. 18:00 판정 뒤라 Achieved가 최종 결과다.</summary>
+        public Contract Contract;
     }
 }

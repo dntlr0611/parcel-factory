@@ -53,7 +53,7 @@ namespace ParcelFactory.Core.Tests
         {
             var s = ThreeFactories();
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(10, st.Version);
+            Assert.AreEqual(11, st.Version); // v11: 점심 카드(스펙 21.4)
             Assert.AreEqual(1, st.CurrentFactory);
             Assert.AreEqual("Headquarters", st.Kind);
             Assert.AreEqual(2, st.OtherFactories.Count);
@@ -122,8 +122,8 @@ namespace ParcelFactory.Core.Tests
             Assert.IsTrue(s.Sim.PutOnPallet(pile, FactoryGrid.StartBluePalletX, FactoryGrid.StartBluePalletY));
             for (int i = 0; i < 3; i++) s.Sim.DeliverCarried(Good(900 + i), CellType.Outlet);
             var st = SaveSerializer.Capture(s);
-            var json = SaveSerializer.ToJson(st).Replace("\"Version\": 10", "\"Version\": 9");
-            json = StripTopLevel(json, "Kind", "EarnedToday", "CurrentFactory", "OtherFactories");
+            var json = SaveSerializer.ToJson(st).Replace("\"Version\": 11", "\"Version\": 9");
+            json = StripTopLevel(json, "Kind", "EarnedToday", "CurrentFactory", "OtherFactories", "LunchMenu", "LunchConfirmed", "Contract", "ContractCandidates");
             json = StripVehicles(json);
             StringAssert.DoesNotContain("OtherFactories", json);
             StringAssert.DoesNotContain("CurrentFactory", json);
@@ -142,9 +142,9 @@ namespace ParcelFactory.Core.Tests
             Assert.AreEqual(3, r.Sim.Trucks.Loaded(CellType.Outlet));
             Assert.AreEqual(1, r.Sim.Trucks.Count(CellType.Outlet), "v9 reads one truck per dock");
             Assert.AreEqual(0, r.Factory.EarnedToday, "v9 has no per-factory earnings");
-            // 다시 저장하면 v10.
+            // 다시 저장하면 지금 버전(v11).
             var again = SaveSerializer.Capture(r);
-            Assert.AreEqual(10, again.Version);
+            Assert.AreEqual(SaveSerializer.CurrentVersion, again.Version);
             Assert.AreEqual("Headquarters", again.Kind);
             Assert.IsEmpty(again.OtherFactories);
         }

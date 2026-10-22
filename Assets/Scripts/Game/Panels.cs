@@ -18,7 +18,10 @@ namespace ParcelFactory.Game
         /// <summary>키보드·게임패드로 고른 상점 행(보이는 행 중 번호). 없으면 −1.</summary>
         public int ShopSelectedRow { get; private set; } = -1;
         private Text shopTitle, trucksTitle;
-        private float summaryBaseH;
+        private float summaryBaseH, summaryRowH, summaryTop;
+        /// <summary>하루 요약의 오후 계약 줄(스펙 21.3).</summary>
+        private Text sContract;
+        private Image sContractLine;
         /// <summary>검사 카드 배송 방법 줄의 비행기 아이콘(항공 택배일 때만, 스펙 14.2).</summary>
         private Image iMethodAir;
         /// <summary>검사 카드의 운송장 상태(스펙 15.3).</summary>
@@ -40,16 +43,21 @@ namespace ParcelFactory.Game
         private InputController input;
         private HudController hud;
 
-        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || StatusOpen || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen || WaybillOpen;
+        public bool AnyOpen => (shop != null && shop.gameObject.activeSelf) || StatusOpen || (inspect != null && inspect.gameObject.activeSelf) || (demolish != null && demolish.gameObject.activeSelf) || SummaryOpen || WaybillOpen || LunchOpen;
+        /// <summary>점심 카드(스펙 21.1).</summary>
+        public LunchCard Lunch { get; private set; }
+        public bool LunchOpen => Lunch != null && Lunch.IsOpen;
+        /// <summary>12:00에 떴어야 하는데 다른 카드·시작 화면이 열려 있어 기다리는 중(스펙 21.1: 그것이 닫힌 뒤 뜬다).</summary>
+        public bool LunchPending { get; private set; }
         /// <summary>운송장 카드(스펙 15.2).</summary>
         public WaybillCard Waybill { get; private set; }
         public bool WaybillOpen => Waybill != null && Waybill.IsOpen;
         /// <summary>상점만 열려 있는가. 이때는 B 키·상점 버튼이 상점을 닫는 토글로 동작한다.</summary>
-        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen;
+        public bool ShopIsOnlyOpen => shop != null && shop.gameObject.activeSelf && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen && !LunchOpen;
         /// <summary>작업자 상태창이 떠 있는가.</summary>
         public bool StatusOpen => status != null && status.gameObject.activeSelf;
         /// <summary>상태창만 열려 있는가. 이때는 C 키·상태 버튼이 상태창을 닫는 토글로 동작한다(B는 상점으로 바꾼다).</summary>
-        public bool StatusIsOnlyOpen => StatusOpen && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen;
+        public bool StatusIsOnlyOpen => StatusOpen && !inspect.gameObject.activeSelf && !demolish.gameObject.activeSelf && !SummaryOpen && !WaybillOpen && !LunchOpen;
         /// <summary>하루 요약 패널이 떠 있는가.</summary>
         public bool SummaryOpen => summary != null && summary.gameObject.activeSelf;
         private bool lastAnyOpen;
@@ -64,6 +72,10 @@ namespace ParcelFactory.Game
             Waybill = gameObject.AddComponent<WaybillCard>();
             Waybill.Build(hud.Root);
             Waybill.Closed += Sync;
+            Lunch = gameObject.AddComponent<LunchCard>();
+            Lunch.Build(hud.Root);
+            Lunch.Closed += Sync;
+            input.OpenLunch += () => OpenLunch(true);
             input.ToggleShop += ToggleShop;
             input.ToggleStatus += ToggleStatus;
             input.Escape += CloseAll;
@@ -81,10 +93,13 @@ namespace ParcelFactory.Game
         /// <summary>DayEnded를 받을 세션을 바꾼다. 이미 퇴근 상태로 불러온 세션이면 요약을 바로 띄우고, 아니면 요약을 닫는다.</summary>
         private void WatchSession(GameSession s)
         {
-            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; }
+            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; watchedSession.LunchStarted -= OnLunchStarted; }
+            if (LunchOpen) Lunch.Close(); // 세션이 바뀌면 이전 세션의 카드는 닫는다
             watchedSession = s;
             watchedSession.DayEnded += ShowSummary;
             watchedSession.Progression.ExpChanged += OnExpChanged;
+            watchedSession.LunchStarted += OnLunchStarted;
+            LunchPending = false;
             if (!s.Clock.IsOpen) ShowSummary(s.BuildSummary());
             else { summary.gameObject.SetActive(false); Sync(); }
         }
@@ -103,7 +118,29 @@ namespace ParcelFactory.Game
         private void OnDestroy()
         {
             if (watchedEconomy != null) watchedEconomy.MoneyChanged -= OnMoneyChanged;
-            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; }
+            if (watchedSession != null) { watchedSession.DayEnded -= ShowSummary; watchedSession.Progression.ExpChanged -= OnExpChanged; watchedSession.LunchStarted -= OnLunchStarted; }
+        }
+
+        /// <summary>12:00: 점심 카드를 띄운다. 다른 카드·서랍·시작 화면이 열려 있으면 닫힌 뒤(Update)에 뜬다.</summary>
+        private void OnLunchStarted() => LunchPending = true;
+
+        /// <summary>점심 카드 열기(점심 칩·L 키, manual = true). 점심시간이 아니거나 이미 확정했으면 토스트만(manual일 때).
+        /// 다른 카드가 열려 있으면 열지 않는다.</summary>
+        public bool OpenLunch(bool manual)
+        {
+            var c = GameBootstrap.Instance.Session.Company;
+            if (!c.LunchCardAvailable)
+            {
+                if (manual) hud.Toast(c.LunchConfirmed && c.Clock.Phase == DayPhase.Lunch ? LunchCard.AlreadyConfirmedToast : "점심 카드는 12:00~13:00에만 열 수 있습니다");
+                return false;
+            }
+            if (LunchOpen) return true;
+            if (AnyOpen) return false;
+            LunchPending = false;
+            Lunch.Open();
+            input.CancelConfig();
+            Sync();
+            return LunchOpen;
         }
 
         /// <summary>패널 열림 상태를 입력 차단에 즉시 반영한다. 열고 닫는 같은 프레임에 InputController.Update가 낡은 상태를 보지 않게 한다.</summary>
@@ -123,6 +160,18 @@ namespace ParcelFactory.Game
             if (WaybillOpen && session.Worker.PendingLabel == null) Waybill.Close(); // 다른 경로로 대기가 풀렸다(완료는 스스로 닫는다)
             if (SummaryOpen && session.Clock.IsOpen) summary.gameObject.SetActive(false); // 다른 경로로 다음 날이 시작됐다
             if (shop.gameObject.activeSelf) UpdateShopInput();
+            var company = session.Company;
+            if (LunchOpen && !company.LunchCardAvailable)
+            {
+                Lunch.Close(); // 13:00·18:00·다른 경로로 확정
+                if (!company.LunchConfirmed) hud.Toast(LunchCard.LunchOverToast); // 시간이 다 됐다(스펙 21.5)
+            }
+            if (LunchPending)
+            {
+                var start = GameBootstrap.Instance.StartScreen;
+                if (!company.LunchCardAvailable) LunchPending = false;
+                else if (!AnyOpen && !input.UiBlocksInput && (start == null || !start.IsOpen)) OpenLunch(false);
+            }
             Sync();
         }
 
@@ -134,6 +183,7 @@ namespace ParcelFactory.Game
             if (inspect.gameObject.activeSelf) { GameBootstrap.Instance.Session.Worker.CancelInspection(); inspect.gameObject.SetActive(false); }
             demolish.gameObject.SetActive(false); pendingDemolish = null;
             if (WaybillOpen) Waybill.Close(); // 카드에서 붙인 것은 되돌린다(스펙 15.5)
+            if (LunchOpen) Lunch.Close(); // "나중에": 점심 칩·L로 다시 연다(스펙 21.1)
             Sync();
         }
 
@@ -487,7 +537,7 @@ namespace ParcelFactory.Game
         /// <summary>B 키·상점 버튼. 상태창이 열려 있으면 닫고 상점을 연다.</summary>
         private void ToggleShop()
         {
-            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return;
+            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen || LunchOpen) return;
             bool open = !shop.gameObject.activeSelf;
             status.gameObject.SetActive(false);
             shop.gameObject.SetActive(open);
@@ -498,7 +548,7 @@ namespace ParcelFactory.Game
         /// <summary>C 키·상태 버튼. 상점이 열려 있으면 닫고 상태창을 연다. 검사·해체·하루 요약 중에는 무시한다.</summary>
         public void ToggleStatus()
         {
-            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen) return;
+            if (inspect.gameObject.activeSelf || demolish.gameObject.activeSelf || SummaryOpen || LunchOpen) return;
             bool open = !status.gameObject.activeSelf;
             shop.gameObject.SetActive(false);
             status.gameObject.SetActive(open);
@@ -685,6 +735,7 @@ namespace ParcelFactory.Game
             // 시안 .sum: 행 사이 1px 선, 패딩 9 0, 라벨 muted 13, 값 Sora Bold 16. "다음 날"은 primary, 최소 150 · 높이 40 · 15.
             const float rowH = 36f, top = CardPad + 22f + 6f;
             summary = Card("DaySummary", new Vector2(CardW, top + 6f * rowH + 16f + 40f + 18f), "1일차 마감");
+            summaryRowH = rowH; summaryTop = top;
             var card = summary.Find("Card");
             sTitle = card.Find("Title").GetComponent<Text>();
             int index = 0;
@@ -706,6 +757,11 @@ namespace ParcelFactory.Game
             // 공장별 한 줄(스펙 19.1): 공장이 둘 이상일 때만 보인다. 줄은 ShowSummary가 채운다.
             summaryCard = (RectTransform)card;
             summaryBaseH = summaryCard.sizeDelta.y;
+            // 오후 계약 줄(스펙 21.3): 계약이 있던 날만 보인다. 공장별 줄은 그 아래로 밀린다.
+            sContractLine = UiKit.Divider("ContractLine", card); UiKit.Top(sContractLine.rectTransform, top + 6f * rowH, 1f, CardPad, CardPad);
+            sContract = UiKit.Label("Contract", card, "", 13, UiKit.Fg, TextAnchor.MiddleLeft, Fonts.Bold);
+            UiKit.Top(sContract.rectTransform, top + 6f * rowH, rowH, CardPad, CardPad);
+            sContract.horizontalOverflow = HorizontalWrapMode.Overflow;
             summaryFactories = UiKit.Rect("Factories", card, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -(top + 6f * rowH)), new Vector2(-2f * CardPad, 0f));
             for (int i = 0; i < Company.MaxFactories; i++)
             {
@@ -722,6 +778,8 @@ namespace ParcelFactory.Game
         /// <summary>하루 요약을 채워 띄운다(DayEnded, 또는 퇴근 상태로 불러온 세션).</summary>
         private void ShowSummary(DaySummary d)
         {
+            if (LunchOpen) Lunch.Close();
+            LunchPending = false;
             shop.gameObject.SetActive(false);
             status.gameObject.SetActive(false);
             demolish.gameObject.SetActive(false); pendingDemolish = null;
@@ -734,6 +792,17 @@ namespace ParcelFactory.Game
             sMoney.color = d.EndMoney >= d.StartMoney ? UiKit.Good : UiKit.Bad;
             UiKit.SetNumText(sExp, d.Exp.ToString(), true);
             UiKit.SetNumText(sTrucks, d.TrucksDeparted + "대", true);
+            // 오후 계약 줄(스펙 21.3): "오후 계약: 항공 출고 10개 — 달성 +₩250"(초록) / "— 미달 7/10"(muted)
+            bool hasContract = d.Contract != null;
+            sContract.gameObject.SetActive(hasContract);
+            sContractLine.gameObject.SetActive(hasContract);
+            if (hasContract)
+            {
+                sContract.text = d.Contract.SummaryText;
+                sContract.color = d.Contract.Achieved ? UiKit.Good : UiKit.Muted;
+            }
+            float contractH = hasContract ? summaryRowH : 0f;
+            summaryFactories.anchoredPosition = new Vector2(0f, -(summaryTop + 6f * summaryRowH + contractH));
             // 공장별 줄(스펙 19.1): "2공장 공항 물류센터 · 배송 12 · 소실 1 · +340". 공장이 하나면 숨긴다.
             int lines = d.Factories.Count > 1 ? d.Factories.Count : 0;
             for (int i = 0; i < Company.MaxFactories; i++)
@@ -749,7 +818,7 @@ namespace ParcelFactory.Game
                 v.text = FactorySummaryValue(f);
                 v.font = Fonts.Body; // 한글이 섞여 Noto
             }
-            summaryCard.sizeDelta = new Vector2(summaryCard.sizeDelta.x, summaryBaseH + lines * SummaryFactoryRowH);
+            summaryCard.sizeDelta = new Vector2(summaryCard.sizeDelta.x, summaryBaseH + contractH + lines * SummaryFactoryRowH);
             summary.gameObject.SetActive(true);
             summary.SetAsLastSibling(); // 운송장 카드 등 나중에 만든 모달보다 위에
             input.ClearPad();

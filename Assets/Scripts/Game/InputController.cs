@@ -32,10 +32,12 @@ namespace ParcelFactory.Game
         public event Action<InteractResult> Interacted;
         public event Action<BuildResult> DemolishRequested;
         public event Action TogglePause, ToggleSpeed, ToggleShop, ToggleStatus, ToggleHelp, Escape, ToolChanged;
+        /// <summary>L 키(스펙 21.1): 점심시간에 점심 카드를 다시 연다. 카드·패널이 열려 있으면 나오지 않는다.</summary>
+        public event Action OpenLunch;
         /// <summary>공장 옮기기를 시도했다(스펙 19.3: Tab·LB/RB·탭 클릭). Ok가 아니면 HUD가 이유를 알린다(Carrying → "손을 비우고 이동하세요").</summary>
         public event Action<FactorySwitchResult> FactorySwitchRequested;
 
-        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction, factoryNext, factoryPrev;
+        private InputAction move, interact, demolish, rotate, clear, pause, speed, shop, status, help, escape, runAction, factoryNext, factoryPrev, lunch;
         private readonly InputAction[] slots = new InputAction[SlotOrder.Length];
         private readonly Dictionary<CellType, Direction> lastDir = new Dictionary<CellType, Direction>();
         private readonly HashSet<Direction> padHeld = new HashSet<Direction>(); // 화면 D-패드: 누르고 있는 방향
@@ -85,6 +87,7 @@ namespace ParcelFactory.Game
             // 공장 옮기기에 주고 달리기는 LT만 쓴다.
             factoryNext = Button("FactoryNext", "<Keyboard>/tab", "<Gamepad>/rightShoulder");
             factoryPrev = Button("FactoryPrev", "<Gamepad>/leftShoulder", null);
+            lunch = Button("Lunch", "<Keyboard>/l", "<Gamepad>/select"); // 스펙 21.5: 게임패드 Select(View)
             for (int i = 0; i < slots.Length; i++) slots[i] = Button("Slot" + (i + 1), "<Keyboard>/" + (i + 1), null);
         }
 
@@ -128,7 +131,7 @@ namespace ParcelFactory.Game
         {
             yield return move; yield return interact; yield return demolish; yield return rotate; yield return clear;
             yield return pause; yield return speed; yield return shop; yield return status; yield return help; yield return escape; yield return runAction;
-            yield return factoryNext; yield return factoryPrev;
+            yield return factoryNext; yield return factoryPrev; yield return lunch;
             foreach (var s in slots) yield return s;
         }
 
@@ -145,12 +148,15 @@ namespace ParcelFactory.Game
             // 상점·상태창이 유일하게 열려 있으면 B·C 키가 닫기(또는 서로 바꾸기) 토글로 동작해야 하므로 차단 검사보다 먼저 읽는다.
             var panels = GameBootstrap.Instance.Panels;
             bool toggleable = !UiBlocksInput || (panels != null && (panels.ShopIsOnlyOpen || panels.StatusIsOnlyOpen));
-            if (shop.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleShop?.Invoke(); }
+            // 게임패드 Select는 상점과 점심 카드에 함께 묶여 있다: 점심 카드를 열 수 있는 동안(차단 없음)에는 점심 카드가 먼저다(스펙 21.5).
+            bool padLunch = !UiBlocksInput && lunch.WasPressedThisFrame() && lunch.activeControl != null && lunch.activeControl.device is Gamepad && S.Company.LunchCardAvailable;
+            if (shop.WasPressedThisFrame() && toggleable && !padLunch) { CancelConfig(); ToggleShop?.Invoke(); }
             else if (status.WasPressedThisFrame() && toggleable) { CancelConfig(); ToggleStatus?.Invoke(); }
             if (UiBlocksInput) { CancelConfig(); StopMoving(); prevDirs.Clear(); return; }
             if (pause.WasPressedThisFrame()) TogglePause?.Invoke();
             if (speed.WasPressedThisFrame()) ToggleSpeed?.Invoke();
             if (help.WasPressedThisFrame()) ToggleHelp?.Invoke();
+            if (lunch.WasPressedThisFrame()) OpenLunch?.Invoke();
             if (factoryNext.WasPressedThisFrame() && CycleFactory(1) == FactorySwitchResult.Ok) return;
             if (factoryPrev.WasPressedThisFrame() && CycleFactory(-1) == FactorySwitchResult.Ok) return;
 
@@ -265,6 +271,8 @@ namespace ParcelFactory.Game
         public void RequestShop() => ToggleShop?.Invoke();
         public void RequestStatus() => ToggleStatus?.Invoke();
         public void RequestHelp() => ToggleHelp?.Invoke();
+        /// <summary>점심 칩 클릭(스펙 21.1). 차단 중이면 무시한다.</summary>
+        public void RequestLunch() { if (!UiBlocksInput) OpenLunch?.Invoke(); }
 
         /// <summary>화면 D-패드용. 누르는 동안 held=true, 떼면 false. 이동 자체는 Update에서 매 프레임 적용된다.</summary>
         public void SetPad(Direction d, bool held)

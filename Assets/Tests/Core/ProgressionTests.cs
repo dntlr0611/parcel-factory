@@ -301,7 +301,7 @@ namespace ParcelFactory.Core.Tests
         [Test]
         public void Save_V6_RoundTripsExpLevelsAndDayStartExp()
         {
-            Assert.AreEqual(10, SaveSerializer.CurrentVersion); // v10: 여러 공장(스펙 19.5)
+            Assert.AreEqual(11, SaveSerializer.CurrentVersion); // v11: 점심 카드(스펙 21.4)
             var s = new GameSession();
             s.Progression.AddExp(500);
             s.Progression.TryUpgrade(Stat.Stamina);
@@ -314,7 +314,7 @@ namespace ParcelFactory.Core.Tests
             s.Progression.AddExp(14);
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
+            Assert.AreEqual(11, st.Version); // v11: 점심 카드(스펙 21.4)
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.AreEqual(s.Progression.Exp, r.Progression.Exp);
             Assert.AreEqual(2, r.Progression.Level(Stat.Stamina));

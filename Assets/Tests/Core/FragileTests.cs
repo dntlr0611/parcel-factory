@@ -485,7 +485,7 @@ namespace ParcelFactory.Core.Tests
             s.Sim.PutOnPallet(pile, 5, 2);
 
             var st = SaveSerializer.Capture(s);
-            Assert.AreEqual(10, st.Version); // v10: 여러 공장(스펙 19.5)
+            Assert.AreEqual(11, st.Version); // v11: 점심 카드(스펙 21.4)
             Assert.AreEqual(2, st.FragileFromDay);
             var r = SaveSerializer.Restore(SaveSerializer.FromJson(SaveSerializer.ToJson(st)));
             Assert.AreEqual(2, r.FragileFromDay);
@@ -520,11 +520,12 @@ namespace ParcelFactory.Core.Tests
             s.Unlocks.Grant(UnlockId.Plot2);
             var st = SaveSerializer.Capture(s);
             var json = SaveSerializer.ToJson(st)
-                .Replace("\"Version\": 10", "\"Version\": 8") // v10(스펙 19.5)에서 만든 저장을 v8로
+                .Replace("\"Version\": 11", "\"Version\": 8") // v11(스펙 21.4)에서 만든 저장을 v8로
                 .Replace("\"Fragile\": false,", "").Replace("\"Broken\": false,", "").Replace("\"FragileSticker\": false,", "");
             json = System.Text.RegularExpressions.Regex.Replace(json, "\"FragileFromDay\": \\d+,", "");
             // 진짜 v8 모양: v9의 트럭과 v10의 공장 목록·차량·공장 필드가 없다.
-            json = SaveV10Tests.StripTopLevel(json, "Trucks", "TrucksDepartedToday", "OtherFactories", "CurrentFactory", "Kind", "EarnedToday");
+            json = SaveV10Tests.StripTopLevel(json, "Trucks", "TrucksDepartedToday", "OtherFactories", "CurrentFactory", "Kind", "EarnedToday",
+                "LunchMenu", "LunchConfirmed", "Contract", "ContractCandidates"); // v11 점심 카드도 없다
             StringAssert.DoesNotContain("FragileFromDay", json);
             StringAssert.DoesNotContain("Vehicles", json);
             StringAssert.DoesNotContain("OtherFactories", json);

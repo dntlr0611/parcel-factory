@@ -134,6 +134,9 @@ namespace ParcelFactory.Game.Tests
                 yield return new WaitForSeconds(0.2f);
                 Assert.AreEqual(DayPhase.Lunch, s.Clock.Phase);
                 Assert.IsTrue(boot.Hud.Root.Find("Clock/Badge").gameObject.activeSelf, "lunch badge hidden");
+                boot.Panels.CloseAll(); // 점심 카드(스펙 21)가 없는 점심 화면: 카드는 닫고 점심 칩만 보인다
+                yield return null;
+                Assert.IsFalse(boot.Panels.LunchOpen);
                 yield return Capture(boot, "unity-lunch.png", Width, Height);
 
                 // (c4) 상태창: EXP 120, 체력 Lv 1(최대 120). 근무 중 15:00, 일시정지로 값을 고정한다.
@@ -904,6 +907,127 @@ namespace ParcelFactory.Game.Tests
                 Assert.IsTrue(scrolls, "at 2400x1080 the drawer must be clamped and scroll");
                 Assert.IsTrue(reachable, "the bottom group is reachable by scrolling");
                 boot.Panels.CloseAll();
+            }
+            finally
+            {
+                Object.Destroy(boot.gameObject);
+            }
+            yield return null;
+        }
+
+        /// <summary>
+        /// 점심 카드(스펙 21): 12×12 · 부착대가 있고 취급주의가 나오는 회사(계약 후보 풀 6종)에서 12:00을 넘겨 카드가 뜬 상태.
+        /// 메뉴(제육볶음) 하나와 계약(항공 출고) 하나를 키보드로 고르고 커서는 확정 버튼(12:14) → docs/design/unity-lunch-card.png.
+        /// 확정 뒤 14:30, 항공 출고 7개 → 상단 가운데 계약 진행 칩과 체력 알약 옆 메뉴 배지 → docs/design/unity-contract.png.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Capture_Lunch()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("no graphics device (-nographics); screenshots need a renderer");
+
+            Directory.CreateDirectory(OutDir);
+            Screen.SetResolution(Width, Height, false);
+            yield return null;
+            yield return null;
+            var boot = GameBootstrap.Ensure();
+            try
+            {
+                yield return null;
+                yield return new WaitForSeconds(0.5f);
+
+                // 후보에 항공 출고와 취급주의가 함께 나오는 씨앗을 고른다(결정적).
+                GameSession Make(int seed)
+                {
+                    var g = new GameSession(new Economy(5000), null, new System.Random(seed));
+                    g.Paused = true;
+                    g.Unlocks.Grant(UnlockId.Plot1);
+                    g.Unlocks.Grant(UnlockId.Plot2);
+                    g.FragileFromDay = 1;
+                    Place(g, 1, 2, CellType.Conveyor, Direction.East);
+                    Place(g, 2, 2, CellType.Table, Direction.East);
+                    Place(g, 3, 2, CellType.Conveyor, Direction.East);
+                    Place(g, 4, 2, CellType.Labeler, Direction.East);
+                    g.Clock.Set(1, Clock.LunchStart + 1f);
+                    g.Company.EnsureLunchCandidates();
+                    return g;
+                }
+                int pick = -1;
+                for (int seed = 0; seed < 200 && pick < 0; seed++)
+                {
+                    var probe = Make(seed).Company.ContractCandidates;
+                    bool air = false, fragile = false;
+                    foreach (var c in probe) { air |= c.Kind == ContractKind.Air; fragile |= c.Kind == ContractKind.Fragile; }
+                    if (air && fragile) pick = seed;
+                }
+                Assert.GreaterOrEqual(pick, 0, "no seed with air + fragile candidates");
+                var s = new GameSession(new Economy(5000), null, new System.Random(pick));
+                boot.ReplaceSession(s);
+                s.Paused = true;
+                s.Unlocks.Grant(UnlockId.Plot1);
+                s.Unlocks.Grant(UnlockId.Plot2);
+                s.FragileFromDay = 1;
+                Place(s, 1, 2, CellType.Conveyor, Direction.East);
+                Place(s, 2, 2, CellType.Table, Direction.East);
+                Place(s, 3, 2, CellType.Conveyor, Direction.East);
+                Place(s, 4, 2, CellType.Labeler, Direction.East);
+                s.Economy.TrySpend(s.Economy.Money - 1240);
+                var f = new PackageFactory(new System.Random(5), 0.0);
+                var onRail = f.Create(s.Sim.NextId++, 0, 0, Direction.East);
+                s.Sim.PlaceCarried(onRail, 1, 2); onRail.Progress = 0.5f;
+                var onTable = f.Create(s.Sim.NextId++, 0, 0, Direction.East);
+                s.Sim.PlaceCarried(onTable, 2, 2);
+                s.Worker.Worker.X = 3.0f; s.Worker.Worker.Y = 4.0f; s.Worker.Worker.Facing = Direction.South;
+                s.Worker.Worker.Stamina = 64f;
+                boot.Hud.RefreshHotbar();
+                yield return null;
+                yield return new WaitForSeconds(HudController.PopupSeconds + 0.2f); // 설치비 팝업이 사라질 때까지
+
+                s.Clock.Set(1, Clock.LunchStart - 0.5f);
+                s.Paused = false;
+                s.Tick(1f);
+                s.Paused = true;
+                yield return null;
+                yield return null;
+                var card = boot.Panels.Lunch;
+                Assert.IsTrue(card.IsOpen, "lunch card did not open at 12:00");
+                int airIndex = -1;
+                for (int i = 0; i < s.Company.ContractCandidates.Count; i++) if (s.Company.ContractCandidates[i].Kind == ContractKind.Air) airIndex = i;
+                Assert.GreaterOrEqual(airIndex, 0);
+                // 키보드: ↓ Enter(제육볶음) → 계약 열에서 항공 출고까지 ↓ → Enter → 커서는 확정 버튼.
+                card.MoveRow(1);
+                card.Submit();
+                Assert.AreEqual(LunchMenu.Jeyuk, card.SelectedMenu);
+                for (int i = 0; i < airIndex; i++) card.MoveRow(1);
+                card.Submit();
+                Assert.AreEqual(airIndex, card.SelectedContract);
+                Assert.AreEqual(LunchCard.Area.Buttons, card.FocusArea);
+                s.Clock.Set(1, Clock.LunchStart + 14f);
+                yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Debug.Log($"[Screenshot] lunch candidates {string.Join(", ", System.Linq.Enumerable.Select(s.Company.ContractCandidates, c => c.Title))}");
+                yield return Capture(boot, "unity-lunch-card.png", Width, Height);
+
+                // 확정 → 오후 14:30, 항공 출고 7/15.
+                card.Submit();
+                yield return null;
+                Assert.IsFalse(card.IsOpen);
+                Assert.AreEqual(LunchMenu.Jeyuk, s.Company.Menu);
+                Assert.AreEqual(ContractKind.Air, s.Company.Contract.Kind);
+                for (int i = 0; i < 7; i++)
+                {
+                    var p = f.Create(s.Sim.NextId++, 0, 0, Direction.East);
+                    p.Air = true; p.Label.Method = PackageFactory.AirMethod;
+                    p.Inspect(false); p.Waybill = true;
+                    s.Sim.DeliverCarried(p, CellType.AirOutlet);
+                }
+                s.Clock.Set(1, 14 * 60 + 30);
+                s.Worker.Worker.Stamina = 72f;
+                yield return null;
+                yield return new WaitForSeconds(2.0f); // 배송 토스트·금액 팝업이 사라질 때까지
+                Assert.AreEqual("계약 · 항공 출고 7/15", boot.Hud.Root.Find("ContractChip/Text").GetComponent<Text>().text);
+                Assert.IsTrue(boot.Hud.Root.Find("MenuBadge").gameObject.activeSelf);
+                yield return Capture(boot, "unity-contract.png", Width, Height);
             }
             finally
             {

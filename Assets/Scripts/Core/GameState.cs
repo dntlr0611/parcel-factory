@@ -38,7 +38,7 @@ namespace ParcelFactory.Core
         public int EarnedToday;
     }
 
-    /// <summary>저장 파일(v10): 회사(돈·EXP·능력치·시계·작업자·현재 공장 번호) + 1공장(상속한 최상위 필드) + 나머지 공장(OtherFactories).</summary>
+    /// <summary>저장 파일(v11): 회사(돈·EXP·능력치·시계·작업자·현재 공장 번호·점심 카드) + 1공장(상속한 최상위 필드) + 나머지 공장(OtherFactories).</summary>
     public sealed class GameState : FactoryState
     {
         /// <summary>기본값 0. Capture가 명시적으로 채우므로 필드가 없는 JSON은 버전 불일치로 거부된다.</summary>
@@ -69,6 +69,23 @@ namespace ParcelFactory.Core
         public int CurrentFactory;
         /// <summary>2·3공장(v10, 번호 순서). 없으면(null, v9 이하) 1공장 하나.</summary>
         public List<FactoryState> OtherFactories;
+        /// <summary>오늘의 메뉴 이름(v11, 스펙 21.4). 없으면(null, v10 이하) None.</summary>
+        public string LunchMenu;
+        /// <summary>오늘 점심 카드를 확정했는가(v11).</summary>
+        public bool LunchConfirmed;
+        /// <summary>오늘의 계약(v11). 없으면 null.</summary>
+        public ContractState Contract;
+        /// <summary>오늘 계약 후보(v11, 점심 중에 저장해도 같은 후보가 다시 뜨게). 없으면(null) 비어 있음.</summary>
+        public List<ContractState> ContractCandidates;
+    }
+
+    /// <summary>계약 하나(v11): 종류 이름(Deliver/NoLoss/Return/Air/Fragile/NoMissingWaybill)·목표·진행·달성.</summary>
+    public sealed class ContractState
+    {
+        public string Kind;
+        public int Target;
+        public int Progress;
+        public bool Achieved;
     }
 
     public sealed class TruckState

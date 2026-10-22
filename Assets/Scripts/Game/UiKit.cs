@@ -109,6 +109,8 @@ namespace ParcelFactory.Game
         public static Font DefaultFont => Fonts.Body;
 
         // ── 아이콘 ──
+        /// <summary>코드로 그리는 점심 카드 아이콘 이름(UiSprites.BowlIcon·ContractIcon).</summary>
+        public const string LunchIconName = "ui-lunch", ContractIconName = "ui-contract";
         private static readonly Dictionary<string, Sprite> icons = new Dictionary<string, Sprite>();
 
         /// <summary>Resources/UI/Icons/{name}.png(흰색 64px). 스프라이트로 임포트되지 않았으면 텍스처에서 만든다. 없으면 null.</summary>
@@ -117,6 +119,8 @@ namespace ParcelFactory.Game
             if (icons.TryGetValue(name, out var s) && s != null) return s;
             if (name == "ui-settings") return icons[name] = UiSprites.SlidersIcon(); // 아이콘 묶음에 없는 설정 아이콘은 코드로 그린다
             if (name == HudController.LabelerIconName) return icons[name] = UiSprites.WaybillIcon(); // 운송장 부착대(스펙 15.1)
+            if (name == LunchIconName) return icons[name] = UiSprites.BowlIcon();       // 구내식당(스펙 21)
+            if (name == ContractIconName) return icons[name] = UiSprites.ContractIcon(); // 오후 계약(스펙 21)
             s = Resources.Load<Sprite>("UI/Icons/" + name);
             if (s == null)
             {

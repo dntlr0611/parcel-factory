@@ -53,10 +53,23 @@ namespace ParcelFactory.Core
         public GameSession(Economy economy) : this(economy, null) { }
 
         /// <summary>factory는 1공장이 쓸 팩토리(테스트용). null이면 공장이 직접 만들고 항공·취급주의 확률을 관리한다.</summary>
-        public GameSession(Economy economy, PackageFactory factory)
+        public GameSession(Economy economy, PackageFactory factory) : this(economy, factory, null) { }
+
+        /// <summary>seedSource를 주면 공장 팩토리의 씨앗과 계약 후보가 결정적이다(Company 참고).</summary>
+        public GameSession(Economy economy, PackageFactory factory, Random seedSource)
         {
-            Company = new Company(economy, factory);
+            Company = new Company(economy, factory, seedSource);
         }
+
+        /// <summary>12:00 점심 시작(스펙 21.1). 점심 카드가 이걸 보고 자동으로 뜬다.</summary>
+        public event Action LunchStarted
+        {
+            add => Company.LunchStarted += value;
+            remove => Company.LunchStarted -= value;
+        }
+
+        /// <summary>점심 카드 확정(스펙 21.1): 메뉴(None/null = 안 고름)와 계약 후보 번호(null = 안 고름).</summary>
+        public LunchConfirmResult ConfirmLunch(LunchMenu? menu, int? contractIndex) => Company.ConfirmLunch(menu, contractIndex);
 
         public void Tick(float dt) => Company.Tick(dt);
 
